@@ -1,0 +1,88 @@
+Connecting Milvus...
+  OK: Milvus connected
+  Current chunks in Milvus: 0
+File size: 3778 chars
+Chunk count: 9
+Indexing (Embedding + Milvus)...
+  OK: Indexing done in 22.4s, result: {'doc_id': 'eval-kb-001', 'chunk_count': 9, 'insert_count': 9}
+
+Testing search...
+
+  Query: VPN服务器地址是什么
+  Results: 3
+    [1] score=0.8434 | # 企业IT支持知识库
+
+## 1. VPN连接配置指南
+
+### 1.1 Windows系统VPN配置步骤
+
+1. 打开"设置" → "网络和Internet...
+    [2] score=0.1161 | 应使用公司内网DNS服务器10.0.0.1
+
+### 1.3 VPN使用规范
+
+- VPN连接时间限制：工作日8:00-22:00
+- 禁止在VPN连接时访问非...
+    [3] score=0.0213 | 到IT服务台（1F-A101）领取办公设备
+2. 使用初始密码登录公司电脑（初始密码：Company@工号后6位）
+3. 首次登录必须修改密码
+4. 配置企业邮...
+
+  Query: 打印机IP地址
+  Results: 3
+    [1] score=0.9377 | 应使用公司内网DNS服务器10.0.0.1
+
+### 1.3 VPN使用规范
+
+- VPN连接时间限制：工作日8:00-22:00
+- 禁止在VPN连接时访问非...
+    [2] score=0.1861 | 2.168.1.101 |
+| 2F研发部 | HP Color LaserJet Pro M454 | 192.168.1.201 |
+| 3F市场部 | C...
+    [3] score=0.0057 | 
+- 禁止使用生日、姓名拼音、连续数字作为密码
+- 建议使用公司提供的密码管理器1Password生成和存储密码
+
+### 5.2 多因素认证(MFA)
+
+- ...
+
+  Query: 新员工入职IT
+  Results: 3
+    [1] score=0.9765 | U盘等外接设备丢失
+- 怀疑账号被盗用
+- 安全事件响应时间：工作日30分钟内，非工作日2小时内
+
+---
+
+## 6. 会议室预约系统
+
+### 6.1 会议...
+    [2] score=0.6818 | 到IT服务台（1F-A101）领取办公设备
+2. 使用初始密码登录公司电脑（初始密码：Company@工号后6位）
+3. 首次登录必须修改密码
+4. 配置企业邮...
+    [3] score=0.4501 | 
+- 禁止使用生日、姓名拼音、连续数字作为密码
+- 建议使用公司提供的密码管理器1Password生成和存储密码
+
+### 5.2 多因素认证(MFA)
+
+- ...
+
+  Query: 密码策略
+  Results: 3
+    [1] score=0.3486 |  Reader
+**开发类**：VS Code、IntelliJ IDEA、PyCharm、Git、Docker Desktop
+**通讯类**：企业微信、钉钉...
+    [2] score=0.0727 | 
+- 禁止使用生日、姓名拼音、连续数字作为密码
+- 建议使用公司提供的密码管理器1Password生成和存储密码
+
+### 5.2 多因素认证(MFA)
+
+- ...
+    [3] score=0.0058 | 到IT服务台（1F-A101）领取办公设备
+2. 使用初始密码登录公司电脑（初始密码：Company@工号后6位）
+3. 首次登录必须修改密码
+4. 配置企业邮...

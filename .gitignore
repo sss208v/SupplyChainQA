@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+.venv/
+env/
+
+# Node
+node_modules/
+dist/
+.nuxt/
+.output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+pgdata/
+redis-data/
+
+# Milvus data
+milvus-data/
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# Temporary scripts
+*.ps1
+*.tmp
+*.bak
+*.cache
+fix_chat*.py
+demo_queries.json
+smartqa_e2e.js
+
+# AI tool artifacts
+.workbuddy/
+PROJECT_SUMMARY.md
+TECHNICAL_DOCUMENTATION.md
+backend/eval/debug_ar.py
+
+# Uploaded files and test data
+backend/uploads/
+backend/eval/knowledge_base/
+backend/drop_collection.py
+backend/test_*.py
+backend/run_backend.py
+backend/start.sh
+backend/upload_docs.py
+backend/eval/reset_milvus.py
+backend/eval/upload_all_knowledge.py
+backend/check_venv.py
+DEMO_SCRIPT.md
