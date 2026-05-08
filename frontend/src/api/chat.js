@@ -226,6 +226,9 @@ export async function chatStream(data, callbacks = {}) {
           case 'query_analysis':
             callbacks.onQueryAnalysis?.(parsed)
             break
+          case 'performance_metrics':
+            callbacks.onPerformanceMetrics?.(parsed.metrics)
+            break
           case 'approval_request':
             callbacks.onApprovalRequest?.(parsed)
             break

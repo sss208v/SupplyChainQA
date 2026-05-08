@@ -75,6 +75,19 @@
           >
             {{ queryAnalysisLabel }}
           </el-tag>
+          <!-- 性能指标标签 -->
+          <el-tag
+            v-if="message.performanceMetrics"
+            type="info"
+            size="small"
+            effect="plain"
+            round
+          >
+            ⏱ {{ message.performanceMetrics.total_ms }}ms
+            (路由{{ message.performanceMetrics.route_ms }}ms
+            / 检索{{ message.performanceMetrics.search_ms }}ms
+            / 生成{{ message.performanceMetrics.llm_ms }}ms)
+          </el-tag>
         </div>
 
         <!-- 工具调用展示（默认折叠，只显示一行摘要） -->

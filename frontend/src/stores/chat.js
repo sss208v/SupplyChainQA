@@ -122,9 +122,12 @@ export const useChatStore = defineStore('chat', () => {
             console.log('[ChatStore] onSelfRag:', data)
           },
           onQueryAnalysis: (data) => {
-            // Query 复杂度分析结果
             messages.value[aiIdx].queryAnalysis = data
             console.log('[ChatStore] onQueryAnalysis:', data)
+          },
+          onPerformanceMetrics: (metrics) => {
+            messages.value[aiIdx].performanceMetrics = metrics
+            console.log('[ChatStore] onPerformanceMetrics:', metrics)
           },
           onClarify: (data) => {
             // 澄清提问：系统主动问用户补充信息

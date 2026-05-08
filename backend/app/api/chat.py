@@ -534,6 +534,20 @@ async def chat_stream(request: ChatRequest):
                 _dag_nodes[6]["duration_ms"] = int(_t_llm * 1000)
                 yield _sse_format({"type": "dag_progress", "nodes": _dag_nodes, "edges": _dag_edges})
 
+                # ---- 性能指标 ----
+                _t_total = time.perf_counter() - _t0
+                yield _sse_format({
+                    "type": "performance_metrics",
+                    "metrics": {
+                        "route_ms": round(_t_route * 1000),
+                        "query_understand_ms": round(_t_query_understand * 1000),
+                        "search_ms": round(_t_search * 1000),
+                        "rag_prep_ms": round(_t_rag_prep * 1000),
+                        "llm_ms": round(_t_llm * 1000),
+                        "total_ms": round(_t_total * 1000),
+                    },
+                })
+
                 # 保存对话记忆（应用输出安全过滤）
                 if session_id and chat_memory:
                     await chat_memory.add_message(session_id, "user", request.query)
