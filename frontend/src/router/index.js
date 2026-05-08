@@ -1,13 +1,12 @@
-/**
- * SmartQA Pro - 路由配置
- *
- * 1. Vue Router 4 使用 createRouter + createWebHistory
- * 2. 路由懒加载：() => import(...) 实现按需加载，减少首屏体积
- * 3. 每个路由的 meta 字段可以存储页面标题等信息
- */
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/Login/index.vue'),
+    meta: { title: '登录', public: true },
+  },
   {
     path: '/',
     redirect: '/chat',
@@ -43,9 +42,15 @@ const router = createRouter({
   routes,
 })
 
-// 更新页面标题
+// 路由守卫
 router.beforeEach((to) => {
   document.title = `${to.meta.title || '供应链助手'} - 供应链智能助手`
+
+  // 未登录且非公开页面，跳转登录
+  const token = localStorage.getItem('token')
+  if (!token && !to.meta.public) {
+    return '/login'
+  }
 })
 
 export default router

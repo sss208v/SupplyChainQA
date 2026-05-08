@@ -91,6 +91,19 @@
           <el-tag type="success" effect="dark" round>
             <el-icon><CircleCheck /></el-icon> 服务在线
           </el-tag>
+          <!-- 用户信息 -->
+          <el-dropdown @command="handleCommand" style="margin-left: 16px;">
+            <span class="user-info">
+              <el-icon><User /></el-icon>
+              {{ authStore.username }}
+              <el-tag size="small" style="margin-left: 4px;">{{ authStore.department }}</el-tag>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </el-header>
 
@@ -111,12 +124,14 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Expand, Fold, ChatDotRound, Folder, SetUp, Monitor, CircleCheck, DataAnalysis } from '@element-plus/icons-vue'
+import { Expand, Fold, ChatDotRound, Folder, SetUp, Monitor, CircleCheck, DataAnalysis, User } from '@element-plus/icons-vue'
 import { listModels, switchModel } from '@/api/chat'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const isCollapsed = ref(false)
 const currentModel = ref('deepseek')
 
@@ -206,8 +221,15 @@ async function onModelChange(provider) {
     ElMessage.success(res.message)
   } catch (e) {
     ElMessage.error(e.message || '切换失败')
-    // 切回原值
     currentModel.value = 'deepseek'
+  }
+}
+
+function handleCommand(command) {
+  if (command === 'logout') {
+    authStore.logout()
+    router.push('/login')
+    ElMessage.success('已退出登录')
   }
 }
 </script>
@@ -365,5 +387,18 @@ async function onModelChange(provider) {
 .content {
   padding: 20px;
   overflow: auto;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #606266;
+}
+
+.user-info:hover {
+  color: #409eff;
 }
 </style>
