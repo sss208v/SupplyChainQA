@@ -1,7 +1,6 @@
 """
 SmartQA Pro - 认证API路由
 ============================================================
-【学习要点】
 1. Token认证 vs JWT：
    - JWT：无状态，自包含，但无法主动失效
    - UUID Token + Redis：有状态，可主动登出，更灵活
@@ -120,7 +119,7 @@ async def register(body: RegisterRequest):
         new_user = User(
             username=body.username,
             password_hash=hash_password(body.password),
-            role=UserRole.EMPLOYEE.value,  # 默认普通员工
+            role=UserRole.PURCHASE.value,  # 默认采购部
             department=body.department,
         )
         session.add(new_user)

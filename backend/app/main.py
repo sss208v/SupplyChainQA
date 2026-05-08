@@ -1,7 +1,6 @@
 """
 SmartQA Pro - 企业级智能问答助手系统
 ============================================================
-【学习要点】FastAPI应用生命周期管理
 
 1. lifespan（生命周期）是FastAPI 0.93+引入的新特性
    替代了旧的on_event("startup")/on_event("shutdown")
@@ -51,7 +50,6 @@ async def lifespan(app: FastAPI):
     """
     应用生命周期管理
 
-    【学习要点】
     启动时初始化所有外部连接，关闭时优雅释放资源。
     如果某个服务连不上，应该明确报错而不是静默失败。
     """
@@ -81,31 +79,42 @@ async def lifespan(app: FastAPI):
         logger.info("✅ PostgreSQL连接成功")
     except Exception as e:
         logger.warning(f"⚠️ PostgreSQL连接失败: {e}（元数据功能不可用）")
-    # 4. 创建默认admin用户（RBAC）
+    # 4. 创建默认用户（RBAC 部门角色）
     try:
         from app.models.user import User, UserRole
         from app.core.auth import hash_password
         from sqlalchemy import select
         from app.core.database import async_session
 
+        # 默认用户列表：username, password, role, department
+        default_users = [
+            ("admin", "admin123", UserRole.ADMIN, "系统管理"),
+            ("purchase", "123456", UserRole.PURCHASE, "采购部"),
+            ("warehouse", "123456", UserRole.WAREHOUSE, "仓库部"),
+            ("quality", "123456", UserRole.QUALITY, "质量部"),
+            ("production", "123456", UserRole.PRODUCTION, "生产部"),
+            ("finance", "123456", UserRole.FINANCE, "财务部"),
+            ("logistics", "123456", UserRole.LOGISTICS, "物流部"),
+        ]
+
         async with async_session() as session:
-            result = await session.execute(
-                select(User).where(User.username == "admin")
-            )
-            if not result.scalar_one_or_none():
-                admin_user = User(
-                    username="admin",
-                    password_hash=hash_password("admin123"),
-                    role=UserRole.ADMIN.value,
-                    department="系统管理",
+            for username, password, role, dept in default_users:
+                result = await session.execute(
+                    select(User).where(User.username == username)
                 )
-                session.add(admin_user)
-                await session.commit()
-                logger.info("✅ 默认管理员账户已创建: admin/admin123")
-            else:
-                logger.info("ℹ️ 管理员账户已存在，跳过创建")
+                if not result.scalar_one_or_none():
+                    user = User(
+                        username=username,
+                        password_hash=hash_password(password),
+                        role=role.value,
+                        department=dept,
+                    )
+                    session.add(user)
+                    logger.info(f"✅ 创建用户: {username}/{password} ({role.value} - {dept})")
+            await session.commit()
+            logger.info("✅ 默认用户创建完成")
     except Exception as e:
-        logger.warning(f"⚠️ 创建默认管理员失败: {e}")
+        logger.warning(f"⚠️ 创建默认用户失败: {e}")
 
     logger.info(f"🎉 {settings.APP_NAME} 启动完成！")
     logger.info(f"📖 API文档: http://localhost:8000/docs")
@@ -145,7 +154,6 @@ app = FastAPI(
 )
 
 # ---- CORS中间件 ----
-# 【学习要点】
 # CORS = Cross-Origin Resource Sharing（跨域资源共享）
 # 浏览器的同源策略会阻止前端(localhost:5173)访问后端(localhost:8000)
 # 配置CORS后，浏览器允许跨域请求

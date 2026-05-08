@@ -1,7 +1,6 @@
 """
 SmartQA Pro - RAG问答Agent
 ============================================================
-【学习要点】
 1. RAG = Retrieval-Augmented Generation（检索增强生成）
    核心思想：先检索相关文档，再让LLM基于检索结果生成回答
    好处：减少幻觉、回答有据可查、知识可动态更新
@@ -50,7 +49,6 @@ class RAGAgent:
     """
 
     # ---- Prompt模板 ----
-    # 【学习要点】RAG的Prompt设计核心原则：
     # 1. 明确告诉LLM"只基于给定的上下文回答"
     # 2. 如果上下文不包含答案，要求LLM诚实说"不知道"
     # 3. 引用来源时标注序号，方便用户溯源
@@ -97,7 +95,6 @@ class RAGAgent:
 {context}"""
 
     # HyDE Prompt（假设文档嵌入）
-    # 【学习要点】HyDE的核心思想：
     # 模糊查询的向量表示往往与真实文档的向量表示距离较远，
     # 但如果先让LLM"猜"一个答案，这个猜测答案的向量表示
     # 反而更接近真实文档。用猜测答案的向量去做检索，效果更好。
@@ -162,7 +159,6 @@ class RAGAgent:
         query_type = self._classify_query(query)
         logger.info(f"Query理解: type={query_type}, query={query}")
 
-        # ---- Step 1.5: Query复杂度分析（参考 Datawhale all-in-rag ch9）----
         # 根据复杂度决定检索深度：light/standard/full
         llm_for_analysis = LLMFactory.get_llm(temperature=0, streaming=False)
         analysis = await query_analyzer.analyze(query, llm=llm_for_analysis)
@@ -339,7 +335,6 @@ class RAGAgent:
         """
         Query理解：判断问题类型
 
-        【学习要点】
         - 明确问题：问题具体、关键词明确，如"Milvus怎么创建索引"
         - 模糊问题：问题笼统但能猜到方向，如"向量数据库是什么"
         - 宽泛问题：问题范围太大，如"讲讲AI"
@@ -369,7 +364,6 @@ class RAGAgent:
         """
         根据查询类型准备检索查询
 
-        【学习要点】三级Query理解的核心区别：
         - specific: 直接用原始query检索，最高效
         - ambiguous: 用HyDE生成"假设答案"，用假设答案的向量检索
         - broad: 拆分成多个子问题，分别检索后合并结果
@@ -380,7 +374,6 @@ class RAGAgent:
 
         elif query_type == "ambiguous":
             # 模糊问题 → 直接检索（HyDE省略，节省14秒embedding时间）
-            # 面试时可口述：生产环境会加HyDE假设文档嵌入来提升语义匹配
             return [query]
 
         else:
@@ -419,7 +412,6 @@ class RAGAgent:
         """
         将检索结果格式化为Prompt中的上下文文本
 
-        【学习要点 - 父子文档检索】
         检索阶段用小chunk精确匹配（512字符），
         生成阶段用大chunk提供完整上下文（同文档+同章节的所有chunk合并）。
 

@@ -1,7 +1,6 @@
 """
 SmartQA Pro - RAG 评估 API
 ============================================================
-【学习要点】
 1. 离线评估需要 ground truth（相关文档标注），用于计算 Recall/Precision/MRR/NDCG
 2. 在线评估无需 ground truth，通过 rerank_score 分布和检索来源分析质量
 3. LLM-as-Judge：用大模型评判生成答案的质量（需要调用 LLM API）

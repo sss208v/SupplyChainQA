@@ -7,35 +7,15 @@
 - 前端：Vue3 + Element Plus + Pinia + Vite
 - 后端：Python + FastAPI + LangChain
 - 向量库：Milvus（BGE-small-zh-v1.5, 512维）
-- 缓存：Redis（对话记忆 + Query Cache + Token）
+- 缓存：Redis（对话记忆 + Query Cache）
 - 数据库：PostgreSQL（RBAC + 反馈）
 - LLM：DeepSeek API（可切换 MiniMax/Ollama）
 
 ## 架构
 
-```
-用户 → Vue3 前端 → FastAPI 后端
-                      │
-                      ├─ 意图路由（规则 → 语义路由 → LLM 三级）
-                      │
-                      ├─ RAG Agent
-                      │   ├─ Query 复杂度分析（自适应检索深度）
-                      │   ├─ 混合检索（向量 + BM25 + RRF 融合）
-                      │   ├─ Self-RAG 过滤 + 父子文档扩展
-                      │   ├─ 三层置信度路由（直接/改写/Web搜索）
-                      │   └─ 引用溯源 [1][2] + Faithfulness 检测
-                      │
-                      ├─ Tool Agent（ReAct + LangChain 双模式）
-                      │   └─ 库存查询 / 订单查询 / 创建工单
-                      │
-                      └─ 安全层
-                          ├─ RBAC（admin/manager/employee）
-                          ├─ 文档级可见性隔离
-                          ├─ Guardrails（输入白名单 + 输出黑名单）
-                          └─ PII 脱敏
+![架构图](./architecture.svg)
 
-              Milvus | Redis | PostgreSQL
-```
+
 
 ## 核心功能
 
@@ -59,25 +39,26 @@
 - LangChain AgentExecutor（可切换）：create_react_agent 标准实现
 - 工具：query_inventory / query_order / create_ticket / get_datetime / get_knowledge
 
-### 权限管理
+### 行级权限控制
 
-- RBAC 三级角色：admin（全部）、manager（上传/删除）、employee（查询）
-- 文档级可见性：upload 时指定 visibility=public/admin_only
-- 查询时按角色过滤：admin 看全部，employee 只看 public 文档
+- 7 个部门角色：admin / purchase / warehouse / quality / production / finance / logistics
+- Milvus security_group 数组列，array_contains 过滤
+- 前端上传时可选择可见部门
+- 不同角色登录只能看到自己部门的文档
 
 ### 文档解析
 
-- PDF：pymupdf4llm（结构化 Markdown，保留表格/标题）→ opendataloader → pdfplumber 三级回退
-- DOCX：python-docx（段落+表格）→ pymupdf 回退
+- PDF：pymupdf4llm（结构化 Markdown，保留表格/标题）
+- DOCX：python-docx（段落+表格）
 - 支持格式：PDF / DOCX / TXT / MD
 
 ### 其他
 
 - SSE 流式输出：Token 级逐字输出 + 多事件类型
 - Token 成本追踪：实时显示 token 用量和费用
-- Guardrails：输入白名单（50 个供应链关键词）+ 输出黑名单（28 个敏感词）
 - DAG 可视化：SVG 绘制 RAG 流水线，7 节点实时状态
 - Faithfulness：关键词覆盖率检测
+- PII 脱敏：身份证/手机/邮箱等自动识别
 
 ## 快速开始
 
@@ -115,52 +96,58 @@ pnpm dev
 
 访问 http://localhost:3000/knowledge，上传 knowledge/ 目录下的供应链文档。
 
+## 默认账号
+
+| 账号 | 密码 | 角色 | 可见文档 |
+|------|------|------|----------|
+| admin | admin123 | 管理员 | 全部 |
+| purchase | 123456 | 采购部 | 采购+供应商+物料编码+公共 |
+| warehouse | 123456 | 仓库部 | 库存+物流+物料编码+公共 |
+| quality | 123456 | 质量部 | 供应商+质检+公共 |
+| production | 123456 | 生产部 | 物料编码+库存+生产计划+公共 |
+| finance | 123456 | 财务部 | 采购+成本核算+公共 |
+| logistics | 123456 | 物流部 | 库存+物流+公共 |
+
 ## 项目结构
 
 ```
 supply-chain-qa/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                    # FastAPI 入口
-│   │   ├── config.py                  # 配置管理
+│   │   ├── main.py
+│   │   ├── config.py
 │   │   ├── agents/
-│   │   │   ├── router.py              # 意图路由
-│   │   │   ├── rag.py                 # RAG Agent
-│   │   │   ├── tool.py                # Tool Agent
-│   │   │   └── langchain_agent.py     # LangChain Agent
+│   │   │   ├── router.py          # 意图路由
+│   │   │   ├── rag.py             # RAG Agent
+│   │   │   ├── tool.py            # Tool Agent
+│   │   │   └── langchain_agent.py
 │   │   ├── api/
-│   │   │   ├── chat.py                # SSE 流式对话
-│   │   │   ├── knowledge.py           # 知识库管理
-│   │   │   ├── auth.py                # RBAC 认证
-│   │   │   └── tool.py                # 工具 API
+│   │   │   ├── chat.py            # SSE 流式对话
+│   │   │   ├── knowledge.py       # 知识库管理
+│   │   │   ├── auth.py            # RBAC 认证
+│   │   │   └── tool.py
 │   │   ├── core/
-│   │   │   ├── rag_engine.py          # RRF + Query Cache
-│   │   │   ├── llm_router.py          # LLM 工厂
-│   │   │   ├── milvus_client.py       # Milvus 客户端
-│   │   │   ├── semantic_router.py     # 语义路由
-│   │   │   ├── query_analyzer.py      # 复杂度分析
-│   │   │   ├── confidence_router.py   # 置信度路由
-│   │   │   ├── self_rag.py            # Self-RAG
-│   │   │   ├── faithfulness.py        # 幻觉检测
-│   │   │   ├── guardrails.py          # 内容安全
-│   │   │   ├── clarify.py             # 澄清提问
-│   │   │   ├── retry.py               # 重试装饰器
-│   │   │   └── auth.py                # RBAC
+│   │   │   ├── rag_engine.py      # RRF + Query Cache
+│   │   │   ├── llm_router.py      # LLM 工厂
+│   │   │   ├── milvus_client.py   # Milvus + 行级权限
+│   │   │   ├── semantic_router.py # 语义路由
+│   │   │   ├── query_analyzer.py  # 复杂度分析
+│   │   │   ├── confidence_router.py
+│   │   │   ├── self_rag.py
+│   │   │   ├── faithfulness.py
+│   │   │   ├── clarify.py
+│   │   │   ├── retry.py
+│   │   │   └── auth.py
 │   │   └── models/
 │   │       └── user.py
-│   ├── knowledge/                     # 供应链文档
+│   ├── knowledge/                 # 供应链文档
 │   └── requirements.txt
 ├── frontend/
-│   ├── src/
-│   │   ├── views/
-│   │   │   ├── Chat/
-│   │   │   ├── Knowledge/
-│   │   │   ├── Tools/
-│   │   │   └── Evaluate/
-│   │   ├── stores/
-│   │   ├── api/
-│   │   └── components/
-│   └── vite.config.js
+│   └── src/
+│       ├── views/
+│       ├── stores/
+│       ├── api/
+│       └── components/
 ├── docker-compose.yml
 └── README.md
 ```
@@ -171,11 +158,7 @@ supply-chain-qa/
 |------|------|------|
 | /api/v1/chat/stream | POST | SSE 流式对话 |
 | /api/v1/chat/completions | POST | 非流式对话 |
-| /api/v1/knowledge/upload | POST | 上传文档 |
-| /api/v1/knowledge/list | GET | 文档列表 |
+| /api/v1/knowledge/upload | POST | 上传文档（支持 security_group） |
+| /api/v1/knowledge/list | GET | 文档列表（按角色过滤） |
 | /api/v1/auth/login | POST | 登录 |
 | /api/v1/tools/list | GET | 工具列表 |
-
-## 默认账号
-
-- admin / admin123

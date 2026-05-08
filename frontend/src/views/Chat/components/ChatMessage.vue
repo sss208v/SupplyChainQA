@@ -195,7 +195,6 @@
 /**
  * SmartQA Pro - 消息气泡组件
  *
- * 【学习要点】
  * 1. 用户/AI消息的差异化展示：用户靠右蓝色，AI靠左灰色
  * 2. Markdown渲染：使用 marked 库将 AI 回复渲染为 HTML
  * 3. 工具调用折叠面板：展示 ReAct 循环的 Thought→Action→Observation
@@ -245,7 +244,6 @@ const expandedTools = ref([])
 /**
  * 提交用户反馈
  *
- * 【学习要点】优雅降级策略：
  * - 即使API调用失败，也记录用户的选择（避免重复点击）
  * - 用 ElMessage.warning 提示但不阻断用户操作
  *
@@ -532,7 +530,6 @@ const queryAnalysisTagType = computed(() => {
 /**
  * 反馈按钮栏
  *
- * 【学习要点】
  * - 使用 flex 布局实现按钮水平排列
  * - 已选中按钮用 primary 色高亮，未选中按钮灰化
  * - 禁用状态下 pointer-events: none 防止重复点击

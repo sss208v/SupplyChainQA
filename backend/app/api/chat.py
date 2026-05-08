@@ -1,7 +1,6 @@
 """
 SmartQA Pro - 对话API路由
 ============================================================
-【学习要点】
 1. SSE (Server-Sent Events) 是AI对话的标准传输协议
    - 优点：单向推送、自动重连、基于HTTP、兼容代理
    - 缺点：只能服务端→客户端（但AI对话场景只需要这个方向）
@@ -34,7 +33,6 @@ from app.agents.langchain_agent import langchain_agent
 from app.core.llm_router import LLMFactory
 from app.core.redis_client import chat_memory
 from app.core.data_filter import PIIFilter
-from app.core.guardrails import get_guardrails_engine
 from app.core.clarify import check_needs_clarification
 from app.core.self_rag import get_self_rag
 from app.core.faithfulness import get_faithfulness_checker
@@ -50,21 +48,15 @@ router = APIRouter(prefix="/chat", tags=["对话"])
 # PII脱敏过滤器实例（模块级单例，避免重复创建）
 _pii_filter = PIIFilter()
 
-# Guardrails内容安全过滤引擎（模块级单例）
-_guardrails = get_guardrails_engine()
+# 内容过滤引擎（已禁用）
 
 # Faithfulness 检测器（模块级单例）
 _faithfulness_checker = get_faithfulness_checker()
 
 
 def _apply_output_guard(answer: str) -> str:
-    """对LLM输出应用Guardrails安全过滤（仅当启用时）"""
-    if not settings.GUARDRAILS_ENABLED:
-        return answer
-    safe, filtered_answer = _guardrails.check_output(answer)
-    if not safe:
-        logger.warning("Guardrails输出过滤：检测到敏感内容，已替换")
-    return filtered_answer
+    """输出过滤（已禁用，保留接口兼容）"""
+    return answer
 
 
 # ---- 请求/响应模型 ----
@@ -142,18 +134,6 @@ async def chat_completions(request: ChatRequest):
     # PII脱敏：在调用LLM API前过滤用户输入中的敏感信息
     # 使用脱敏后的safe_query进行路由和推理，防止PII泄露到云端LLM
     safe_query = _pii_filter.filter_text(request.query)
-
-    # Guardrails输入过滤：检查问题是否在供应链领域范围内
-    if settings.GUARDRAILS_ENABLED:
-        allowed, reason = _guardrails.check_input(safe_query)
-        if not allowed:
-            logger.info(f"Guardrails拦截: query={safe_query}, reason={reason}")
-            return ChatResponse(
-                session_id=session_id,
-                answer=reason,
-                intent="guardrails_blocked",
-                confidence=1.0,
-            )
 
     # Step 1: 意图路由（使用脱敏后的查询）
     route_result = await router_agent.route(safe_query)
@@ -253,7 +233,6 @@ async def chat_stream(request: ChatRequest):
     """
     对话接口（流式SSE）
 
-    【学习要点】SSE流式输出的完整实现：
     1. 返回StreamingResponse，content_type="text/event-stream"
     2. 用async generator逐步yield数据
     3. 每条数据格式: "data: {json}\\n\\n"
@@ -273,41 +252,14 @@ async def chat_stream(request: ChatRequest):
     # 使用脱敏后的safe_query进行路由和推理，防止PII泄露到云端LLM
     safe_query = _pii_filter.filter_text(request.query)
 
-    # Guardrails输入过滤：检查问题是否在供应链领域范围内
-    if settings.GUARDRAILS_ENABLED:
-        allowed, reason = _guardrails.check_input(safe_query)
-        if not allowed:
-            logger.info(f"Guardrails拦截(SSE): query={safe_query}, reason={reason}")
-
-            async def _blocked_generator():
-                yield _sse_format({"type": "session", "session_id": session_id})
-                yield _sse_format({
-                    "type": "route",
-                    "intent": "guardrails_blocked",
-                    "confidence": 1.0,
-                    "method": "guardrails",
-                })
-                yield _sse_format({"type": "content", "content": reason})
-                yield "data: [DONE]\n\n"
-
-            return StreamingResponse(
-                _blocked_generator(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
-            )
-
     logger.info(f"对话开始 session={session_id} query={safe_query}")
 
-    # 获取用户角色用于可见性过滤
-    _user_role = "employee"
+    # 获取用户角色用于权限过滤
+    _user_role = "purchase"  # 默认采购部
     try:
         _current_user = await get_current_user_full(request)
         if _current_user:
-            _user_role = _current_user.get("role", "employee")
+            _user_role = _current_user.get("role", "purchase")
     except Exception:
         pass
 
@@ -366,7 +318,6 @@ async def chat_stream(request: ChatRequest):
                 search_queries = await rag_agent._prepare_queries(safe_query, query_type)
                 _t_query_understand = time.perf_counter() - _t2
 
-                # ---- Query复杂度分析（参考 Datawhale all-in-rag ch9）----
                 from app.core.query_analyzer import query_analyzer
                 _llm_analysis = LLMFactory.get_llm(temperature=0, streaming=False)
                 _analysis = await query_analyzer.analyze(safe_query, llm=_llm_analysis)

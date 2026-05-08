@@ -193,13 +193,13 @@ def require_role(*allowed_roles: str):
     RBAC权限检查装饰器
 
     用法：
-        @require_role(UserRole.ADMIN, UserRole.MANAGER)
+        @require_role(UserRole.ADMIN, UserRole.PURCHASE)
         async def upload_document(...):
             ...
 
     用法（在路由函数内部调用）：
         user = await get_current_user_full(request)
-        check_role(user, [UserRole.ADMIN, UserRole.MANAGER])
+        check_role(user, [UserRole.ADMIN, UserRole.PURCHASE])
     """
     async def role_checker(request: Request) -> dict:
         user = await get_current_user_full(request)

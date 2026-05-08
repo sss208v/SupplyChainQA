@@ -1,7 +1,6 @@
 /**
  * SmartQA Pro - 对话状态管理
  *
- * 【学习要点】
  * 1. Pinia 是 Vue3 官方推荐的状态管理库，替代 Vuex
  * 2. defineStore 定义 store，useChatStore 在组件中使用
  * 3. state 是响应式数据，actions 是修改状态的方法
@@ -38,7 +37,6 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * 发送消息（SSE流式）
    *
-   * 【学习要点】SSE流式对话的完整流程：
    * 1. 用户发送消息 → 添加到消息列表
    * 2. 创建AI消息占位（显示加载动画）
    * 3. 调用SSE接口，逐步接收内容

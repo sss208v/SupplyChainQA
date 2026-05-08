@@ -79,7 +79,6 @@
 /**
  * 供应链智能助手 - 对话主页面
  *
- * 【学习要点】
  * 1. SSE 流式对话的 UI 层：消息列表 + 输入框 + 快捷操作
  * 2. 自动滚动到底部：每次消息更新后，smooth scroll 到最新消息
  * 3. Enter 发送 / Shift+Enter 换行：通过 @keydown.enter.exact 捕获

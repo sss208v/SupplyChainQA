@@ -45,12 +45,26 @@
           </div>
         </template>
 
+        <!-- 权限组选择 -->
+        <div class="permission-section">
+          <div class="permission-label">可见部门（勾选可访问此文档的部门）：</div>
+          <el-checkbox-group v-model="selectedGroups" class="permission-group">
+            <el-checkbox label="admin" border>管理员</el-checkbox>
+            <el-checkbox label="purchase" border>采购部</el-checkbox>
+            <el-checkbox label="warehouse" border>仓库部</el-checkbox>
+            <el-checkbox label="quality" border>质量部</el-checkbox>
+            <el-checkbox label="production" border>生产部</el-checkbox>
+            <el-checkbox label="finance" border>财务部</el-checkbox>
+            <el-checkbox label="logistics" border>物流部</el-checkbox>
+          </el-checkbox-group>
+        </div>
+
         <el-upload
           ref="uploadRef"
           :auto-upload="false"
           :limit="5"
           :on-change="handleFileChange"
-          accept=".pdf,.txt,.md,.markdown"
+          accept=".pdf,.txt,.md,.markdown,.docx,.doc"
           drag
           multiple
         >
@@ -60,7 +74,7 @@
           </div>
           <template #tip>
             <div class="el-upload__tip">
-              支持 PDF、TXT、Markdown 格式，单文件不超过 50MB
+              支持 PDF、TXT、Markdown、DOCX 格式，单文件不超过 50MB
             </div>
           </template>
         </el-upload>
@@ -69,7 +83,7 @@
           <el-button
             type="primary"
             :loading="knowledgeStore.uploading"
-            :disabled="!pendingFiles.length"
+            :disabled="!pendingFiles.length || !selectedGroups.length"
             @click="handleUpload"
           >
             <el-icon><Upload /></el-icon>
@@ -97,6 +111,19 @@
           <el-table-column prop="doc_id" label="文档ID" width="180" />
           <el-table-column prop="filename" label="文件名" />
           <el-table-column prop="chunk_count" label="切片数" width="100" />
+          <el-table-column label="可见部门" min-width="200">
+            <template #default="{ row }">
+              <el-tag
+                v-for="group in (row.security_group || [])"
+                :key="group"
+                size="small"
+                :type="group === 'admin' ? 'danger' : ''"
+                style="margin-right: 4px;"
+              >
+                {{ groupLabels[group] || group }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
               <el-tag
@@ -127,20 +154,25 @@
 </template>
 
 <script setup>
-/**
- * SmartQA Pro - 知识库管理页面
- *
- * 【学习要点】
- * 1. 文件上传：el-upload 组件 + FormData + multipart/form-data
- * 2. 知识库统计：切片数、嵌入模型、向量维度
- * 3. 上传流程：选文件 → 点击上传 → 后端解析切片 → 存入Milvus → 返回结果
- */
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useKnowledgeStore } from '@/stores/knowledge'
 const knowledgeStore = useKnowledgeStore()
 const uploadRef = ref(null)
 const pendingFiles = ref([])
+const selectedGroups = ref(['admin', 'employee'])
+
+// 部门标签映射
+const groupLabels = {
+  admin: '管理员',
+  purchase: '采购部',
+  warehouse: '仓库部',
+  quality: '质量部',
+  production: '生产部',
+  finance: '财务部',
+  logistics: '物流部',
+  employee: '全员',
+}
 
 onMounted(() => {
   knowledgeStore.fetchDocuments()
@@ -152,9 +184,14 @@ function handleFileChange(file) {
 }
 
 async function handleUpload() {
+  if (!selectedGroups.value.length) {
+    ElMessage.warning('请至少选择一个可见部门')
+    return
+  }
+  const securityGroup = selectedGroups.value.join(',')
   for (const file of pendingFiles.value) {
     try {
-      const res = await knowledgeStore.upload(file.raw)
+      const res = await knowledgeStore.upload(file.raw, securityGroup)
       ElMessage.success(`文档 ${res.filename} 上传成功，已索引 ${res.chunk_count} 个切片`)
     } catch (err) {
       ElMessage.error(`上传失败: ${err.message}`)
@@ -222,6 +259,22 @@ function refreshList() {
   align-items: center;
   gap: 6px;
   font-weight: 600;
+}
+
+.permission-section {
+  margin-bottom: 16px;
+}
+
+.permission-label {
+  font-size: 14px;
+  color: #606266;
+  margin-bottom: 8px;
+}
+
+.permission-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .upload-actions {

@@ -1,7 +1,6 @@
 """
 SmartQA Pro - 工具调用Agent
 ============================================================
-【学习要点】
 1. ReAct = Reasoning + Acting（推理+行动）
    是当前最主流的Agent执行范式，由Google在2022年提出
    核心思想：LLM交替进行"思考"和"行动"，直到得出最终答案
@@ -12,7 +11,6 @@ SmartQA Pro - 工具调用Agent
 3. 与LangChain的create_react_agent区别：
    - LangChain的ReAct Agent是一个黑盒，你很难控制中间过程
    - 本实现是手写ReAct循环，更透明、更可控
-   - 面试时能讲清楚ReAct的每一步才是关键
 
 4. 工具调用的本质：
    让LLM输出结构化的JSON（工具名+参数），
@@ -31,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 
 # ---- ReAct Prompt ----
-# 【学习要点】ReAct Prompt的设计要点：
 # 1. 必须列出所有可用工具的名称和描述
 # 2. 必须规定输出格式（JSON），否则LLM输出不可控
 # 3. 必须给出Few-shot示例，让LLM理解格式
@@ -230,7 +227,6 @@ class ToolAgent:
         """
         从LLM输出中解析工具调用
 
-        【学习要点】
         LLM输出解析是Agent开发的核心难点之一：
         1. LLM不一定严格按JSON格式输出，可能夹杂其他文字
         2. 需要用正则提取JSON部分

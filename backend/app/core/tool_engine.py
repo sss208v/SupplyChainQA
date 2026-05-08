@@ -211,7 +211,6 @@ class ToolEngine:
     保留原因：
     1. 展示LangChain Agent与传统手写Agent的区别
     2. 作为未来可能切换到LangChain Agent的参考
-    3. 面试时可解释"为什么选择手写ReAct而不是LangChain"
     """
 
     def __init__(self):

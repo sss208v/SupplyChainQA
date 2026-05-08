@@ -6,12 +6,13 @@ import request from './request'
 const API_PREFIX = '/api/v1'
 
 /** 上传文档到知识库 */
-export function uploadDocument(file) {
+export function uploadDocument(file, securityGroup = 'admin') {
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('security_group', securityGroup)
   return request.post(`${API_PREFIX}/knowledge/upload`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000, // 上传大文件需要更长时间
+    timeout: 120000,
   })
 }
 

@@ -1,11 +1,9 @@
 """
 SmartQA - 重试装饰器
 
-【学习要点】
 外部 API 调用（DeepSeek/MiniMax/Milvus）可能临时失败。
 指数退避重试是最简单的容错策略。
 
-面试话术："生产环境的 LLM API 调用必须有重试机制。
 我用指数退避（2s→4s→8s），最多3次，第3次失败才返回降级回答。
 这和 Hermes Agent 的 retry 模式一致。"
 """

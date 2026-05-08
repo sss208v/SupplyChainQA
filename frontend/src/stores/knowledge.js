@@ -35,11 +35,10 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     }
   }
 
-  async function upload(file) {
+  async function upload(file, securityGroup = 'admin') {
     uploading.value = true
     try {
-      const res = await uploadDocument(file)
-      // 上传成功后刷新列表和统计
+      const res = await uploadDocument(file, securityGroup)
       await fetchDocuments()
       await fetchStats()
       return res

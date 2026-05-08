@@ -105,7 +105,6 @@
 /**
  * SmartQA Pro - 主布局组件
  *
- * 【学习要点】
  * 1. Element Plus 的 Container 布局：el-container + el-aside + el-header + el-main
  * 2. 侧边栏折叠：通过 isCollapsed 控制 el-aside 宽度和 el-menu 的 collapse 属性
  * 3. 路由菜单：el-menu 的 router 属性让菜单项点击自动跳转

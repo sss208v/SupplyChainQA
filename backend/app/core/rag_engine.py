@@ -353,15 +353,18 @@ class RAGEngine:
         self.reranker = RerankerEngine()
         self.bm25 = BM25Engine()
 
-    def index_document(self, doc_id: str, chunks: list[dict], visibility: str = "public") -> dict:
+    def index_document(self, doc_id: str, chunks: list[dict], security_group: list = None) -> dict:
         """
         索引文档到向量数据库和BM25
 
         Args:
             doc_id: 文档ID
             chunks: [{chunk_id, content, source, page_num}]
-            visibility: 可见性 public/admin_only
+            security_group: 权限角色列表，如 ["admin", "finance"]
         """
+        if security_group is None:
+            security_group = ["admin"]
+
         # 1. 生成嵌入向量
         texts = [chunk["content"] for chunk in chunks]
         embeddings = self.embedding.embed_documents(texts)
@@ -379,7 +382,7 @@ class RAGEngine:
                     "section_title": chunk.get("section_title", ""),
                     "paragraph_index": chunk.get("paragraph_index", 0),
                     "embedding": emb,
-                    "visibility": visibility,
+                    "security_group": security_group,
                 }
             )
 
@@ -466,7 +469,6 @@ class RAGEngine:
         if settings.RERANKER_ENABLED:
             reranked = self.reranker.rerank(query, merged_for_rerank, top_k=top_k)
         else:
-            # 跳过reranker，直接用原始分数排序（面试演示用，快10倍）
             for doc in merged_for_rerank:
                 doc["rerank_score"] = doc.get("score", 0.0)
             reranked = sorted(merged_for_rerank, key=lambda x: x["rerank_score"], reverse=True)[:top_k]
@@ -500,7 +502,6 @@ class RAGEngine:
     ) -> list[dict]:
         """RRF（Reciprocal Rank Fusion）融合排序
 
-        【学习要点】RRF是业界标准的多路检索融合算法：
         score(d) = Σ 1/(k + rank_i(d))
         其中 k=60（常用常数），rank_i 是文档在第i路检索中的排名
 

@@ -16,10 +16,14 @@ from app.core.database import Base
 
 
 class UserRole(str, Enum):
-    """用户角色枚举"""
-    ADMIN = "admin"        # 管理员 - 全部权限
-    MANAGER = "manager"    # 部门经理 - 本部门知识库
-    EMPLOYEE = "employee"  # 普通员工 - 公开知识库
+    """用户角色枚举（部门级权限）"""
+    ADMIN = "admin"            # 管理员 - 全部权限
+    PURCHASE = "purchase"      # 采购部
+    WAREHOUSE = "warehouse"    # 仓库部
+    QUALITY = "quality"        # 质量部
+    PRODUCTION = "production"  # 生产部
+    FINANCE = "finance"        # 财务部
+    LOGISTICS = "logistics"    # 物流部
 
 
 class User(Base):
@@ -47,7 +51,7 @@ class User(Base):
 
     # RBAC角色
     role: Mapped[str] = mapped_column(
-        String(16), nullable=False, default=UserRole.EMPLOYEE.value
+        String(16), nullable=False, default=UserRole.PURCHASE.value
     )
 
     # 所属部门（manager角色用于数据隔离）

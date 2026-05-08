@@ -81,8 +81,8 @@ class Settings(BaseSettings):
     # ---- Agent ----
     AGENT_TYPE: str = "react"  # react / langchain
 
-    # ---- Guardrails ----
-    GUARDRAILS_ENABLED: bool = True
+    # ---- 内容过滤（已禁用）----
+    GUARDRAILS_ENABLED: bool = False
 
     # ---- Faithfulness ----
     FAITHFULNESS_ENABLED: bool = True

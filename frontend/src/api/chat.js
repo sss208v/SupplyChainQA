@@ -1,7 +1,6 @@
 /**
  * SmartQA Pro - 对话 API 接口
  *
- * 【学习要点】SSE (Server-Sent Events) 的前端实现
  *
  * 1. SSE vs WebSocket：
  *    - SSE：单向（服务端→客户端），基于HTTP，自动重连，适合AI对话

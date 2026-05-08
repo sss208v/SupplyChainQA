@@ -1,7 +1,6 @@
 """
 SmartQA Pro - 知识库API路由
 ============================================================
-【学习要点】
 1. 知识库管理的核心流程：
    上传文档 → 解析(PDF/Word/TXT) → 切片(Chunking) → 嵌入(Embedding) → 存入Milvus
 
@@ -52,7 +51,7 @@ class KnowledgeBaseResponse(BaseModel):
     filename: str
     chunk_count: int = 0
     status: str = "indexed"
-    visibility: str = "public"
+    security_group: list = ["admin"]
 
 
 class KnowledgeListResponse(BaseModel):
@@ -66,17 +65,21 @@ class KnowledgeListResponse(BaseModel):
 @router.post("/upload", response_model=KnowledgeBaseResponse)
 async def upload_document(
     file: UploadFile = File(..., description="上传的文档文件"),
-    visibility: str = Form("public", description="可见性: public/admin_only"),
+    security_group: str = Form("admin", description="权限角色，逗号分隔，如: admin,finance,sales"),
     request: Request = None,
 ):
     """
     上传文档到知识库
-    支持格式：PDF、TXT、Markdown
-    处理流程：上传 → 解析 → 切片 → 嵌入 → 存入Milvus
+    支持格式：PDF、TXT、Markdown、DOCX
+    security_group: 文档可见的角色列表，逗号分隔
     """
-    # RBAC：需要admin或manager角色
+    # RBAC：所有部门角色都可以上传
     current_user = await get_current_user_full(request)
-    check_role(current_user, [UserRole.ADMIN.value, UserRole.MANAGER.value])
+
+    # 解析 security_group
+    groups = [g.strip() for g in security_group.split(",") if g.strip()]
+    if not groups:
+        groups = ["admin"]
 
     # 验证文件类型
     allowed_types = [".pdf", ".txt", ".md", ".markdown", ".docx", ".doc"]
@@ -102,15 +105,15 @@ async def upload_document(
         # 解析文档 → 切片
         chunks = _parse_and_chunk(file_path, file.filename, doc_id)
 
-        # 嵌入 + 存入Milvus（带可见性）
-        result = rag_engine.index_document(doc_id, chunks, visibility=visibility)
+        # 嵌入 + 存入Milvus（带权限组）
+        result = rag_engine.index_document(doc_id, chunks, security_group=groups)
 
         return KnowledgeBaseResponse(
             doc_id=doc_id,
             filename=file.filename,
             chunk_count=result.get("chunk_count", 0),
             status="indexed",
-            visibility=visibility,
+            security_group=groups,
         )
 
     except Exception as e:
@@ -120,17 +123,16 @@ async def upload_document(
 
 @router.get("/list", response_model=KnowledgeListResponse)
 async def list_documents(request: Request = None):
-    """获取知识库文档列表 - 按用户角色过滤可见性"""
-    # 尝试获取当前用户，未登录则只看 public
+    """获取知识库文档列表 - 按用户角色过滤（行级权限）"""
+    # 尝试获取当前用户，未登录则只看 purchase 可见文档
     try:
         current_user = await get_current_user_full(request)
-        role = current_user.get("role", "employee") if current_user else "employee"
+        role = current_user.get("role", "purchase") if current_user else "purchase"
     except Exception:
-        role = "employee"
+        role = "purchase"
 
-    # admin 看全部，其他角色只看 public
-    visibility_filter = None if role == "admin" else "public"
-    docs = milvus_manager.list_documents(visibility_filter=visibility_filter)
+    # admin 看全部，其他角色用 array_contains 过滤
+    docs = milvus_manager.list_documents(role=role)
 
     return KnowledgeListResponse(
         total=len(docs),
@@ -140,7 +142,7 @@ async def list_documents(request: Request = None):
                 filename=d.get("source", "unknown"),
                 chunk_count=d["chunk_count"],
                 status="indexed",
-                visibility=d.get("visibility", "public"),
+                security_group=d.get("security_group", ["admin"]),
             )
             for d in docs
         ],
@@ -163,9 +165,9 @@ async def get_knowledge_stats():
 @router.delete("/{doc_id}")
 async def delete_document(doc_id: str, request: Request = None):
     """从知识库删除文档"""
-    # RBAC：需要admin或manager角色
+    # RBAC：只有admin可以删除
     current_user = await get_current_user_full(request)
-    check_role(current_user, [UserRole.ADMIN.value, UserRole.MANAGER.value])
+    check_role(current_user, [UserRole.ADMIN.value])
 
     try:
         milvus_manager.delete_by_doc_id(doc_id)
@@ -181,7 +183,6 @@ def _parse_and_chunk(file_path: str, filename: str, doc_id: str) -> list[dict]:
     """
     解析文档并切片
 
-    【学习要点】
     1. 文档解析是RAG的第一步，不同格式需要不同的解析器：
        - PDF: PyMuPDF / pdfplumber
        - Word: python-docx
@@ -239,15 +240,12 @@ def _parse_and_chunk(file_path: str, filename: str, doc_id: str) -> list[dict]:
 def _read_pdf(file_path: str) -> str:
     """读取PDF文件内容（使用pymupdf4llm，结构化Markdown输出）
 
-    【选型说明】参考RAG-Anything的多模态解析思路：
     1. pymupdf4llm 输出结构化Markdown，保留标题层级和表格
     2. 表格自动转为Markdown表格格式，检索时语义更完整
     3. 支持图片提取和描述（需VLM配合）
     4. 比纯文本提取（pdfplumber）保留更多结构信息
 
-    面试话术："PDF解析我用了pymupdf4llm，它输出结构化Markdown，
     表格自动转为Markdown格式，标题层级保留，比纯文本提取效果好很多。
-    参考了RAG-Anything的多模态解析思路。"
     """
     try:
         import pymupdf4llm

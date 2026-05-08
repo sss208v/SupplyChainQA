@@ -1,7 +1,6 @@
 """
 SmartQA - Query 复杂度分析器
 
-【学习要点】参考 Datawhale all-in-rag 教程第9章第4节：
 不同复杂度的 query 需要不同深度的检索策略：
 - 简单查询（"安全库存公式"）→ 向量检索直接返回，省掉 Reranker/Self-RAG
 - 中等查询（"供应商准入流程"）→ 完整 RAG 流程
@@ -10,7 +9,6 @@ SmartQA - Query 复杂度分析器
 实现方式：LLM 分析 query 的4个维度，输出结构化 JSON。
 LLM 不可用时回退到规则（关键词长度）。
 
-面试话术："我参考了 Datawhale 的 RAG 教程，实现了 Query 复杂度分析。
 简单查询跳过 Reranker 和 Self-RAG（省 8 秒），只有复杂查询才走完整流程。
 这样 90% 的常见问题响应更快，复杂问题保证质量。"
 """

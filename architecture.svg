@@ -1,0 +1,117 @@
+<svg width="900" height="780" viewBox="0 0 900 780" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#3b82f6"/></marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#22c55e"/></marker>
+    <marker id="ap" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#a855f7"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#ef4444"/></marker>
+    <style>text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}</style>
+  </defs>
+  <rect width="900" height="780" fill="#fff"/>
+
+  <!-- ====== 连线 ====== -->
+  <!-- 用户 → 前端 -->
+  <line x1="450" y1="52" x2="450" y2="88" stroke="#cbd5e1" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- 前端 → 后端 -->
+  <line x1="450" y1="156" x2="450" y2="196" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#ab)"/>
+  <!-- 后端 → 意图路由 -->
+  <line x1="280" y1="264" x2="280" y2="304" stroke="#22c55e" stroke-width="1.5" marker-end="url(#ag)"/>
+  <!-- 后端 → RAG Agent -->
+  <line x1="450" y1="264" x2="450" y2="304" stroke="#22c55e" stroke-width="1.5" marker-end="url(#ag)"/>
+  <!-- 后端 → Tool Agent -->
+  <line x1="660" y1="264" x2="660" y2="304" stroke="#22c55e" stroke-width="1.5" marker-end="url(#ag)"/>
+  
+  
+  <!-- RAG → Milvus -->
+  <line x1="400" y1="468" x2="230" y2="548" stroke="#a855f7" stroke-width="1.5" marker-end="url(#ap)"/>
+  <!-- RAG → Redis -->
+  <line x1="450" y1="468" x2="450" y2="548" stroke="#a855f7" stroke-width="1.5" marker-end="url(#ap)"/>
+  <!-- RAG → PostgreSQL -->
+  <line x1="500" y1="468" x2="670" y2="548" stroke="#a855f7" stroke-width="1.5" marker-end="url(#ap)"/>
+  <!-- Tool → LLM -->
+  <line x1="660" y1="388" x2="660" y2="428" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#a)"/>
+  <!-- 权限控制 → Milvus -->
+  <path d="M130 510 L170 510 L170 560 L170 570" stroke="#ef4444" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#ar)" fill="none"/>
+  <!-- 权限控制 → PostgreSQL -->
+  <path d="M130 520 L80 520 L80 580 L610 580" stroke="#ef4444" stroke-width="1" stroke-dasharray="3,3" fill="none"/>
+
+  <!-- ====== 组件 ====== -->
+
+  <!-- 用户 -->
+  <rect x="370" y="24" width="160" height="28" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="450" y="43" text-anchor="middle" font-size="12" fill="#334155" font-weight="500">用户浏览器</text>
+
+  <!-- 前端 -->
+  <rect x="280" y="90" width="340" height="64" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="450" y="118" text-anchor="middle" font-size="14" fill="#1d4ed8" font-weight="600">Vue3 + Element Plus</text>
+  <text x="450" y="138" text-anchor="middle" font-size="10" fill="#3b82f6">Chat / Knowledge / Tools / Evaluate</text>
+
+  <!-- 后端 -->
+  <rect x="150" y="198" width="600" height="64" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="450" y="226" text-anchor="middle" font-size="14" fill="#15803d" font-weight="600">FastAPI 后端</text>
+  <text x="450" y="246" text-anchor="middle" font-size="10" fill="#22c55e">SSE 流式 / RBAC 认证 / PII 脱敏 / Token 追踪</text>
+
+  <!-- 意图路由 -->
+  <rect x="180" y="306" width="190" height="56" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="275" y="330" text-anchor="middle" font-size="12" fill="#15803d" font-weight="600">意图路由</text>
+  <text x="275" y="348" text-anchor="middle" font-size="9" fill="#16a34a">规则 → 语义 → LLM</text>
+
+  <!-- RAG Agent -->
+  <rect x="400" y="306" width="200" height="160" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="500" y="330" text-anchor="middle" font-size="12" fill="#15803d" font-weight="600">RAG Agent</text>
+  <rect x="416" y="340" width="168" height="20" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="500" y="353" text-anchor="middle" font-size="9" fill="#15803d">Query 复杂度分析</text>
+  <rect x="416" y="364" width="168" height="20" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="500" y="377" text-anchor="middle" font-size="9" fill="#15803d">混合检索 + RRF 融合</text>
+  <rect x="416" y="388" width="168" height="20" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="500" y="401" text-anchor="middle" font-size="9" fill="#15803d">Self-RAG + 父子文档</text>
+  <rect x="416" y="412" width="168" height="20" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="500" y="425" text-anchor="middle" font-size="9" fill="#15803d">置信度路由 + 引用溯源</text>
+  <text x="500" y="456" text-anchor="middle" font-size="8" fill="#94a3b8">向量 + BM25 + Self-RAG + 父子文档</text>
+
+  <!-- Tool Agent -->
+  <rect x="620" y="306" width="160" height="80" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="700" y="330" text-anchor="middle" font-size="12" fill="#15803d" font-weight="600">Tool Agent</text>
+  <text x="700" y="348" text-anchor="middle" font-size="9" fill="#16a34a">ReAct + LangChain</text>
+  <rect x="636" y="356" width="128" height="18" rx="4" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.8"/>
+  <text x="700" y="368" text-anchor="middle" font-size="9" fill="#92400e">库存 / 订单 / 工单</text>
+
+  <!-- LLM API -->
+  <rect x="620" y="430" width="160" height="44" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="700" y="451" text-anchor="middle" font-size="12" fill="#b45309" font-weight="600">LLM API</text>
+  <text x="700" y="467" text-anchor="middle" font-size="9" fill="#d97706">DeepSeek / MiniMax / Ollama</text>
+
+  <!-- 权限控制（左侧独立） -->
+  <rect x="30" y="480" width="160" height="60" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="1.5"/>
+  <text x="110" y="504" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">权限控制</text>
+  <text x="110" y="522" text-anchor="middle" font-size="8" fill="#ef4444">RBAC 7部门角色</text>
+  <text x="110" y="534" text-anchor="middle" font-size="8" fill="#ef4444">行级权限 + PII 脱敏</text>
+
+  <!-- 数据库层 -->
+  <rect x="150" y="550" width="160" height="64" rx="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="230" y="578" text-anchor="middle" font-size="13" fill="#7c3aed" font-weight="600">Milvus</text>
+  <text x="230" y="598" text-anchor="middle" font-size="9" fill="#a855f7">向量库 + security_group</text>
+
+  <rect x="370" y="550" width="160" height="64" rx="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="450" y="578" text-anchor="middle" font-size="13" fill="#7c3aed" font-weight="600">Redis</text>
+  <text x="450" y="598" text-anchor="middle" font-size="9" fill="#a855f7">对话记忆 + Query Cache</text>
+
+  <rect x="590" y="550" width="160" height="64" rx="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="670" y="578" text-anchor="middle" font-size="13" fill="#7c3aed" font-weight="600">PostgreSQL</text>
+  <text x="670" y="598" text-anchor="middle" font-size="9" fill="#a855f7">RBAC + 反馈 + 元数据</text>
+
+  <!-- 图例 -->
+  <g transform="translate(800,540)">
+    <text x="0" y="0" font-size="10" fill="#64748b" font-weight="600">图例</text>
+    <rect x="0" y="12" width="10" height="10" rx="2" fill="#eff6ff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="14" y="21" font-size="8" fill="#64748b">前端</text>
+    <rect x="0" y="26" width="10" height="10" rx="2" fill="#f0fdf4" stroke="#22c55e" stroke-width="1"/>
+    <text x="14" y="35" font-size="8" fill="#64748b">后端</text>
+    <rect x="0" y="40" width="10" height="10" rx="2" fill="#faf5ff" stroke="#a855f7" stroke-width="1"/>
+    <text x="14" y="49" font-size="8" fill="#64748b">数据库</text>
+    <rect x="0" y="54" width="10" height="10" rx="2" fill="#fef2f2" stroke="#ef4444" stroke-width="1"/>
+    <text x="14" y="63" font-size="8" fill="#64748b">权限</text>
+    <rect x="0" y="68" width="10" height="10" rx="2" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+    <text x="14" y="77" font-size="8" fill="#64748b">外部服务</text>
+  </g>
+</svg>

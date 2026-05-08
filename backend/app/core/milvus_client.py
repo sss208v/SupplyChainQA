@@ -63,8 +63,10 @@ class MilvusManager:
         - doc_id: 文档ID
         - chunk_id: 切片ID
         - content: 文本内容
-        - metadata: 元数据 (JSON字符串)
-        - embedding: 向量 (BGE-M3, 1024维)
+        - source: 来源文件名
+        - page_num: 页码
+        - embedding: 向量
+        - security_group: 权限角色数组（行级权限控制）
         """
         name = collection_name or settings.MILVUS_COLLECTION
 
@@ -111,6 +113,13 @@ class MilvusManager:
                 dtype=DataType.FLOAT_VECTOR,
                 dim=settings.EMBEDDING_DIMENSION,
             ),
+            FieldSchema(
+                name="security_group",
+                dtype=DataType.ARRAY,
+                element_type=DataType.VARCHAR,
+                max_capacity=10,
+                max_length=64,
+            ),
         ]
 
         schema = CollectionSchema(
@@ -125,7 +134,7 @@ class MilvusManager:
             schema=schema,
         )
 
-        # 创建索引 (IVF_FLAT，平衡速度和精度)
+        # 创建向量索引
         index_params = {
             "metric_type": "COSINE",
             "index_type": "IVF_FLAT",
@@ -136,7 +145,7 @@ class MilvusManager:
             index_params=index_params,
         )
 
-        logger.info(f"集合创建成功: {name}")
+        logger.info(f"集合创建成功: {name} (含 security_group 数组列)")
         return self.collection
 
     def insert(
@@ -147,7 +156,7 @@ class MilvusManager:
         embedding: list,
         source: str = "",
         page_num: int = 0,
-        visibility: str = "public",
+        security_group: list = None,
     ) -> dict:
         """插入向量数据"""
         if not self.collection:
@@ -161,7 +170,7 @@ class MilvusManager:
                 "source": source,
                 "page_num": page_num,
                 "embedding": embedding,
-                "visibility": visibility,
+                "security_group": security_group or ["admin"],
             }
         ]
 
@@ -210,7 +219,7 @@ class MilvusManager:
             param=search_params,
             limit=top_k,
             expr=expr,
-            output_fields=["doc_id", "chunk_id", "content", "source", "page_num", "section_title", "visibility"],
+            output_fields=["doc_id", "chunk_id", "content", "source", "page_num", "section_title", "security_group"],
         )
 
         hits = []
@@ -251,10 +260,14 @@ class MilvusManager:
         }
 
     def build_visibility_expr(self, role: str, user_doc_ids: Optional[list] = None) -> str:
-        """根据用户角色构建 Milvus 过滤表达式
+        """根据用户角色构建 Milvus 过滤表达式（基于 security_group 数组列）
+
+        使用 array_contains 实现行级权限控制：
+        - admin 角色可以看到所有文档
+        - 其他角色只能看到 security_group 包含该角色的文档
 
         Args:
-            role: 用户角色 (admin/manager/employee)
+            role: 用户角色 (admin/finance/sales/developer/employee等)
             user_doc_ids: 用户指定的文档ID列表
 
         Returns:
@@ -262,9 +275,9 @@ class MilvusManager:
         """
         parts = []
 
-        # 非 admin 只能看 public 文档
+        # 非 admin 角色需要过滤
         if role != "admin":
-            parts.append('visibility == "public"')
+            parts.append(f'array_contains(security_group, "{role}")')
 
         # 如果用户指定了 doc_ids，进一步过滤
         if user_doc_ids:
@@ -273,12 +286,12 @@ class MilvusManager:
 
         return " and ".join(parts) if parts else ""
 
-    def list_documents(self, visibility_filter: Optional[str] = None) -> list[dict]:
+    def list_documents(self, role: str = "admin") -> list[dict]:
         """
-        获取知识库中文档列表（支持权限过滤）
+        获取知识库中文档列表（按角色过滤）
 
         Args:
-            visibility_filter: 过滤条件，如 "public" 或 None（全部）
+            role: 用户角色，admin 看全部，其他角色用 array_contains 过滤
         """
         if not self.collection:
             return []
@@ -287,14 +300,17 @@ class MilvusManager:
         if self.collection.num_entities == 0:
             return []
 
+        # 加载 collection 到内存（查询前必须）
+        self.collection.load()
+
         # 构建过滤表达式
-        expr = ""
-        if visibility_filter:
-            expr = f'visibility == "{visibility_filter}"'
+        expr = 'id >= 0'  # 默认匹配全部
+        if role != "admin":
+            expr = f'array_contains(security_group, "{role}")'
 
         results = self.collection.query(
             expr=expr,
-            output_fields=["doc_id", "source", "visibility"],
+            output_fields=["doc_id", "source", "security_group"],
             limit=16384,
         )
 
@@ -307,7 +323,7 @@ class MilvusManager:
                     "doc_id": did,
                     "chunk_count": 0,
                     "source": row.get("source", "unknown"),
-                    "visibility": row.get("visibility", "public"),
+                    "security_group": row.get("security_group", ["admin"]),
                 }
             doc_map[did]["chunk_count"] += 1
 

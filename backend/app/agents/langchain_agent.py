@@ -1,7 +1,6 @@
 """
 SmartQA Pro - LangChain Agent 实现
 ============================================================
-【学习要点】
 1. LangChain Agent vs 手写ReAct 的对比：
    - 手写ReAct（tool.py）：完全可控，便于调试和定制，但需要自己处理解析逻辑
    - LangChain Agent：框架封装好，代码简洁，但中间过程是黑盒

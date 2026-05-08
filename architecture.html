@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Supply Chain QA - 系统架构</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f8fafc;
+    color: #1e293b;
+    min-height: 100vh;
+    padding: 48px;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .header p {
+    font-size: 14px;
+    color: #64748b;
+    margin-top: 6px;
+  }
+  .diagram-container {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    overflow-x: auto;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .card-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .card-dot.blue { background: #3b82f6; }
+  .card-dot.green { background: #22c55e; }
+  .card-dot.purple { background: #a855f7; }
+  .card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .card ul {
+    list-style: none;
+    font-size: 12px;
+    color: #475569;
+    line-height: 1.9;
+  }
+  .footer {
+    text-align: center;
+    margin-top: 32px;
+    font-size: 11px;
+    color: #94a3b8;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Supply Chain QA — 系统架构</h1>
+  <p>RAG + Multi-Agent 供应链智能问答系统</p>
+</div>
+
+<div class="diagram-container">
+<svg width="900" height="600" viewBox="0 0 900 600" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22c55e"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#a855f7"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="600" fill="#ffffff"/>
+
+  <!-- Arrows -->
+  <line x1="450" y1="48" x2="450" y2="72" stroke="#cbd5e1" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="450" y1="132" x2="450" y2="162" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <line x1="250" y1="222" x2="250" y2="256" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <line x1="450" y1="222" x2="450" y2="256" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <line x1="650" y1="222" x2="650" y2="256" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <line x1="350" y1="416" x2="250" y2="462" stroke="#a855f7" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <line x1="450" y1="416" x2="450" y2="462" stroke="#a855f7" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <line x1="550" y1="416" x2="650" y2="462" stroke="#a855f7" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <line x1="310" y1="290" x2="380" y2="290" stroke="#22c55e" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="590" y1="290" x2="520" y2="290" stroke="#22c55e" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="650" y1="336" x2="650" y2="370" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+
+  <!-- ====== COMPONENTS ====== -->
+
+  <!-- User -->
+  <rect x="380" y="20" width="140" height="28" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="450" y="38" text-anchor="middle" font-family="Inter" font-size="12" fill="#334155" font-weight="500">用户浏览器</text>
+
+  <!-- Frontend -->
+  <rect x="280" y="74" width="340" height="56" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="450" y="96" text-anchor="middle" font-family="Inter" font-size="13" fill="#1d4ed8" font-weight="600">Vue3 + Element Plus</text>
+  <text x="450" y="114" text-anchor="middle" font-family="Inter" font-size="10" fill="#3b82f6">Chat / Knowledge / Tools / Evaluate</text>
+
+  <!-- Backend -->
+  <rect x="150" y="164" width="600" height="56" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="450" y="186" text-anchor="middle" font-family="Inter" font-size="13" fill="#15803d" font-weight="600">FastAPI 后端</text>
+  <text x="450" y="204" text-anchor="middle" font-family="Inter" font-size="10" fill="#22c55e">SSE 流式输出 / RBAC 认证 / PII 脱敏 / Token 追踪</text>
+
+  <!-- Intent Router -->
+  <rect x="120" y="258" width="260" height="76" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="250" y="282" text-anchor="middle" font-family="Inter" font-size="12" fill="#15803d" font-weight="600">意图路由</text>
+  <text x="250" y="300" text-anchor="middle" font-family="Inter" font-size="9" fill="#16a34a">规则匹配（&lt;1ms）</text>
+  <text x="250" y="314" text-anchor="middle" font-family="Inter" font-size="9" fill="#16a34a">语义路由（&lt;10ms）</text>
+  <text x="250" y="328" text-anchor="middle" font-family="Inter" font-size="9" fill="#16a34a">LLM 分类（兜底）</text>
+
+  <!-- RAG Agent -->
+  <rect x="320" y="258" width="260" height="156" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="450" y="282" text-anchor="middle" font-family="Inter" font-size="12" fill="#15803d" font-weight="600">RAG Agent</text>
+  <rect x="336" y="292" width="228" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="450" y="306" text-anchor="middle" font-family="Inter" font-size="9" fill="#15803d">Query 复杂度分析（自适应检索深度）</text>
+  <rect x="336" y="320" width="228" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="450" y="334" text-anchor="middle" font-family="Inter" font-size="9" fill="#15803d">混合检索（向量 + BM25 + RRF 融合）</text>
+  <rect x="336" y="348" width="228" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="450" y="362" text-anchor="middle" font-family="Inter" font-size="9" fill="#15803d">Self-RAG 过滤 + 父子文档扩展</text>
+  <rect x="336" y="376" width="228" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="450" y="390" text-anchor="middle" font-family="Inter" font-size="9" fill="#15803d">置信度路由 + 引用溯源 [1][2]</text>
+
+  <!-- Tool Agent -->
+  <rect x="620" y="258" width="180" height="76" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="710" y="282" text-anchor="middle" font-family="Inter" font-size="12" fill="#15803d" font-weight="600">Tool Agent</text>
+  <text x="710" y="300" text-anchor="middle" font-family="Inter" font-size="9" fill="#16a34a">ReAct + LangChain 双模式</text>
+  <rect x="636" y="310" width="148" height="18" rx="4" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.8"/>
+  <text x="710" y="322" text-anchor="middle" font-family="Inter" font-size="9" fill="#92400e">库存 / 订单 / 工单</text>
+
+  <!-- Security Layer -->
+  <rect x="120" y="436" width="200" height="48" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="1.5"/>
+  <text x="220" y="456" text-anchor="middle" font-family="Inter" font-size="11" fill="#dc2626" font-weight="600">安全层</text>
+  <text x="220" y="472" text-anchor="middle" font-family="Inter" font-size="9" fill="#ef4444">RBAC 7部门 + 行级权限 + PII脱敏</text>
+
+  <!-- Databases -->
+  <rect x="140" y="498" width="140" height="56" rx="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="210" y="522" text-anchor="middle" font-family="Inter" font-size="12" fill="#7c3aed" font-weight="600">Milvus</text>
+  <text x="210" y="540" text-anchor="middle" font-family="Inter" font-size="9" fill="#a855f7">向量库 + security_group</text>
+
+  <rect x="360" y="498" width="140" height="56" rx="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="430" y="522" text-anchor="middle" font-family="Inter" font-size="12" fill="#7c3aed" font-weight="600">Redis</text>
+  <text x="430" y="540" text-anchor="middle" font-family="Inter" font-size="9" fill="#a855f7">对话记忆 + Query Cache</text>
+
+  <rect x="580" y="498" width="140" height="56" rx="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="650" y="522" text-anchor="middle" font-family="Inter" font-size="12" fill="#7c3aed" font-weight="600">PostgreSQL</text>
+  <text x="650" y="540" text-anchor="middle" font-family="Inter" font-size="9" fill="#a855f7">RBAC + 反馈 + 元数据</text>
+
+  <!-- LLM Cloud -->
+  <rect x="620" y="372" width="180" height="42" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="710" y="392" text-anchor="middle" font-family="Inter" font-size="11" fill="#b45309" font-weight="600">LLM API</text>
+  <text x="710" y="406" text-anchor="middle" font-family="Inter" font-size="9" fill="#d97706">DeepSeek / MiniMax / Ollama</text>
+
+  <!-- Legend -->
+  <g transform="translate(760, 470)">
+    <text x="0" y="0" font-family="Inter" font-size="10" fill="#64748b" font-weight="600">图例</text>
+    <rect x="0" y="10" width="10" height="10" rx="2" fill="#eff6ff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="14" y="18" font-family="Inter" font-size="8" fill="#64748b">前端</text>
+    <rect x="0" y="24" width="10" height="10" rx="2" fill="#f0fdf4" stroke="#22c55e" stroke-width="1"/>
+    <text x="14" y="32" font-family="Inter" font-size="8" fill="#64748b">后端</text>
+    <rect x="0" y="38" width="10" height="10" rx="2" fill="#faf5ff" stroke="#a855f7" stroke-width="1"/>
+    <text x="14" y="46" font-family="Inter" font-size="8" fill="#64748b">数据库</text>
+    <rect x="0" y="52" width="10" height="10" rx="2" fill="#fef2f2" stroke="#ef4444" stroke-width="1"/>
+    <text x="14" y="60" font-family="Inter" font-size="8" fill="#64748b">安全</text>
+    <rect x="0" y="66" width="10" height="10" rx="2" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+    <text x="14" y="74" font-family="Inter" font-size="8" fill="#64748b">外部服务</text>
+  </g>
+</svg>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-dot blue"></div>
+      <h3>前端技术栈</h3>
+    </div>
+    <ul>
+      <li>• Vue3 + Element Plus + Pinia</li>
+      <li>• SSE 流式对话渲染</li>
+      <li>• DAG 可视化（SVG 7节点）</li>
+      <li>• 部门权限组选择器</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-dot green"></div>
+      <h3>后端核心能力</h3>
+    </div>
+    <ul>
+      <li>• 三级意图路由（规则/语义/LLM）</li>
+      <li>• RAG 混合检索 + RRF 融合</li>
+      <li>• ReAct + LangChain 双模式 Agent</li>
+      <li>• Query 复杂度自适应检索深度</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-dot purple"></div>
+      <h3>数据与安全</h3>
+    </div>
+    <ul>
+      <li>• Milvus 行级权限（security_group）</li>
+      <li>• RBAC 7 部门角色隔离</li>
+      <li>• PII 脱敏 + Faithfulness 检测</li>
+      <li>• Token 成本追踪 + Query Cache</li>
+    </ul>
+  </div>
+</div>
+
+<div class="footer">
+  Supply Chain QA v1.0 — RAG + Multi-Agent 供应链智能问答系统
+</div>
+
+</body>
+</html>
