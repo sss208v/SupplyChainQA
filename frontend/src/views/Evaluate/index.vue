@@ -128,7 +128,11 @@
           <el-descriptions-item label="P90">{{ summary.retrieval_score_p90 }}</el-descriptions-item>
         </el-descriptions>
       </div>
-      <el-empty v-else description="暂无评估数据，请先执行评估" />
+      <el-empty v-else description="暂无评估数据，请先执行评估">
+        <el-button type="primary" size="small" :loading="sampleLoading" @click="runSampleEval">
+          <el-icon><DataAnalysis /></el-icon> 运行示例评估
+        </el-button>
+      </el-empty>
     </el-card>
 
     <!-- 用户反馈统计 -->
@@ -171,6 +175,78 @@
         </div>
       </div>
       <el-empty v-else description="暂无反馈数据" />
+    </el-card>
+
+    <!-- RAGAS 评估 -->
+    <el-card class="section-card">
+      <template #header>
+        <div class="card-header">
+          <span><el-icon><DataAnalysis /></el-icon> RAGAS 全量评估</span>
+          <el-button
+            type="primary"
+            size="small"
+            :loading="ragasLoading"
+            @click="runRagasEval"
+          >
+            <el-icon><DataAnalysis /></el-icon> 运行全量评估
+          </el-button>
+        </div>
+      </template>
+      <p class="section-desc">基于黄金测试集（12条供应链QA）自动检索并计算三大指标</p>
+
+      <div v-if="ragasResult" class="ragas-result">
+        <div class="ragas-metrics">
+          <div class="metric-card">
+            <div class="metric-label">Context Precision</div>
+            <div class="metric-value" :style="{ color: scoreColor(ragasResult.summary.avg_context_precision) }">
+              {{ (ragasResult.summary.avg_context_precision * 100).toFixed(1) }}%
+            </div>
+            <div class="metric-desc">检索准确率</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Faithfulness</div>
+            <div class="metric-value" :style="{ color: scoreColor(ragasResult.summary.avg_faithfulness) }">
+              {{ (ragasResult.summary.avg_faithfulness * 100).toFixed(1) }}%
+            </div>
+            <div class="metric-desc">忠实度/防幻觉</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Answer Relevance</div>
+            <div class="metric-value" :style="{ color: scoreColor(ragasResult.summary.avg_answer_relevance) }">
+              {{ (ragasResult.summary.avg_answer_relevance * 100).toFixed(1) }}%
+            </div>
+            <div class="metric-desc">回答相关性</div>
+          </div>
+          <div class="metric-card metric-card-overall">
+            <div class="metric-label">Overall</div>
+            <div class="metric-value" :style="{ color: scoreColor(ragasResult.summary.avg_overall) }">
+              {{ (ragasResult.summary.avg_overall * 100).toFixed(1) }}%
+            </div>
+            <div class="metric-desc">综合得分</div>
+          </div>
+        </div>
+        <div class="ragas-info">
+          <el-tag size="small">{{ ragasResult.summary.total_queries }} 条测试用例</el-tag>
+          <el-tag size="small" type="info">耗时 {{ ragasResult.summary.total_time_ms }}ms</el-tag>
+        </div>
+        <el-collapse v-if="ragasResult.summary.details" class="ragas-details">
+          <el-collapse-item title="查看详细结果" name="details">
+            <div v-for="d in ragasResult.summary.details" :key="d.id" class="ragas-detail-item">
+              <div class="detail-query">
+                <el-tag size="mini" type="info">{{ d.id }}</el-tag>
+                <span>{{ d.query }}</span>
+              </div>
+              <div class="detail-scores">
+                <span>CP: {{ (d.context_precision * 100).toFixed(0) }}%</span>
+                <span>Faith: {{ (d.faithfulness * 100).toFixed(0) }}%</span>
+                <span>AR: {{ (d.answer_relevance * 100).toFixed(0) }}%</span>
+                <span>Overall: {{ (d.overall * 100).toFixed(0) }}%</span>
+              </div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+      <el-empty v-else-if="!ragasLoading" description="点击「运行全量评估」对12条黄金测试集执行评估" />
     </el-card>
 
     <!-- LLM-as-Judge -->
@@ -242,13 +318,15 @@ import {
   Refresh, Medal,
   ChatDotRound,
 } from '@element-plus/icons-vue'
-import { evaluateOnline, evaluateOffline, evaluateJudge, getEvalSummary } from '@/api/evaluate'
+import { evaluateOnline, evaluateOffline, evaluateJudge, getEvaluationSummary, runFullEvaluation } from '@/api/evaluate'
 import { getFeedbackStats } from '@/api/chat'
 
 // ---- 在线评估 ----
 const onlineQuery = ref('')
 const onlineLoading = ref(false)
 const onlineResult = ref(null)
+const sampleLoading = ref(false)
+const sampleResults = ref([])
 
 async function runOnlineEval() {
   if (!onlineQuery.value.trim()) return
@@ -260,6 +338,40 @@ async function runOnlineEval() {
     ElMessage.error('评估失败: ' + (e.message || e))
   } finally {
     onlineLoading.value = false
+  }
+}
+
+/**
+ * 运行预设的示例评估（无需手动输入查询）
+ * 发送3个供应链测试查询到在线评估接口，结果汇总展示
+ */
+async function runSampleEval() {
+  sampleLoading.value = true
+  sampleResults.value = []
+  const sampleQueries = [
+    '新供应商准入需要什么资质？',
+    '安全库存的计算公式是什么？',
+    '质量检验的抽检比例是多少？',
+  ]
+  try {
+    for (const query of sampleQueries) {
+      const res = await evaluateOnline({ query, top_k: 5 })
+      sampleResults.value.push({
+        query,
+        result: res.evaluation,
+      })
+    }
+    // 设置第一个结果为默认显示
+    if (sampleResults.value.length > 0) {
+      onlineResult.value = sampleResults.value[0].result
+    }
+    // 刷新汇总
+    await fetchSummary()
+    ElMessage.success(`已完成 ${sampleQueries.length} 个示例评估`)
+  } catch (e) {
+    ElMessage.error('示例评估失败: ' + (e.message || e))
+  } finally {
+    sampleLoading.value = false
   }
 }
 
@@ -298,7 +410,7 @@ const summary = ref(null)
 
 async function fetchSummary() {
   try {
-    const res = await getEvalSummary()
+    const res = await getEvaluationSummary()
     summary.value = res.summary
   } catch (e) {
     console.error('获取汇总失败', e)
@@ -331,7 +443,35 @@ async function runJudge() {
   }
 }
 
+// ---- RAGAS 全量评估 ----
+const ragasLoading = ref(false)
+const ragasResult = ref(null)
+
+async function runRagasEval() {
+  ragasLoading.value = true
+  ragasResult.value = null
+  try {
+    const res = await runFullEvaluation()
+    if (res.success) {
+      ragasResult.value = res
+      ElMessage.success(`RAGAS 评估完成: CP=${(res.summary.avg_context_precision * 100).toFixed(1)}%, Faith=${(res.summary.avg_faithfulness * 100).toFixed(1)}%`)
+    } else {
+      ElMessage.error(res.error || '评估失败')
+    }
+  } catch (e) {
+    ElMessage.error('全量评估失败: ' + (e.message || e))
+  } finally {
+    ragasLoading.value = false
+  }
+}
+
 // ---- 辅助函数 ----
+function scoreColor(score) {
+  if (score >= 0.8) return '#67c23a'
+  if (score >= 0.5) return '#e6a23c'
+  return '#f56c6c'
+}
+
 function scoreType(score) {
   if (score >= 0.8) return 'success'
   if (score >= 0.5) return 'warning'
@@ -370,9 +510,12 @@ onMounted(() => {
 .evaluate-page {
   max-width: 900px;
   margin: 0 auto;
+  padding: var(--space-5);
 }
 .section-card {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 .card-header {
   display: flex;
@@ -382,26 +525,84 @@ onMounted(() => {
 .card-header span {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   font-weight: 600;
+  font-size: 14px;
 }
 .section-desc {
-  color: #909399;
+  color: var(--color-text-secondary);
   font-size: 13px;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-4);
 }
 .eval-form {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 .eval-result {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 .negative-item {
-  padding: 8px 0;
-  border-bottom: 1px solid #ebeef5;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border-light);
 }
 .time-text {
-  color: #909399;
+  color: var(--color-text-meta);
   font-size: 12px;
+}
+
+/* RAGAS 评估指标卡片 */
+.ragas-metrics {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.metric-card {
+  flex: 1;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+.metric-card-overall {
+  background: #f0f9ff;
+  border-color: #b3d8ff;
+}
+.metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #909399;
+  margin-bottom: 8px;
+}
+.metric-value {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.metric-desc {
+  font-size: 12px;
+  color: #909399;
+}
+.ragas-info {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ragas-detail-item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.detail-query {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.detail-scores {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #606266;
 }
 </style>

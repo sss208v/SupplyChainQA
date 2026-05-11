@@ -110,14 +110,14 @@ async def lifespan(app: FastAPI):
                         department=dept,
                     )
                     session.add(user)
-                    logger.info(f"✅ 创建用户: {username}/{password} ({role.value} - {dept})")
+                    logger.info(f"✅ 创建用户: {username} ({role.value} - {dept})")
             await session.commit()
             logger.info("✅ 默认用户创建完成")
     except Exception as e:
         logger.warning(f"⚠️ 创建默认用户失败: {e}")
 
     logger.info(f"🎉 {settings.APP_NAME} 启动完成！")
-    logger.info(f"📖 API文档: http://localhost:8000/docs")
+    logger.info(f"📖 API文档: http://localhost:8001/docs")
 
     # 4. 预热模型（后台加载，不阻塞启动）
     import asyncio
@@ -159,7 +159,7 @@ app = FastAPI(
 # 配置CORS后，浏览器允许跨域请求
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # 开发环境允许所有来源
+    allow_origins=settings.CORS_ORIGINS_LIST,
     allow_credentials=True,
     allow_methods=["*"],          # 允许所有HTTP方法
     allow_headers=["*"],          # 允许所有请求头
@@ -185,14 +185,25 @@ async def health_check():
         "status": "ok",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
+        "embedding_model": settings.EMBEDDING_MODEL,
+        "reranker_enabled": settings.RERANKER_ENABLED,
+        "agent_type": getattr(settings, "AGENT_TYPE", "react"),
+        "knowledge_docs_count": 0,
         "services": {}
     }
 
     # Milvus
+    milvus_connected = milvus_manager.is_connected
     health["services"]["milvus"] = {
-        "connected": milvus_manager.is_connected,
+        "connected": milvus_connected,
         "host": f"{settings.MILVUS_HOST}:{settings.MILVUS_PORT}"
     }
+    if milvus_connected:
+        try:
+            count = milvus_manager.get_count()
+            health["knowledge_docs_count"] = count
+        except Exception:
+            pass
 
     # Redis
     try:

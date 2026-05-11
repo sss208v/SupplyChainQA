@@ -36,6 +36,26 @@
           >
             {{ intentLabel }}
           </el-tag>
+          <!-- 路由方式标签 -->
+          <el-tag
+            v-if="message.routeInfo"
+            type="info"
+            size="small"
+            effect="plain"
+            round
+          >
+            {{ routeLabel }}
+          </el-tag>
+          <!-- 缓存命中标签 -->
+          <el-tag
+            v-if="message.cacheHit"
+            type="success"
+            size="small"
+            effect="plain"
+            round
+          >
+            ⚡ 缓存命中
+          </el-tag>
           <el-tag
             v-if="message.confidence > 0"
             :type="confidenceTagType"
@@ -309,6 +329,20 @@ const intentLabel = computed(() => {
   return map[props.message.intent] || props.message.intent
 })
 
+// 路由方式标签（含耗时）
+const routeLabel = computed(() => {
+  const ri = props.message.routeInfo
+  if (!ri) return ''
+  const methodLabels = {
+    rule: '规则路由',
+    semantic: '语义路由',
+    llm: 'LLM路由',
+  }
+  const label = methodLabels[ri.method] || ri.method
+  const time = ri.duration_ms ? `${ri.duration_ms}ms` : ''
+  return time ? `${label} ${time}` : label
+})
+
 const intentTagType = computed(() => {
   const map = {
     greeting: '',
@@ -394,31 +428,33 @@ const queryAnalysisTagType = computed(() => {
 }
 
 .user-avatar {
-  background: #409eff;
+  background: var(--color-primary);
 }
 
 .ai-avatar {
-  background: #67c23a;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .message-content {
   max-width: 70%;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-radius: 12px;
   line-height: 1.6;
   font-size: 14px;
 }
 
 .user-content {
-  background: #409eff;
+  background: var(--color-primary);
   color: #fff;
-  border-bottom-right-radius: 4px;
+  border-radius: 12px 12px 4px 12px;
 }
 
 .ai-content {
-  background: #f4f6f8;
-  color: #303133;
-  border-bottom-left-radius: 4px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-body);
+  border-radius: 4px 12px 12px 12px;
+  box-shadow: var(--shadow-surface);
   position: relative;
 }
 
@@ -590,7 +626,7 @@ const queryAnalysisTagType = computed(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #c0c4cc;
+  background: var(--color-primary);
   animation: bounce 1.4s infinite ease-in-out both;
 }
 

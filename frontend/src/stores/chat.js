@@ -13,6 +13,10 @@ import { defineStore } from 'pinia'
 import { chatStream, chatCompletions, cancelStream } from '@/api/chat'
 import { ref, computed } from 'vue'
 
+const debugLog = (...args) => {
+  if (import.meta.env.DEV) console.log(...args)
+}
+
 export const useChatStore = defineStore('chat', () => {
   // ---- 状态 ----
   const messages = ref([])          // 消息列表
@@ -28,6 +32,7 @@ export const useChatStore = defineStore('chat', () => {
   const currentWebSearch = ref(null) // 当前Web搜索状态
   const pendingApproval = ref(null) // 待审批操作
   const currentDagProgress = ref(null) // 当前RAG DAG进度
+  const currentRouteInfo = ref(null) // 当前路由信息（method + 耗时）
 
   // ---- 计算属性 ----
   const messageCount = computed(() => messages.value.length)
@@ -44,14 +49,15 @@ export const useChatStore = defineStore('chat', () => {
    * 5. 收到sources/tool_call事件，更新附加信息
    * 6. 收到[DONE]，标记流式结束
    */
-  async function sendMessage(query) {
+  async function sendMessage(query, options = {}) {
     if (!query.trim() || streaming.value) return
+    const displayQuery = options.approved ? `确认执行：${query}` : query
 
     // 1. 添加用户消息
     messages.value.push({
       id: Date.now(),
       role: 'user',
-      content: query,
+      content: displayQuery,
       timestamp: new Date().toLocaleTimeString(),
     })
 
@@ -81,53 +87,63 @@ export const useChatStore = defineStore('chat', () => {
     currentDagProgress.value = null
 
     try {
-      console.log('[ChatStore] 开始 chatStream，streaming=true')
+      debugLog('[ChatStore] 开始 chatStream，streaming=true')
       await chatStream(
         {
           query,
           session_id: sessionId.value || undefined,
           stream: true,
+          approved: options.approved || false,
+          approved_tool: options.approved_tool,
         },
         // SSE 事件回调
         {
           onSession: (id) => {
-            console.log('[ChatStore] onSession:', id)
+            debugLog('[ChatStore] onSession:', id)
             sessionId.value = id
           },
           onRoute: (data) => {
-            console.log('[ChatStore] onRoute:', data)
+            debugLog('[ChatStore] onRoute:', data)
             currentIntent.value = data.intent
             currentConfidence.value = data.confidence
             messages.value[aiIdx].intent = data.intent
             messages.value[aiIdx].confidence = data.confidence
+            // 保存路由方式 + 耗时
+            const routeInfo = {
+              method: data.method || 'unknown',
+              confidence: data.confidence || 0,
+              duration_ms: data.duration_ms || 0,
+            }
+            currentRouteInfo.value = routeInfo
+            messages.value[aiIdx].routeInfo = routeInfo
           },
           onTokenUsage: (usage) => {
             currentTokenUsage.value = usage
             messages.value[aiIdx].tokenUsage = usage
-            console.log('[ChatStore] onTokenUsage:', usage)
+            debugLog('[ChatStore] onTokenUsage:', usage)
           },
           onConfidenceDecision: (data) => {
             currentConfidenceDecision.value = data
             messages.value[aiIdx].confidenceDecision = data
-            console.log('[ChatStore] onConfidenceDecision:', data)
+            debugLog('[ChatStore] onConfidenceDecision:', data)
           },
           onWebSearch: (data) => {
             currentWebSearch.value = data
             messages.value[aiIdx].webSearch = data
-            console.log('[ChatStore] onWebSearch:', data)
+            debugLog('[ChatStore] onWebSearch:', data)
           },
           onSelfRag: (data) => {
             // Self-RAG 过滤结果
             messages.value[aiIdx].selfRag = data
-            console.log('[ChatStore] onSelfRag:', data)
+            debugLog('[ChatStore] onSelfRag:', data)
           },
           onQueryAnalysis: (data) => {
             messages.value[aiIdx].queryAnalysis = data
-            console.log('[ChatStore] onQueryAnalysis:', data)
+            debugLog('[ChatStore] onQueryAnalysis:', data)
           },
           onPerformanceMetrics: (metrics) => {
             messages.value[aiIdx].performanceMetrics = metrics
-            console.log('[ChatStore] onPerformanceMetrics:', metrics)
+            debugLog('[ChatStore] onPerformanceMetrics:', metrics)
           },
           onClarify: (data) => {
             // 澄清提问：系统主动问用户补充信息
@@ -135,7 +151,7 @@ export const useChatStore = defineStore('chat', () => {
             messages.value[aiIdx].clarify = data
             messages.value[aiIdx].streaming = false
             streaming.value = false
-            console.log('[ChatStore] onClarify:', data)
+            debugLog('[ChatStore] onClarify:', data)
           },
           onApprovalRequest: (data) => {
             // 写操作审批请求
@@ -143,12 +159,17 @@ export const useChatStore = defineStore('chat', () => {
             messages.value[aiIdx].approvalRequest = data
             messages.value[aiIdx].streaming = false
             streaming.value = false
-            console.log('[ChatStore] onApprovalRequest:', data)
+            debugLog('[ChatStore] onApprovalRequest:', data)
           },
           onDagProgress: (data) => {
             currentDagProgress.value = data
             messages.value[aiIdx].dagProgress = { ...data }
-            console.log('[ChatStore] onDagProgress:', data)
+            debugLog('[ChatStore] onDagProgress:', data)
+          },
+          onCacheHit: (data) => {
+            debugLog('[ChatStore] onCacheHit:', data)
+            messages.value[aiIdx].cacheHit = true
+            messages.value[aiIdx].intent = 'rag_answer'
           },
           onContent: (content) => {
             // 拼接内容 → 打字机效果
@@ -179,13 +200,13 @@ export const useChatStore = defineStore('chat', () => {
             messages.value[aiIdx].streaming = false
           },
           onDone: () => {
-            console.log(`[ChatStore] onDone — streaming关闭，currentContent长度=${currentContent.value.length}`)
+            debugLog(`[ChatStore] onDone — streaming关闭，currentContent长度=${currentContent.value.length}`)
             messages.value[aiIdx].streaming = false
             streaming.value = false
           },
         }
       )
-      console.log('[ChatStore] chatStream 返回，streaming=', streaming.value)
+      debugLog('[ChatStore] chatStream 返回，streaming=', streaming.value)
     } catch (err) {
       console.error('[ChatStore] chatStream 抛出异常:', err)
       messages.value[aiIdx].content = `请求失败：${err.message}`
@@ -255,8 +276,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!pendingApproval.value) return
     const { query, tool } = pendingApproval.value
     pendingApproval.value = null
-    // 重新发送请求，标记 approved=true
-    await sendMessage(`确认执行：${query}`)
+    await sendMessage(query, { approved: true, approved_tool: tool })
   }
 
   function denyAction() {

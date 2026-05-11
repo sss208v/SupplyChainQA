@@ -7,142 +7,368 @@ SmartQA Pro - 工具调用引擎
 
 本文件保留作为LangChain Agent的参考实现，
 如需使用LangChain的ReAct Agent，可启用 ToolEngine.get_agent()。
+
+业务数据来自本地 SQLite 模拟库（supply_chain.db），参考 Odoo 风格表结构：
+  - product_product    物料主数据
+  - purchase_order     采购订单头
+  - purchase_order_line 采购订单行
+  - stock_move         库存移动（在途）
+  - maintenance_ticket 工单
+
+所有工具均为 async，支持 I/O 并发调用。
 """
-import logging
 import json
-from typing import Optional
+import os
+import logging
 from datetime import datetime
+from typing import Optional
 from langchain_core.tools import tool, BaseTool
-from langchain_core.agents import AgentFinish
-try:
-    from langchain.agents import AgentExecutor, create_react_agent
-except ImportError:
-    # LangChain 1.x+: imports moved
-    AgentExecutor = None
-    create_react_agent = None
-from langchain_core.prompts import PromptTemplate
-from app.core.llm_router import LLMFactory
+import aiosqlite
+
+# 延迟导入 rag_engine，避免循环引用（rag_engine 依赖 Milvus/Embedding 等重量级组件）
+# 实际调用时才 import，确保工具模块可在测试环境中独立加载
+def _get_rag_engine():
+    from app.core.rag_engine import rag_engine as _re
+    return _re
 
 logger = logging.getLogger(__name__)
 
+# ---- SQLite 数据库路径（相对于本文件位置）----
+_DATA_DB = os.path.join(os.path.dirname(__file__), "..", "data", "supply_chain.db")
+
+
+async def _get_conn() -> aiosqlite.Connection:
+    """获取异步数据库连接"""
+    conn = await aiosqlite.connect(_DATA_DB)
+    conn.row_factory = aiosqlite.Row
+    return conn
+
 
 # ==========================================
-# 工具定义
+# 工具 1：query_inventory — 物料库存查询（异步）
 # ==========================================
 
 @tool
-def query_inventory(material_code: str) -> str:
+async def query_inventory(material_code: str) -> str:
     """
     查询原材料/物料的库存信息。
 
-    根据物料编码查询当前库存数量、安全库存、库存状态等信息。
-    库存状态：充足（库存>=安全库存*1.5）、预警（安全库存<=库存<安全库存*1.5）、不足（库存<安全库存）
+    根据物料编码查询当前库存数量、安全库存、库存状态、在途数量等信息。
+    库存状态：充足（现货 >= 安全库存 × 1.5）、预警（安全库存 ≤ 现货 < 安全库存 × 1.5）、不足（现货 < 安全库存）
 
     参数: material_code - 物料编码（如：MAT-001、MAT-002）
 
-    返回: JSON格式的库存数据，包含 material_code, name, quantity, unit, safety_stock, status
+    返回: JSON格式的库存数据
     """
-    import json
-    inventory_db = {
-        "MAT-001": {"name": "电机轴承6205", "quantity": 1500, "unit": "个", "safety_stock": 500},
-        "MAT-002": {"name": "液压油32#", "quantity": 80, "unit": "升", "safety_stock": 200},
-        "MAT-003": {"name": "不锈钢螺栓M10", "quantity": 3000, "unit": "个", "safety_stock": 1000},
-        "MAT-004": {"name": "传送带皮带", "quantity": 15, "unit": "条", "safety_stock": 20},
-        "MAT-005": {"name": "PLC控制器模块", "quantity": 5, "unit": "个", "safety_stock": 10},
-    }
-    item = inventory_db.get(material_code)
-    if not item:
-        return json.dumps({"error": f"未找到物料编码: {material_code}，可用编码: {list(inventory_db.keys())}"}, ensure_ascii=False)
-    qty, ss = item["quantity"], item["safety_stock"]
-    status = "充足" if qty >= ss * 1.5 else ("预警" if qty >= ss else "不足")
-    return json.dumps({"material_code": material_code, **item, "status": status}, ensure_ascii=False)
+    conn = await _get_conn()
+    try:
+        cur = await conn.execute(
+            "SELECT id, default_code, name, uom_id, standard_price, "
+            "qty_available, virtual_available, incoming_qty, outgoing_qty "
+            "FROM product_product WHERE default_code = ?",
+            (material_code,)
+        )
+        row = await cur.fetchone()
 
+        if not row:
+            await cur.execute("SELECT default_code FROM product_product ORDER BY default_code")
+            available = [r["default_code"] for r in await cur.fetchall()]
+            return json.dumps(
+                {"error": f"未找到物料编码: {material_code}，可用编码: {available}"},
+                ensure_ascii=False
+            )
+
+        qty = row["qty_available"]
+        incoming = row["incoming_qty"]
+        safety_qty = max(50, int(qty * 0.1))
+
+        if qty >= safety_qty * 1.5:
+            status = "充足"
+        elif qty >= safety_qty:
+            status = "预警"
+        else:
+            status = "不足"
+
+        uom_map = {1: "个", 3: "升", 4: "条", 5: "米"}
+        unit = uom_map.get(row["uom_id"], "个")
+
+        result = {
+            "material_code":   row["default_code"],
+            "name":            row["name"],
+            "quantity":        qty,
+            "unit":            unit,
+            "safety_stock":    safety_qty,
+            "incoming_qty":    incoming,
+            "outgoing_qty":    row["outgoing_qty"],
+            "standard_price":  row["standard_price"],
+            "status":          status,
+        }
+        return json.dumps(result, ensure_ascii=False)
+    finally:
+        await conn.close()
+
+
+# ==========================================
+# 工具 2：query_order — 采购订单查询（异步）
+# ==========================================
 
 @tool
-def query_order(order_id: str) -> str:
+async def query_order(order_id: str) -> str:
     """
     查询采购订单的详细状态。
 
     根据订单编号查询采购订单的供应商、订单状态、物料明细、金额、预计到货日期等信息。
 
-    参数: order_id - 采购订单号（如：PO-20250101、PO-20250102）
+    参数: order_id - 采购订单号（如：PO-20250601、PO-20250602）
 
-    返回: JSON格式的订单数据，包含 order_id, supplier, status, items, total_amount, expected_date
+    返回: JSON格式的订单数据
     """
-    import json
-    order_db = {
-        "PO-20250101": {
-            "supplier": "东莞精密轴承有限公司",
-            "status": "已发货",
-            "items": [{"name": "电机轴承6205", "qty": 500, "price": 15.0}],
-            "total_amount": 7500.00,
-            "expected_date": "2025-01-15",
-        },
-        "PO-20250102": {
-            "supplier": "广州液压器材厂",
-            "status": "待审批",
-            "items": [{"name": "液压油32#", "qty": 500, "price": 28.0}],
-            "total_amount": 14000.00,
-            "expected_date": "2025-02-01",
-        },
-        "PO-20250103": {
-            "supplier": "深圳传动设备科技",
-            "status": "已完成",
-            "items": [
-                {"name": "传送带皮带", "qty": 10, "price": 350.0},
-                {"name": "PLC控制器模块", "qty": 5, "price": 1200.0},
-            ],
-            "total_amount": 9500.00,
-            "expected_date": "2025-01-10",
-        },
-    }
-    order = order_db.get(order_id)
-    if not order:
-        return json.dumps({"error": f"未找到订单: {order_id}，可用订单: {list(order_db.keys())}"}, ensure_ascii=False)
-    return json.dumps({"order_id": order_id, **order}, ensure_ascii=False)
+    conn = await _get_conn()
+    try:
+        cur = await conn.execute(
+            "SELECT id, name, partner_name, date_order, date_approve, "
+            "invoice_status, state, amount_total, notes "
+            "FROM purchase_order WHERE name = ?",
+            (order_id,)
+        )
+        order_row = await cur.fetchone()
 
+        if not order_row:
+            await cur.execute("SELECT name FROM purchase_order ORDER BY name DESC LIMIT 5")
+            available = [r["name"] for r in await cur.fetchall()]
+            return json.dumps(
+                {"error": f"未找到订单: {order_id}，最近订单: {available}"},
+                ensure_ascii=False
+            )
+
+        await cur.execute(
+            "SELECT product_code, product_name, product_qty, price_unit, "
+            "price_subtotal, date_planned, qty_received "
+            "FROM purchase_order_line WHERE order_id = ?",
+            (order_row["id"],)
+        )
+        lines = []
+        for ln in await cur.fetchall():
+            lines.append({
+                "name":           ln["product_name"],
+                "material_code":  ln["product_code"],
+                "qty":            ln["product_qty"],
+                "price":          ln["price_unit"],
+                "subtotal":       ln["price_subtotal"],
+                "planned_date":   ln["date_planned"],
+                "received_qty":   ln["qty_received"],
+            })
+
+        state_map = {
+            "draft":    "草稿",
+            "purchase": "已确认",
+            "done":     "已完成",
+            "cancel":   "已取消",
+        }
+
+        result = {
+            "order_id":       order_row["name"],
+            "supplier":       order_row["partner_name"],
+            "status":         state_map.get(order_row["state"], order_row["state"]),
+            "raw_state":      order_row["state"],
+            "order_date":     order_row["date_order"],
+            "approve_date":   order_row["date_approve"] or "—",
+            "invoice_status": order_row["invoice_status"],
+            "items":          lines,
+            "total_amount":   order_row["amount_total"],
+            "notes":          order_row["notes"] or "—",
+        }
+        return json.dumps(result, ensure_ascii=False)
+    finally:
+        await conn.close()
+
+
+# ==========================================
+# 工具 3：create_ticket — 创建供应链工单（异步）
+# ==========================================
 
 @tool
-def create_ticket(title: str, description: str, priority: str) -> str:
+async def create_ticket(title: str, description: str, priority: str) -> str:
     """
     创建供应链异常/需求工单。
 
     当发现库存不足、采购延误、质量异常等问题时，可创建工单进行跟踪处理。
+    工单创建后会写入本地 SQLite 数据库。
 
     参数:
       - title: 工单标题（简要描述问题）
       - description: 工单详细描述
       - priority: 优先级（低/中/高/紧急）
 
-    返回: JSON格式的工单确认信息，包含 ticket_id, title, status, created_at
+    返回: JSON格式的工单确认信息
     """
-    import json
-    from datetime import datetime
-    ticket_id = f"TK-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    return json.dumps({
-        "ticket_id": ticket_id,
-        "title": title,
-        "description": description,
-        "priority": priority,
-        "status": "待处理",
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }, ensure_ascii=False)
+    conn = await _get_conn()
+    try:
+        import time
+        ticket_id = f"TK-{datetime.now().strftime('%Y%m%d%H%M%S')}{time.time_ns() % 100000:05d}"
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        priority_map = {"低": "0", "中": "1", "高": "2", "紧急": "3"}
+        priority_val = priority_map.get(priority, "1")
 
+        await conn.execute(
+            "INSERT INTO maintenance_ticket "
+            "(name, priority, description, stage_id, user_id, create_date, write_date) "
+            "VALUES (?, ?, ?, 0, 1, ?, ?)",
+            (ticket_id, priority_val, f"{title}\n{description}", now, now)
+        )
+        await conn.commit()
+
+        return json.dumps({
+            "ticket_id":   ticket_id,
+            "title":       title,
+            "description": description,
+            "priority":    priority,
+            "status":      "待处理",
+            "created_at":  now,
+        }, ensure_ascii=False)
+    finally:
+        await conn.close()
+
+
+# ==========================================
+# 工具 4：get_datetime — 获取当前时间（异步）
+# ==========================================
 
 @tool
-def get_datetime(unused: str = "") -> str:
+async def get_datetime(unused: str = "") -> str:
     """
-    获取当前日期时间。直接返回当前时间，不需要任何参数。
-    无论传入什么参数，都返回真实当前时间。
+    获取当前日期时间。直接返回服务器真实当前时间，不需要任何参数。
     """
-    from datetime import datetime as dt
-    return dt.now().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+
+# ==========================================
+# 工具 5：get_knowledge — 知识库检索（由 RAG 引擎代理）
+# ==========================================
 
 @tool
-def get_knowledge(query: str) -> str:
-    """从知识库中检索信息。参数: query - 检索关键词"""
-    return f"正在从知识库检索: {query}"
+async def get_knowledge(query: str) -> str:
+    """
+    Search the uploaded document knowledge base via RAG hybrid retrieval.
+
+    Uses the configured embedding model (BAAI/bge-small-zh-v1.5) to perform
+    semantic search and returns the top-3 most relevant chunks.
+    Falls back to a friendly "not found" message when no results are retrieved.
+    """
+    if not query:
+        return json.dumps({"query": "", "answer": "Please provide a query.", "chunks": []}, ensure_ascii=False)
+
+    try:
+        result = _get_rag_engine().search(query, top_k=3)
+        chunks = result.get("results", [])
+        if not chunks:
+            return json.dumps({
+                "query": query,
+                "answer": "No relevant documents found in the knowledge base.",
+                "chunks": [],
+            }, ensure_ascii=False)
+
+        context_parts = []
+        for i, chunk in enumerate(chunks, 1):
+            source = chunk.get("source", "unknown")
+            content = chunk.get("content", "")[:200]
+            context_parts.append(f"[{i}] {source}: {content}...")
+
+        answer = "Knowledge base search results:\n" + "\n".join(context_parts)
+        return json.dumps({
+            "query": query,
+            "answer": answer,
+            "chunks": [
+                {"source": c.get("source", ""), "content": c.get("content", "")[:300]}
+                for c in chunks
+            ],
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps({
+            "query": query,
+            "answer": f"Knowledge base search failed (may not be initialized): {e}",
+            "chunks": [],
+        }, ensure_ascii=False)
+
+
+# ==========================================
+# 工具 6：query_supplier — 供应商信息查询（异步）
+# ==========================================
+
+@tool
+async def query_supplier(supplier_code: str) -> str:
+    """
+    查询供应商基本信息与资质评级。
+
+    根据供应商编码（如 SUP-001）查询供应商名称、类别、联系人、信用等级、
+    资质认证、账期条款、平均交期、合作年限等信息。
+    用于供应商准入评估、合规审查等场景。
+    """
+    try:
+        conn = await _get_conn()
+        try:
+            # 精确查询
+            cur = await conn.execute(
+                """
+                SELECT code, name, category, contact, phone, email, address,
+                       credit_level, qualification, payment_terms,
+                       lead_time_days, cooperation_since, notes
+                FROM res_partner
+                WHERE code = ?
+                """,
+                (supplier_code,),
+            )
+            row = await cur.fetchone()
+
+            if row is None:
+                # 返回可用供应商编码列表，方便调用方纠错
+                cur2 = await conn.execute(
+                    "SELECT code, name FROM res_partner ORDER BY code LIMIT 10"
+                )
+                available = await cur2.fetchall()
+                available_str = ", ".join(f"{r['code']}({r['name']})" for r in available)
+                return json.dumps(
+                    {"error": f"供应商 {supplier_code} 不存在，可用编码: {available_str}"},
+                    ensure_ascii=False,
+                )
+
+            # 合作年数计算
+            import datetime as _dt
+            since = row["cooperation_since"] or ""
+            cooperation_years = ""
+            if since:
+                try:
+                    since_year = int(since[:4])
+                    cooperation_years = str(_dt.date.today().year - since_year)
+                except ValueError:
+                    pass
+
+            return json.dumps(
+                {
+                    "supplier_code":    row["code"],
+                    "name":             row["name"],
+                    "category":         row["category"],
+                    "contact":          row["contact"],
+                    "phone":            row["phone"],
+                    "email":            row["email"],
+                    "address":          row["address"],
+                    "credit_level":     row["credit_level"],
+                    "qualification":    row["qualification"],
+                    "payment_terms":    row["payment_terms"],
+                    "lead_time_days":   row["lead_time_days"],
+                    "cooperation_since": since,
+                    "cooperation_years": cooperation_years,
+                    "notes":            row["notes"] or "",
+                },
+                ensure_ascii=False,
+            )
+        finally:
+            await conn.close()
+
+    except Exception as e:
+        logger.error(f"[query_supplier] 查询失败: {e}", exc_info=True)
+        return json.dumps({"error": f"供应商查询异常: {e}"}, ensure_ascii=False)
 
 
 # ==========================================
@@ -151,11 +377,30 @@ def get_knowledge(query: str) -> str:
 
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "query_inventory": query_inventory,
-    "query_order": query_order,
-    "create_ticket": create_ticket,
-    "get_datetime": get_datetime,
-    "get_knowledge": get_knowledge,
+    "query_order":     query_order,
+    "create_ticket":   create_ticket,
+    "get_datetime":    get_datetime,
+    "get_knowledge":   get_knowledge,
+    "query_supplier":  query_supplier,
 }
+
+# ==========================================
+# 新增工具示例（注册一个新工具只需5行代码）
+# ==========================================
+# """示例：注册一个「查询物料成本」工具"""
+# @tool("query_cost")
+# async def query_cost(material_code: str) -> str:
+#     """根据物料编码查询成本数据"""
+#     conn = await _get_conn()
+#     # 执行SQL查询...
+#     return json.dumps(result)
+#
+# # 在 TOOL_REGISTRY 添加一行即可接入系统:
+# # "query_cost": query_cost,
+# #
+# # 前端自动展示新工具，权限在 ROLE_TOOLS 中添加，
+# # LLM Agent 在执行 ReAct 循环时自动发现新工具。
+# ==========================================
 
 
 def get_all_tools() -> list[BaseTool]:
@@ -169,106 +414,15 @@ def get_tools_by_names(names: list[str]) -> list[BaseTool]:
 
 
 # ==========================================
-# ReAct Agent Prompt
-# 【废弃】LangChain版本的ReAct实现，保留作为参考
+# 【废弃】LangChain Agent 实现保留在此
 # ==========================================
 
-REACT_PROMPT_TEMPLATE = """你是一个智能助手，可以使用工具来回答用户的问题。
+try:
+    from langchain.agents import AgentExecutor, create_react_agent
+except ImportError:
+    AgentExecutor = None
+    create_react_agent = None
 
-你可以使用以下工具:
-{tools}
-
-请严格按照以下格式回答:
-
-Question: 用户的问题
-Thought: 你应该思考要做什么
-Action: 要使用的工具名称（必须是 [{tool_names}] 中的一个）
-Action Input: 工具的输入参数
-Observation: 工具返回的结果
-... (Thought/Action/Action Input/Observation 可以重复多次)
-Thought: 我已经知道最终答案
-Final Answer: 对用户问题的最终回答
-
-重要规则:
-1. 如果问题不需要使用工具，直接给出Final Answer
-2. 如果需要使用工具，严格按照Thought -> Action -> Action Input的顺序
-3. 工具名称必须是上述列表中的一个
-4. 仔细分析Observation的结果，决定是继续使用工具还是给出最终答案
-
-开始!
-
-Question: {input}
-{agent_scratchpad}"""
-
-
-class ToolEngine:
-    """
-    工具调用引擎【已废弃】
-    
-    本类的 get_agent() 方法创建的 LangChain ReAct AgentExecutor 从未被调用。
-    当前工具调用逻辑由 agents/tool.py 的 ToolAgent 使用手写ReAct循环实现。
-    
-    保留原因：
-    1. 展示LangChain Agent与传统手写Agent的区别
-    2. 作为未来可能切换到LangChain Agent的参考
-    """
-
-    def __init__(self):
-        self._agent_executor: Optional[AgentExecutor] = None
-
-    def get_agent(self, tools: Optional[list[BaseTool]] = None) -> AgentExecutor:
-        """获取LangChain ReAct Agent（已废弃，请使用agents/tool.py的ToolAgent）"""
-        logger.warning("ToolEngine.get_agent() 已废弃，请使用 agents/tool.py 的 ToolAgent")
-        if self._agent_executor is not None:
-            return self._agent_executor
-
-        tools = tools or get_all_tools()
-        llm = LLMFactory.get_llm(streaming=False)
-
-        prompt = PromptTemplate.from_template(REACT_PROMPT_TEMPLATE)
-
-        if create_react_agent is None:
-            raise RuntimeError("LangChain ReAct agent 不可用，请使用 agents/tool.py")
-
-        agent = create_react_agent(
-            llm=llm,
-            tools=tools,
-            prompt=prompt,
-        )
-
-        self._agent_executor = AgentExecutor(
-            agent=agent,
-            tools=tools,
-            verbose=True,
-            max_iterations=5,
-            handle_parsing_errors=True,
-        )
-
-        return self._agent_executor
-
-    async def run(self, query: str, tools: Optional[list[str]] = None) -> dict:
-        """
-        执行工具调用【已废弃】
-        
-        实际使用 agents/tool.py 的 tool_agent.run()
-        """
-        logger.warning("ToolEngine.run() 已废弃，请使用 agents/tool.py 的 tool_agent.run()")
-        tool_list = get_tools_by_names(tools) if tools else get_all_tools()
-        agent = self.get_agent(tool_list)
-
-        try:
-            result = await agent.ainvoke({"input": query})
-            return {
-                "answer": result.get("output", ""),
-                "tool_calls": result.get("intermediate_steps", []),
-            }
-        except Exception as e:
-            logger.error(f"工具调用失败: {e}")
-            return {
-                "answer": f"工具调用过程中出现错误: {e}",
-                "tool_calls": [],
-            }
-
-
-# 全局单例（已废弃）
-tool_engine = ToolEngine()
+from langchain_core.prompts import PromptTemplate
+from langchain_core.agents import AgentFinish
+from app.core.llm_router import LLMFactory

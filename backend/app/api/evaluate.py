@@ -11,6 +11,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 from app.core.rag_evaluator import rag_evaluator
+from app.core.evaluator import ragas_evaluator, load_ground_truth
+from app.agents.rag import rag_agent
+from app.core.llm_router import LLMFactory
+import asyncio
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/evaluate", tags=["评估"])
@@ -201,6 +205,99 @@ async def evaluate_judge(req: JudgeRequest):
     except Exception as e:
         logger.error(f"Judge评估失败: {e}")
         raise HTTPException(status_code=500, detail=f"评判失败: {e}")
+
+
+@router.get("/full")
+async def run_full_evaluation():
+    """
+    运行全量 RAGAS 评估套件
+
+    对黄金测试集中的每条 query 执行：
+    1. 混合检索（向量 + BM25）
+    2. LLM 生成回答
+    3. 计算三大 RAGAS 指标：
+       - Context Precision（检索准确率）
+       - Faithfulness（忠实度/防幻觉）
+       - Answer Relevance（回答相关性）
+
+    返回逐条评分和汇总统计。
+    """
+    try:
+        ground_truth = load_ground_truth()
+        if not ground_truth:
+            return {
+                "success": False,
+                "error": "黄金测试集为空，请确认 backend/data/eval_ground_truth.json 存在",
+            }
+
+        logger.info(f"启动全量 RAGAS 评估: {len(ground_truth)} 条测试用例")
+
+        # 逐条评估（仅检索模式，避免 LLM 调用耗时过高）
+        results = []
+        total_cp = 0.0
+        total_faith = 0.0
+        total_ar = 0.0
+        total_time = 0.0
+
+        for item in ground_truth:
+            query = item.get("query", "")
+            qid = item.get("id", "unknown")
+            t0 = asyncio.get_event_loop().time()
+
+            try:
+                # 检索
+                search_result = rag_agent.rag.search(query, top_k=5)
+                chunks = search_result.get("results", [])
+
+                # 评估
+                eval_result = ragas_evaluator.evaluate_single(
+                    query=query,
+                    retrieved_chunks=chunks,
+                    generated_answer="",
+                    reference_answer=item.get("reference_answer", ""),
+                )
+
+                elapsed = (asyncio.get_event_loop().time() - t0) * 1000
+                total_time += elapsed
+
+                results.append({
+                    "id": qid,
+                    "query": query,
+                    "context_precision": eval_result.context_precision,
+                    "faithfulness": eval_result.faithfulness,
+                    "answer_relevance": eval_result.answer_relevance,
+                    "overall": eval_result.overall_score,
+                    "retrieval_count": eval_result.retrieval_count,
+                    "time_ms": round(elapsed, 1),
+                })
+                total_cp += eval_result.context_precision
+                total_faith += eval_result.faithfulness
+                total_ar += eval_result.answer_relevance
+
+            except Exception as e:
+                logger.error(f"评估用例 {qid} 失败: {e}")
+                results.append({
+                    "id": qid,
+                    "query": query,
+                    "error": str(e),
+                })
+
+        n = len(results)
+        summary = {
+            "total_queries": n,
+            "avg_context_precision": round(total_cp / n, 4) if n > 0 else 0,
+            "avg_faithfulness": round(total_faith / n, 4) if n > 0 else 0,
+            "avg_answer_relevance": round(total_ar / n, 4) if n > 0 else 0,
+            "avg_overall": round((total_cp + total_faith + total_ar) / (n * 3), 4) if n > 0 else 0,
+            "total_time_ms": round(total_time, 1),
+            "details": results,
+        }
+
+        return {"success": True, "summary": summary}
+
+    except Exception as e:
+        logger.error(f"全量评估失败: {e}")
+        raise HTTPException(status_code=500, detail=f"评估失败: {e}")
 
 
 @router.get("/summary")

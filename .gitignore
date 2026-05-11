@@ -62,6 +62,24 @@ fix_chat*.py
 demo_queries.json
 smartqa_e2e.js
 
+# Development design docs (not project artifacts)
+DESIGN.md
+GOAL_HERMES.md
+
+# Root-level test scripts
+/test_*.py
+
+# Eval tuning scripts (one-time runs, not project code)
+backend/eval/*.py
+backend/eval/tune_results.json
+
+# Generated data
+backend/app/data/supply_chain.db
+*.db
+
+# Local dev helpers
+backend/start_dev.bat
+
 # AI tool artifacts
 .workbuddy/
 PROJECT_SUMMARY.md
@@ -71,6 +89,8 @@ backend/eval/debug_ar.py
 # Uploaded files and test data
 backend/uploads/
 backend/eval/knowledge_base/
+backend/app/data/supply_chain.db
+backend/app/data/__pycache__/
 backend/drop_collection.py
 backend/test_*.py
 backend/run_backend.py
@@ -85,3 +105,11 @@ rebuild_permissions.py
 rebuild_collection.py
 upload_knowledge.py
 test_permissions.ps1
+
+# Generated knowledge docs
+knowledge/supply_chain_comprehensive_data_manual.md
+
+# Goal tracking docs (not project artifacts)
+GOAL_HERMES_EVIDENCE_GRADING.md
+GOAL_HERMES_PHASE2.md
+GOAL_HERMES*.md

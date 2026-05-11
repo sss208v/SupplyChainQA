@@ -4,22 +4,27 @@ SmartQA Pro - 配置管理
 """
 import os
 from functools import lru_cache
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
 class Settings(BaseSettings):
-    """应用配置"""
+    """Application config, loaded from .env via Pydantic Settings"""
 
-    # ---- 应用 ----
+    model_config = SettingsConfigDict(
+        env_file=os.path.join(os.path.dirname(__file__), "..", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
     APP_NAME: str = "SmartQA"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     API_PREFIX: str = "/api/v1"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
 
     # ---- 数据库 ----
     POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
+    POSTGRES_PORT: int = 15432
     POSTGRES_USER: str = "smartqa"
     POSTGRES_PASSWORD: str = "smartqa123"
     POSTGRES_DB: str = "smartqa"
@@ -47,6 +52,7 @@ class Settings(BaseSettings):
     # ---- RAG 参数 ----
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 64
+    RRF_K: int = 60
     VECTOR_TOP_K: int = 20
     BM25_TOP_K: int = 20
     RERANK_TOP_K: int = 3
@@ -79,7 +85,7 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen2.5:7b"
 
     # ---- Agent ----
-    AGENT_TYPE: str = "react"  # react / langchain
+    AGENT_TYPE: str = "react"  # react / langchain / langgraph
 
     # ---- 内容过滤（已禁用）----
     GUARDRAILS_ENABLED: bool = False
@@ -90,11 +96,6 @@ class Settings(BaseSettings):
     # ---- Self-RAG ----
     SELF_RAG_ENABLED: bool = True
 
-    class Config:
-        env_file = os.path.join(os.path.dirname(__file__), "..", ".env")
-        env_file_encoding = "utf-8"
-        extra = "ignore"
-
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -103,6 +104,10 @@ class Settings(BaseSettings):
     def REDIS_URL(self) -> str:
         pwd = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
         return f"redis://{pwd}{self.REDIS_HOST}:{self.REDIS_PORT}"
+
+    @property
+    def CORS_ORIGINS_LIST(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 
 @lru_cache()

@@ -32,12 +32,18 @@
 - Self-RAG：LLM 判断 chunk 相关性，过滤低分噪音
 - 父子文档：小 chunk 精确匹配 → 大 chunk 提供上下文
 - Query Cache：MD5 key，5 分钟 TTL，LRU 淘汰
+- 澄清提问：参数缺失时主动追问，不硬猜
 
 ### 工具调用
 
 - 手写 ReAct 循环（默认）：JSON 格式 Thought/Action/Observation，最多 5 轮
 - LangChain AgentExecutor（可切换）：create_react_agent 标准实现
-- 工具：query_inventory / query_order / create_ticket / get_datetime / get_knowledge
+- 工具：query_inventory / query_order / create_ticket / get_datetime / get_knowledge（RAG 检索）/ query_supplier（供应商查询）
+
+### 操作审批
+
+- 写操作（create_ticket）执行前发送 `approval_request` SSE 事件，前端确认后执行
+- 防止 Agent 误执行不可逆操作
 
 ### 行级权限控制
 
@@ -81,6 +87,7 @@ cd backend
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8001
+# API 文档：http://localhost:8001/docs
 ```
 
 ### 4. 启动前端

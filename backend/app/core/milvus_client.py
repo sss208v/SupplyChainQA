@@ -259,6 +259,16 @@ class MilvusManager:
             "num_entities": stats,
         }
 
+    def get_count(self) -> int:
+        """获取文档数量"""
+        if not self.collection:
+            return 0
+        try:
+            self.collection.flush()
+            return self.collection.num_entities or 0
+        except Exception:
+            return 0
+
     def build_visibility_expr(self, role: str, user_doc_ids: Optional[list] = None) -> str:
         """根据用户角色构建 Milvus 过滤表达式（基于 security_group 数组列）
 

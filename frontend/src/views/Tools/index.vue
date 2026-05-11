@@ -24,6 +24,21 @@
           <el-tag size="small" type="success" effect="plain">已注册</el-tag>
         </div>
 
+        <!-- 可用角色标签 -->
+        <div class="node-roles">
+          <span class="roles-label">可用角色：</span>
+          <el-tag
+            v-for="role in tool.allowed_roles"
+            :key="role"
+            size="small"
+            effect="plain"
+            :type="roleColor(role)"
+            class="role-tag"
+          >
+            {{ roleLabel(role) }}
+          </el-tag>
+        </div>
+
         <!-- 节点描述 -->
         <p class="node-desc">{{ tool.description }}</p>
 
@@ -239,6 +254,36 @@ function toolType(name) {
   return toolSchemas[name]?.type || '自定义'
 }
 
+// 角色中文映射
+const roleLabelMap = {
+  admin: '管理员',
+  purchase: '采购部',
+  warehouse: '仓库部',
+  quality: '质量部',
+  production: '生产部',
+  finance: '财务部',
+  logistics: '物流部',
+}
+
+// 角色标签颜色
+const roleColorMap = {
+  admin: 'danger',
+  purchase: 'success',
+  warehouse: 'warning',
+  quality: 'info',
+  production: '',
+  finance: '',
+  logistics: '',
+}
+
+function roleLabel(role) {
+  return roleLabelMap[role] || role
+}
+
+function roleColor(role) {
+  return roleColorMap[role] || 'info'
+}
+
 async function fetchTools() {
   try {
     const res = await getToolList()
@@ -274,9 +319,14 @@ async function handleTest() {
       .filter(([_, v]) => v)
       .map(([k, v]) => `${k}=${v}`)
       .join(', ')
-    const query = `调用${currentTool.value.name}工具${params ? '，参数: ' + params : ''}`
+    const query = params
+      ? `参数: ${params}`
+      : '执行工具'
 
-    const res = await callTool({ query })
+    const res = await callTool({
+      query,
+      tool_names: [currentTool.value.name]
+    })
     testResult.value = res
   } catch (err) {
     testResult.value = { error: true, answer: err.message }
@@ -292,20 +342,22 @@ onMounted(fetchTools)
 .tools-page {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: var(--space-5);
 }
 
 .tools-header {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 }
 
 .tools-header h2 {
   font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text-primary);
   margin-bottom: 4px;
 }
 
 .tools-subtitle {
-  color: #909399;
+  color: var(--color-text-placeholder);
   font-size: 14px;
 }
 
@@ -313,35 +365,54 @@ onMounted(fetchTools)
 .tools-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 /* 工具节点卡片 */
 .tool-node {
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 12px;
-  padding: 20px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: var(--space-5);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .tool-node:hover {
-  border-color: #409eff;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .tool-node--active {
-  border-color: #409eff;
-  background: #f0f7ff;
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
 }
 
 /* 节点头部 */
 .node-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+/* 可用角色标签 */
+.node-roles {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.roles-label {
+  font-size: 12px;
+  color: var(--color-text-meta);
+  flex-shrink: 0;
+}
+
+.role-tag {
+  font-size: 11px;
 }
 
 .node-icon {
@@ -358,32 +429,33 @@ onMounted(fetchTools)
 .node-title h4 {
   font-size: 15px;
   margin: 0 0 2px;
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
+  font-weight: 500;
 }
 
 .node-type {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-placeholder);
 }
 
 /* 描述 */
 .node-desc {
   font-size: 13px;
-  color: #606266;
+  color: var(--color-text-secondary);
   line-height: 1.5;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 /* Schema 区域 */
 .node-schema {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 12px;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .schema-section {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-2);
 }
 
 .schema-section:last-child {
@@ -393,54 +465,54 @@ onMounted(fetchTools)
 .schema-label {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 12px;
   font-weight: 600;
-  color: #606266;
+  color: var(--color-text-secondary);
   margin-bottom: 6px;
 }
 
 .schema-params {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .param-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: 12px;
 }
 
 .param-name {
-  font-family: 'SF Mono', 'Consolas', monospace;
-  color: #409eff;
+  font-family: var(--font-mono);
+  color: var(--color-primary);
   font-weight: 500;
 }
 
 .param-type {
-  color: #909399;
+  color: var(--color-text-meta);
   font-size: 11px;
 }
 
 .param-desc {
-  color: #606266;
+  color: var(--color-text-secondary);
   font-size: 11px;
 }
 
 .param-empty {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--color-text-meta);
   font-style: italic;
 }
 
 .schema-output code {
   font-size: 12px;
-  color: #67c23a;
-  background: #f0f9eb;
+  color: var(--color-schema-text);
+  background: var(--color-schema-output);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 /* 操作区 */
@@ -451,72 +523,77 @@ onMounted(fetchTools)
 
 /* 测试面板 */
 .test-tool-info {
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #ebeef5;
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .test-tool-info h4 {
   font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
   margin-bottom: 4px;
 }
 
 .test-tool-info p {
   font-size: 13px;
-  color: #606266;
+  color: var(--color-text-secondary);
 }
 
 .test-input-section h5 {
   font-size: 14px;
-  margin-bottom: 12px;
-  color: #303133;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+  color: var(--color-text-primary);
 }
 
 .test-input-item {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .test-input-item label {
   display: block;
   font-size: 13px;
   margin-bottom: 4px;
-  color: #606266;
+  color: var(--color-text-secondary);
 }
 
 .input-type {
-  color: #909399;
+  color: var(--color-text-meta);
   font-size: 11px;
 }
 
 /* 测试结果 */
 .test-result-section {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #ebeef5;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
 }
 
 .test-result-section h5 {
   font-size: 14px;
-  margin-bottom: 12px;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+  color: var(--color-text-primary);
 }
 
 .result-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .result-iter {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-meta);
 }
 
 .result-output pre {
-  background: #1e1e1e;
-  color: #d4d4d4;
-  padding: 12px;
-  border-radius: 6px;
+  background: var(--color-code-bg);
+  color: var(--color-code-text);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
   font-size: 13px;
   line-height: 1.5;
   overflow-x: auto;
@@ -525,31 +602,32 @@ onMounted(fetchTools)
 }
 
 .result-calls {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
 .result-calls h5 {
   font-size: 13px;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
+  color: var(--color-text-primary);
 }
 
 .call-item {
-  background: #f8f9fa;
-  border-radius: 6px;
-  padding: 10px;
-  margin-bottom: 8px;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .call-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-bottom: 6px;
 }
 
 .call-step {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-meta);
 }
 
 .call-detail {
@@ -558,20 +636,21 @@ onMounted(fetchTools)
 
 .detail-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   margin-bottom: 4px;
 }
 
 .detail-label {
-  color: #909399;
+  color: var(--color-text-meta);
   flex-shrink: 0;
 }
 
 .detail-row code {
-  background: #e8eaec;
+  background: var(--color-code-inline-bg);
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   word-break: break-all;
+  font-family: var(--font-mono);
 }
 </style>

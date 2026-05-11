@@ -172,27 +172,28 @@ watch(
 
 <style scoped>
 .chat-container {
-  height: calc(100vh - 120px);
+  height: calc(100vh - 96px);
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-surface);
+  overflow: hidden;
 }
 
 /* 顶部操作栏 */
 .chat-header {
   display: flex;
   justify-content: flex-end;
-  padding: 8px 16px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border-light);
   flex-shrink: 0;
 }
 
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: var(--space-5) var(--space-6);
 }
 
 /* 欢迎界面 */
@@ -202,46 +203,47 @@ watch(
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #606266;
+  color: var(--color-text-secondary);
 }
 
 .welcome h2 {
-  margin-top: 16px;
+  margin-top: var(--space-4);
   font-size: 22px;
-  color: #303133;
+  font-weight: 700;
+  color: var(--color-text-primary);
 }
 
 .welcome p {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-placeholder);
 }
 
 .quick-actions {
-  margin-top: 24px;
+  margin-top: var(--space-6);
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
   justify-content: center;
 }
 
 /* 输入区域 */
 .input-area {
-  border-top: 1px solid #ebeef5;
-  padding: 16px 20px;
-  background: #fafafa;
-  border-radius: 0 0 8px 8px;
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  background: var(--color-bg-subtle);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 .input-wrapper {
-  max-width: 800px;
+  max-width: 860px;
   margin: 0 auto;
 }
 
 .input-actions {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 </style>

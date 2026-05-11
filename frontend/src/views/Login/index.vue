@@ -123,55 +123,56 @@ function quickLogin(account) {
 
 .login-card {
   width: 400px;
-  padding: 40px;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  padding: var(--space-10);
+  background: var(--color-bg-card);
+  border-radius: 16px;
+  box-shadow: var(--shadow-brand);
 }
 
 .login-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: var(--space-8);
 }
 
 .login-header h1 {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1e293b;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--color-text-primary);
   margin-bottom: 4px;
 }
 
 .login-header p {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--color-text-placeholder);
 }
 
 .demo-accounts {
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
 }
 
 .demo-title {
   font-size: 12px;
-  color: #94a3b8;
-  margin-bottom: 8px;
+  color: var(--color-text-placeholder);
+  margin-bottom: var(--space-2);
   text-align: center;
 }
 
 .demo-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
   justify-content: center;
 }
 
 .demo-tag {
   cursor: pointer;
   font-size: 12px;
+  transition: transform 0.2s ease;
 }
 
 .demo-tag:hover {
-  opacity: 0.8;
+  transform: scale(1.03);
 }
 </style>

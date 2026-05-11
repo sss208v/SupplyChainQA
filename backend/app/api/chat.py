@@ -30,6 +30,7 @@ from app.agents.router import router_agent, IntentType
 from app.agents.rag import rag_agent
 from app.agents.tool import tool_agent
 from app.agents.langchain_agent import langchain_agent
+from app.agents.langgraph_agent import langgraph_agent
 from app.core.llm_router import LLMFactory
 from app.core.redis_client import chat_memory
 from app.core.data_filter import PIIFilter
@@ -39,6 +40,7 @@ from app.core.faithfulness import get_faithfulness_checker
 from app.config import get_settings
 from app.core.auth import get_current_user_optional, get_current_user_full
 from app.core.milvus_client import milvus_manager
+from app.api.tool import _is_tool_allowed, _get_allowed_tools
 from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,22 @@ def _apply_output_guard(answer: str) -> str:
     return answer
 
 
+# ---- 角色中文标签 ----
+ROLE_LABELS = {
+    "admin": "管理员",
+    "purchase": "采购部",
+    "warehouse": "仓库部",
+    "quality": "质量部",
+    "production": "生产部",
+    "finance": "财务部",
+    "logistics": "物流部",
+}
+
+
+def _role_label(role: str) -> str:
+    return ROLE_LABELS.get(role, role)
+
+
 # ---- 请求/响应模型 ----
 
 class ChatRequest(BaseModel):
@@ -68,6 +86,8 @@ class ChatRequest(BaseModel):
     stream: bool = Field(True, description="是否流式输出")
     doc_ids: Optional[list[str]] = Field(None, description="限定检索的文档ID")
     agent_type: Optional[str] = Field(None, description="Agent类型: react（手写ReAct）/ langchain（LangChain Agent），为空则使用配置默认值")
+    approved: bool = Field(False, description="是否已确认执行写操作")
+    approved_tool: Optional[str] = Field(None, description="已确认执行的工具名")
 
 
 class ChatResponse(BaseModel):
@@ -92,6 +112,8 @@ def _get_tool_agent(agent_type: Optional[str] = None):
     effective_type = agent_type or settings.AGENT_TYPE
     if effective_type == "langchain":
         return langchain_agent
+    if effective_type == "langgraph":
+        return langgraph_agent
     return tool_agent
 
 
@@ -121,7 +143,7 @@ async def switch_model(body: dict):
 
 
 @router.post("/completions", response_model=ChatResponse)
-async def chat_completions(request: ChatRequest):
+async def chat_completions(request: Request, body: ChatRequest):
     """
     对话接口（非流式）
     完整处理流程：
@@ -129,11 +151,11 @@ async def chat_completions(request: ChatRequest):
     """
     # 可选认证：识别用户身份（不强制要求登录）
     # 从请求头获取，不影响正常对话流程
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = body.session_id or str(uuid.uuid4())
 
     # PII脱敏：在调用LLM API前过滤用户输入中的敏感信息
     # 使用脱敏后的safe_query进行路由和推理，防止PII泄露到云端LLM
-    safe_query = _pii_filter.filter_text(request.query)
+    safe_query = _pii_filter.filter_text(body.query)
 
     # Step 1: 意图路由（使用脱敏后的查询）
     route_result = await router_agent.route(safe_query)
@@ -155,7 +177,7 @@ async def chat_completions(request: ChatRequest):
         result = await rag_agent.answer(
             query=safe_query,
             session_id=session_id,
-            doc_ids=request.doc_ids,
+            doc_ids=body.doc_ids,
         )
         return ChatResponse(
             session_id=session_id,
@@ -166,7 +188,7 @@ async def chat_completions(request: ChatRequest):
         )
 
     elif intent == IntentType.TOOL_CALL:
-        agent = _get_tool_agent(request.agent_type)
+        agent = _get_tool_agent(body.agent_type)
         result = await agent.run(
             query=safe_query,
             tool_names=[route_result["tool_name"]] if route_result.get("tool_name") else None,
@@ -184,7 +206,7 @@ async def chat_completions(request: ChatRequest):
         rag_result = await rag_agent.answer(
             query=safe_query,
             session_id=session_id,
-            doc_ids=request.doc_ids,
+            doc_ids=body.doc_ids,
         )
 
         # 如果RAG已经得到高置信度答案且没有指定工具，直接返回
@@ -202,7 +224,7 @@ async def chat_completions(request: ChatRequest):
         enhanced_query = (
             f"背景信息：{rag_result['answer']}\n\n用户问题：{safe_query}"
         )
-        agent = _get_tool_agent(request.agent_type)
+        agent = _get_tool_agent(body.agent_type)
         tool_result = await agent.run(
             query=enhanced_query,
             tool_names=[tool_name],
@@ -229,7 +251,7 @@ async def chat_completions(request: ChatRequest):
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: Request, body: ChatRequest):
     """
     对话接口（流式SSE）
 
@@ -246,22 +268,25 @@ async def chat_stream(request: ChatRequest):
     def _elapsed(label: str):
         return f"[{label} +{(time.perf_counter() - _t0)*1000:.0f}ms]"
 
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = body.session_id or str(uuid.uuid4())
 
     # PII脱敏：在调用LLM API前过滤用户输入中的敏感信息
     # 使用脱敏后的safe_query进行路由和推理，防止PII泄露到云端LLM
-    safe_query = _pii_filter.filter_text(request.query)
+    safe_query = _pii_filter.filter_text(body.query)
 
     logger.info(f"对话开始 session={session_id} query={safe_query}")
 
-    # 获取用户角色用于权限过滤
-    _user_role = "purchase"  # 默认采购部
+    # 获取用户角色用于权限过滤（默认finance最小权限，token无效时会被拦截）
+    _user_role = "finance"
     try:
         _current_user = await get_current_user_full(request)
         if _current_user:
-            _user_role = _current_user.get("role", "purchase")
-    except Exception:
-        pass
+            _user_role = _current_user.get("role", "finance")
+            logger.info(f"[Permission] 用户角色: {_user_role}, 用户信息: {_current_user}")
+        else:
+            logger.warning("[Permission] get_current_user_full returned None")
+    except Exception as e:
+        logger.warning(f"[Permission] 获取用户角色失败: {e}")
 
     async def event_generator():
         """SSE事件生成器"""
@@ -272,6 +297,35 @@ async def chat_stream(request: ChatRequest):
                 "type": "session",
                 "session_id": session_id,
             })
+
+            # ---- Query Cache 检查 ----
+            import hashlib
+            cache_key = f"query_cache:{hashlib.md5(safe_query.encode()).hexdigest()}"
+            try:
+                from app.core.redis_client import redis_manager
+                cached = await redis_manager.client.get(cache_key)
+                if cached:
+                    cached_data = json.loads(cached)
+                    yield _sse_format({
+                        "type": "cache_hit",
+                        "query": safe_query,
+                        "message": "⚡ 缓存命中（MD5匹配，零token重放）",
+                    })
+                    yield _sse_format({"type": "content", "content": cached_data["answer"]})
+                    if cached_data.get("sources"):
+                        yield _sse_format({
+                            "type": "sources",
+                            "sources": cached_data["sources"],
+                            "confidence": cached_data.get("confidence", 0),
+                        })
+                    if cached_data.get("token_usage"):
+                        yield _sse_format({"type": "token_usage", "usage": cached_data["token_usage"]})
+                    yield "data: [DONE]\n\n"
+                    logger.info(f"[QueryCache] 缓存命中: {safe_query}, key={cache_key}")
+                    return
+            except Exception:
+                logger.warning(f"[QueryCache] 缓存读取失败（Redis未连接或异常）")
+            # ---- 缓存检查结束 ----
 
             # 2. 意图路由（使用脱敏后的查询）
             _t1 = time.perf_counter()
@@ -285,6 +339,7 @@ async def chat_stream(request: ChatRequest):
                 "intent": intent.value,
                 "confidence": route_result.get("confidence", 0.0),
                 "method": route_result["method"],
+                "duration_ms": int(_t_route * 1000),
             })
 
             # 3. 根据意图分发
@@ -333,7 +388,7 @@ async def chat_stream(request: ChatRequest):
                 _adaptive_top_k = _strategy_config.get("top_k", settings.RERANK_TOP_K)
 
                 # 构建可见性过滤表达式
-                _vis_expr = milvus_manager.build_visibility_expr(_user_role, request.doc_ids)
+                _vis_expr = milvus_manager.build_visibility_expr(_user_role, body.doc_ids)
 
                 # ---- DAG Progress: 查询理解完成，复杂度分析完成，开始检索 ----
                 _dag_nodes[1]["status"] = "done"
@@ -521,6 +576,21 @@ async def chat_stream(request: ChatRequest):
                             "supported_count": len(faith_result["supported_sentences"]),
                         })
 
+                # ---- 保存到 Query Cache ----
+                try:
+                    if full_content and token_usage:
+                        cache_data = json.dumps({
+                            "answer": full_content,
+                            "sources": sources,
+                            "confidence": confidence,
+                            "token_usage": token_usage.to_dict() if hasattr(token_usage, 'to_dict') else None,
+                        }, ensure_ascii=False)
+                        await redis_manager.client.setex(cache_key, 3600, cache_data)
+                        logger.info(f"[QueryCache] 已缓存: {safe_query}, TTL=3600s")
+                except Exception:
+                    pass
+                # ---- 缓存保存结束 ----
+
                 # 发送来源信息
                 if sources:
                     yield _sse_format({
@@ -550,7 +620,7 @@ async def chat_stream(request: ChatRequest):
 
                 # 保存对话记忆（应用输出安全过滤）
                 if session_id and chat_memory:
-                    await chat_memory.add_message(session_id, "user", request.query)
+                    await chat_memory.add_message(session_id, "user", body.query)
                     await chat_memory.add_message(
                         session_id, "assistant", _apply_output_guard(full_content),
                         metadata={"confidence": confidence, "sources": sources[:3]},
@@ -580,6 +650,21 @@ async def chat_stream(request: ChatRequest):
                     logger.info(f"[Clarify] 已发送澄清提问")
                     return
 
+                # ---- 工具权限检查（必须在发送 tool_status 之前） ----
+                if not _is_tool_allowed(tool_name, _user_role):
+                    logger.warning(f"[Permission] 用户角色 {_user_role} 无权调用工具 {tool_name}")
+                    yield _sse_format({
+                        "type": "tool_blocked",
+                        "tool": tool_name,
+                        "reason": f"您的角色「{_role_label(_user_role)}」无权执行此操作",
+                    })
+                    yield _sse_format({
+                        "type": "content",
+                        "content": f"⚠️ 无权执行 **{tool_name}** 操作。如需权限，请联系管理员。",
+                    })
+                    yield "data: [DONE]\n\n"
+                    return
+
                 # 发送工具调用状态
                 yield _sse_format({
                     "type": "tool_status",
@@ -589,7 +674,7 @@ async def chat_stream(request: ChatRequest):
 
                 # ---- 写操作审批检查 ----
                 WRITE_TOOLS = {"create_ticket"}
-                if tool_name in WRITE_TOOLS and not getattr(request, 'approved', False):
+                if tool_name in WRITE_TOOLS and (not body.approved or body.approved_tool != tool_name):
                     # 发送审批请求，不执行工具
                     logger.info(f"[Approval] 写操作需要审批: tool={tool_name}")
                     yield _sse_format({
@@ -605,7 +690,7 @@ async def chat_stream(request: ChatRequest):
                     yield "data: [DONE]\n\n"
                     return
 
-                agent = _get_tool_agent(request.agent_type)
+                agent = _get_tool_agent(body.agent_type)
                 result = await agent.run(
                     query=safe_query,
                     tool_names=[tool_name] if tool_name else None,

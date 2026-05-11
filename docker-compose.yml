@@ -1,5 +1,56 @@
 services:
   # ==========================================
+  # SmartQA 后端服务
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartqa-backend
+    ports:
+      - "8001:8001"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=smartqa
+      - POSTGRES_PASSWORD=smartqa123
+      - POSTGRES_DB=smartqa
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MILVUS_HOST=milvus
+      - MILVUS_PORT=19530
+    volumes:
+      # 保持 SQLite 数据文件持久化
+      - ./backend/app/data:/app/app/data:rw
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/auth/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # SmartQA 前端服务
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8001
+    container_name: smartqa-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  # ==========================================
   # Milvus 向量数据库 (Standalone模式)
   # ==========================================
   etcd:
@@ -82,16 +133,18 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: smartqa-postgres
+    command: ["postgres", "-c", "port=15432"]
     environment:
       POSTGRES_USER: smartqa
       POSTGRES_PASSWORD: smartqa123
       POSTGRES_DB: smartqa
+      PGPORT: 15432
     ports:
-      - "15432:5432"
+      - "15432:15432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smartqa"]
+      test: ["CMD-SHELL", "pg_isready -U smartqa -p 15432"]
       interval: 10s
       timeout: 5s
       retries: 5

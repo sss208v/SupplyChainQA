@@ -25,6 +25,12 @@
 import request from './request'
 
 const API_PREFIX = '/api/v1'
+const debugLog = (...args) => {
+  if (import.meta.env.DEV) console.log(...args)
+}
+const debugWarn = (...args) => {
+  if (import.meta.env.DEV) console.warn(...args)
+}
 
 /**
  * 获取模型列表
@@ -108,7 +114,12 @@ export function cancelStream() {
 export async function chatStream(data, callbacks = {}) {
   const url = `${API_PREFIX}/chat/stream`
   const t0 = performance.now()
-  console.log(`[ChatStream +0ms] 请求发送:`, { url, data })
+  debugLog(`[ChatStream +0ms] 请求发送:`, { url, data })
+  const headers = { 'Content-Type': 'application/json' }
+  const token = localStorage.getItem('token')
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
 
   // 创建 AbortController 用于取消请求
   currentController = new AbortController()
@@ -116,15 +127,15 @@ export async function chatStream(data, callbacks = {}) {
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(data),
       signal: currentController.signal,
     })
-    console.log(`[ChatStream +${(performance.now()-t0).toFixed(0)}ms] HTTP状态:`, response.status, response.statusText)
+    debugLog(`[ChatStream +${(performance.now()-t0).toFixed(0)}ms] HTTP状态:`, response.status, response.statusText)
   } catch (err) {
     console.error(`[ChatStream +${(performance.now()-t0).toFixed(0)}ms] fetch失败:`, err)
     if (err.name === 'AbortError') {
-      console.log(`[ChatStream] 请求被用户取消`)
+      debugLog(`[ChatStream] 请求被用户取消`)
     } else {
       callbacks.onError?.(`网络请求失败: ${err.message}。请确认后端已启动且端口为 8001。`)
     }
@@ -152,7 +163,7 @@ export async function chatStream(data, callbacks = {}) {
   let eventCount = 0
   let lastContentTime = t0
 
-  console.log(`[ChatStream +${(performance.now()-t0).toFixed(0)}ms] 开始读取SSE流...`)
+  debugLog(`[ChatStream +${(performance.now()-t0).toFixed(0)}ms] 开始读取SSE流...`)
 
   while (true) {
     const { done, value } = await reader.read()
@@ -174,7 +185,7 @@ export async function chatStream(data, callbacks = {}) {
       // 结束标记
       if (dataStr === '[DONE]') {
         const totalMs = (performance.now() - t0).toFixed(0)
-        console.log(`[ChatStream +${totalMs}ms] === 流结束 === 共${eventCount}个事件，前端总耗时=${totalMs}ms`)
+        debugLog(`[ChatStream +${totalMs}ms] === 流结束 === 共${eventCount}个事件，前端总耗时=${totalMs}ms`)
         callbacks.onDone?.()
         return
       }
@@ -183,7 +194,7 @@ export async function chatStream(data, callbacks = {}) {
         const parsed = JSON.parse(dataStr)
         eventCount++
         const eventMs = (performance.now() - t0).toFixed(0)
-        console.log(`[ChatStream +${eventMs}ms 事件#${eventCount}]`, parsed.type, parsed)
+        debugLog(`[ChatStream +${eventMs}ms 事件#${eventCount}]`, parsed.type, parsed)
 
         switch (parsed.type) {
           case 'session':
@@ -229,6 +240,9 @@ export async function chatStream(data, callbacks = {}) {
           case 'performance_metrics':
             callbacks.onPerformanceMetrics?.(parsed.metrics)
             break
+          case 'cache_hit':
+            callbacks.onCacheHit?.(parsed)
+            break
           case 'approval_request':
             callbacks.onApprovalRequest?.(parsed)
             break
@@ -239,13 +253,13 @@ export async function chatStream(data, callbacks = {}) {
         }
       } catch (e) {
         // 解析失败的行跳过
-        console.warn(`[ChatStream] SSE解析失败:`, e, '原始数据:', dataStr)
+        debugWarn(`[ChatStream] SSE解析失败:`, e, '原始数据:', dataStr)
       }
     }
   }
 
   // 流正常结束但没收到 [DONE]
   const totalMs = (performance.now() - t0).toFixed(0)
-  console.warn(`[ChatStream +${totalMs}ms] 流结束但未收到[DONE]，共${eventCount}个事件`)
+  debugWarn(`[ChatStream +${totalMs}ms] 流结束但未收到[DONE]，共${eventCount}个事件`)
   callbacks.onDone?.()
 }

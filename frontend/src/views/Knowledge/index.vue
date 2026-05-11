@@ -5,7 +5,9 @@
         <el-col :span="8">
           <el-card shadow="hover">
             <div class="stat-card">
-              <el-icon :size="32" color="#409eff"><Document /></el-icon>
+              <div class="icon-wrap" style="background: rgba(64,158,255,0.1);">
+                <el-icon :size="28" color="#409eff"><Document /></el-icon>
+              </div>
               <div>
                 <div class="stat-value">{{ knowledgeStore.stats.total_chunks }}</div>
                 <div class="stat-label">知识切片数</div>
@@ -16,7 +18,9 @@
         <el-col :span="8">
           <el-card shadow="hover">
             <div class="stat-card">
-              <el-icon :size="32" color="#67c23a"><Cpu /></el-icon>
+              <div class="icon-wrap" style="background: rgba(103,194,58,0.1);">
+                <el-icon :size="28" color="#67c23a"><Cpu /></el-icon>
+              </div>
               <div>
                 <div class="stat-value">{{ knowledgeStore.stats.embedding_model }}</div>
                 <div class="stat-label">嵌入模型</div>
@@ -27,7 +31,9 @@
         <el-col :span="8">
           <el-card shadow="hover">
             <div class="stat-card">
-              <el-icon :size="32" color="#e6a23c"><DataAnalysis /></el-icon>
+              <div class="icon-wrap" style="background: rgba(230,162,60,0.1);">
+                <el-icon :size="28" color="#e6a23c"><DataAnalysis /></el-icon>
+              </div>
               <div>
                 <div class="stat-value">{{ knowledgeStore.stats.embedding_dimension }}</div>
                 <div class="stat-label">向量维度</div>
@@ -83,11 +89,19 @@
           <el-button
             type="primary"
             :loading="knowledgeStore.uploading"
-            :disabled="!pendingFiles.length || !selectedGroups.length"
             @click="handleUpload"
           >
             <el-icon><Upload /></el-icon>
             开始上传并索引
+          </el-button>
+          <el-button
+            type="success"
+            :loading="ingesting"
+            @click="handleIngest"
+            style="margin-left: 12px;"
+          >
+            <el-icon><Download /></el-icon>
+            📥 一键导入大厂供应链样本库
           </el-button>
         </div>
       </el-card>
@@ -157,10 +171,12 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useKnowledgeStore } from '@/stores/knowledge'
+import request from '@/api/request'
 const knowledgeStore = useKnowledgeStore()
 const uploadRef = ref(null)
 const pendingFiles = ref([])
 const selectedGroups = ref(['admin', 'employee'])
+const ingesting = ref(false)
 
 // 部门标签映射
 const groupLabels = {
@@ -201,6 +217,20 @@ async function handleUpload() {
   uploadRef.value?.clearFiles()
 }
 
+async function handleIngest() {
+  ingesting.value = true
+  try {
+    const res = await request.post('/api/v1/knowledge/ingest')
+    ElMessage.success(res.message || `导入成功: ${res.total_chunks} 个 chunk`)
+    knowledgeStore.fetchDocuments()
+    knowledgeStore.fetchStats()
+  } catch (err) {
+    ElMessage.error(`导入失败: ${err.message}`)
+  } finally {
+    ingesting.value = false
+  }
+}
+
 async function handleDelete(docId) {
   try {
     await knowledgeStore.remove(docId)
@@ -223,29 +253,39 @@ function refreshList() {
 }
 
 .stats-row {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .stat-card {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-4);
+}
+
+.stat-card .icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .stat-value {
-  font-size: 20px;
-  font-weight: bold;
-  color: #303133;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-primary);
 }
 
 .stat-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-placeholder);
   margin-top: 2px;
 }
 
 .upload-card {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .card-header {
@@ -257,32 +297,33 @@ function refreshList() {
 .card-header span {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   font-weight: 600;
+  font-size: 15px;
 }
 
 .permission-section {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .permission-label {
   font-size: 14px;
-  color: #606266;
-  margin-bottom: 8px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
 }
 
 .permission-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .upload-actions {
-  margin-top: 16px;
+  margin-top: var(--space-4);
   text-align: right;
 }
 
 .doc-list-card {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 </style>

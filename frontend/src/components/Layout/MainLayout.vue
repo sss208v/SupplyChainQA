@@ -67,6 +67,14 @@
           @click="isCollapsed = !isCollapsed"
           class="collapse-btn"
         />
+        <el-tooltip content="系统架构图" placement="right">
+          <el-button
+            text
+            :icon="Link"
+            class="arch-btn"
+            @click="openArchitecture"
+          />
+        </el-tooltip>
       </div>
     </el-aside>
 
@@ -88,15 +96,23 @@
             <el-option label="MiniMax" value="minimax" />
             <el-option label="Ollama" value="ollama" />
           </el-select>
-          <el-tag type="success" effect="dark" round>
-            <el-icon><CircleCheck /></el-icon> 服务在线
+          <el-tag type="success" effect="plain" round size="small">
+            <el-icon><CircleCheck /></el-icon> 在线
           </el-tag>
           <!-- 用户信息 -->
-          <el-dropdown @command="handleCommand" style="margin-left: 16px;">
+          <el-dropdown @command="handleCommand" class="user-dropdown">
             <span class="user-info">
               <el-icon><User /></el-icon>
-              {{ authStore.username }}
-              <el-tag size="small" style="margin-left: 4px;">{{ authStore.department }}</el-tag>
+              <span class="username">{{ authStore.username }}</span>
+              <el-tag
+                v-if="deptLabel"
+                size="small"
+                effect="plain"
+                round
+                class="dept-tag"
+              >
+                {{ deptLabel }}
+              </el-tag>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
@@ -124,7 +140,7 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Expand, Fold, ChatDotRound, Folder, SetUp, Monitor, CircleCheck, DataAnalysis, User } from '@element-plus/icons-vue'
+import { Expand, Fold, ChatDotRound, Folder, SetUp, Monitor, CircleCheck, DataAnalysis, User, Link } from '@element-plus/icons-vue'
 import { listModels, switchModel } from '@/api/chat'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
@@ -215,6 +231,18 @@ listModels().then(res => {
 const activeMenu = computed(() => route.path)
 const currentPageTitle = computed(() => route.meta.title || '供应链助手')
 
+// 部门标签映射
+const deptLabels = {
+  admin: '管理员',
+  purchase: '采购部',
+  warehouse: '仓库部',
+  quality: '质量部',
+  production: '生产部',
+  finance: '财务部',
+  logistics: '物流部',
+}
+const deptLabel = computed(() => deptLabels[authStore.role] || authStore.department || '')
+
 async function onModelChange(provider) {
   try {
     const res = await switchModel(provider)
@@ -231,6 +259,11 @@ function handleCommand(command) {
     router.push('/login')
     ElMessage.success('已退出登录')
   }
+}
+
+function openArchitecture() {
+  const url = `${window.location.origin}/architecture.html`
+  window.open(url, '_blank')
 }
 </script>
 
@@ -277,6 +310,15 @@ function handleCommand(command) {
 
 .collapse-btn {
   color: #a0a3bd !important;
+}
+
+.arch-btn {
+  color: #a0a3bd !important;
+  margin-left: 4px;
+}
+
+.arch-btn:hover {
+  color: #409eff !important;
 }
 
 /* 对话历史区域 */
@@ -370,23 +412,32 @@ function handleCommand(command) {
 }
 
 .header {
+  height: 56px;
   background: #fff;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  padding: 0 20px;
-  z-index: 1;
+  border-bottom: 1px solid #e4e7ed;
+  box-shadow: 0 1px 0 #e4e7ed;
+  padding: 0 24px;
+  z-index: 100;
 }
 
 .header-left h3 {
   font-size: 16px;
-  color: #303133;
+  font-weight: 600;
+  color: #1a1f36;
+  margin: 0;
 }
 
 .content {
   padding: 20px;
   overflow: auto;
+  background: #f5f7fa;
+}
+
+.user-dropdown {
+  margin-left: 16px;
 }
 
 .user-info {
@@ -395,10 +446,18 @@ function handleCommand(command) {
   gap: 6px;
   cursor: pointer;
   font-size: 14px;
-  color: #606266;
+  color: #303133;
 }
 
 .user-info:hover {
   color: #409eff;
+}
+
+.username {
+  font-weight: 500;
+}
+
+.dept-tag {
+  margin-left: 4px;
 }
 </style>

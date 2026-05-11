@@ -184,7 +184,7 @@ class ToolAgent:
             else:
                 try:
                     tool_func = available_tools[tool_name]
-                    observation = tool_func.invoke(tool_input)
+                    observation = await tool_func.ainvoke(tool_input)
                     logger.info(f"工具调用成功: {tool_name}({tool_input}) = {observation}")
                 except Exception as e:
                     observation = f"工具执行错误: {e}"
@@ -237,15 +237,24 @@ class ToolAgent:
         - 使用LangChain的PydanticOutputParser
         - 使用Structured Output（如JSON Mode）
         """
-        import re
-
-        # 尝试提取JSON
-        json_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
-        if not json_match:
+        # 用栈匹配找最外层 JSON 范围（支持嵌套）
+        start = text.find('{')
+        if start == -1:
             return None
+        depth = 0
+        end = start
+        for i in range(start, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        json_str = text[start:end]
 
         try:
-            parsed = json.loads(json_match.group())
+            parsed = json.loads(json_str)
             if "action" in parsed and "action_input" in parsed:
                 return parsed
         except json.JSONDecodeError:

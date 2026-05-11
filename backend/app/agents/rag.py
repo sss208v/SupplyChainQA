@@ -131,6 +131,7 @@ class RAGAgent:
 
     def __init__(self):
         self.rag = rag_engine
+        self.logger = logging.getLogger(__name__)
 
     async def answer(
         self,
@@ -370,15 +371,20 @@ class RAGAgent:
         """
         if query_type == "specific":
             # 明确问题 → 直接检索
+            self.logger.info(f"[_prepare_queries] query_type=specific → 直接检索: {query}")
             return [query]
 
         elif query_type == "ambiguous":
-            # 模糊问题 → 直接检索（HyDE省略，节省14秒embedding时间）
-            return [query]
+            # 模糊问题 → 用HyDE生成假设文档，增强语义检索
+            hyde_query = await self._generate_hyde(query)
+            self.logger.info(f"[_prepare_queries] query_type=ambiguous → HyDE: {hyde_query[:80]}...")
+            return [hyde_query]
 
         else:
-            # 宽泛问题 → 直接检索（子问题改写省略）
-            return [query]
+            # 宽泛问题 → 拆分为多个子问题，扩大检索覆盖范围
+            sub_queries = await self._generate_sub_queries(query)
+            self.logger.info(f"[_prepare_queries] query_type=broad → {len(sub_queries)}个子问题: {sub_queries}")
+            return sub_queries
 
     async def _generate_hyde(self, query: str) -> str:
         """HyDE：生成假设文档用于语义检索"""

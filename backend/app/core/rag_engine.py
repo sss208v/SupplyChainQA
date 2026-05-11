@@ -35,12 +35,22 @@ class EmbeddingEngine:
             return
 
         try:
+            import warnings
             logger.info(f"正在加载嵌入模型: {settings.EMBEDDING_MODEL}")
-            self._model = HuggingFaceBgeEmbeddings(
-                model_name=settings.EMBEDDING_MODEL,
-                model_kwargs={"device": settings.EMBEDDING_DEVICE},
-                encode_kwargs={"normalize_embeddings": True},
-            )
+            # 抑制 langchain_community 中 HuggingFaceBgeEmbeddings 的 deprecation warning
+            # 该 warning 建议迁移到 langchain_huggingface，但该包需要额外安装；
+            # 功能完全正常，等下一次依赖升级时统一迁移
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    category=Warning,
+                    message=".*HuggingFaceBgeEmbeddings.*",
+                )
+                self._model = HuggingFaceBgeEmbeddings(
+                    model_name=settings.EMBEDDING_MODEL,
+                    model_kwargs={"device": settings.EMBEDDING_DEVICE},
+                    encode_kwargs={"normalize_embeddings": True},
+                )
             logger.info("嵌入模型加载完成")
         except Exception as e:
             # 【降级策略】嵌入模型加载失败时，设置为None，后续调用会抛出明确的RuntimeError
@@ -54,7 +64,8 @@ class EmbeddingEngine:
         if self._model is None:
             raise RuntimeError("嵌入模型不可用，无法执行向量检索。请检查模型配置或网络连接。")
 
-        # 检查缓存
+        # Embedding 向量是文本语义的数学表征，不承载权限信息。
+        # 真正的权限边界在检索层（visibility_expr 过滤）和结果缓存层（query_cache 含 visibility_expr）。
         cache_key = hashlib.md5(text.encode()).hexdigest()
         if cache_key in _embedding_cache:
             logger.debug(f"Embedding cache hit: {text[:30]}...")
@@ -209,7 +220,7 @@ class BM25Engine:
         self._bm25: Optional["BM25Okapi"] = None
         self._doc_index_map: dict[str, int] = {}  # chunk_id -> corpus index
 
-    def index_documents(self, doc_id: str, chunks: list[dict]):
+    def index_documents(self, doc_id: str, chunks: list[dict], security_group: list[str] | None = None):
         """
         索引文档切片
 
@@ -217,6 +228,8 @@ class BM25Engine:
             doc_id: 文档ID
             chunks: 切片列表 [{chunk_id, content, source, page_num}]
         """
+        security_group = security_group or ["admin"]
+
         # 清理旧数据（如果已存在）
         self._remove_doc_by_id(doc_id)
 
@@ -234,6 +247,7 @@ class BM25Engine:
                 "chunk_id": chunk_id,
                 "source": chunk.get("source", ""),
                 "page_num": chunk.get("page_num", 0),
+                "security_group": security_group,
             })
 
         # 初始化 BM25
@@ -241,7 +255,13 @@ class BM25Engine:
         self._bm25 = BM25Okapi(self._tokenized_corpus)
         logger.info(f"BM25索引完成: doc_id={doc_id}, 切片数={len(chunks)}, 总语料={len(self._tokenized_corpus)}")
 
-    def search(self, query: str, top_k: int = 20) -> list[dict]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 20,
+        allowed_roles: Optional[list[str]] = None,
+        doc_ids: Optional[list[str]] = None,
+    ) -> list[dict]:
         """
         BM25关键词检索（真正的 BM25 算法）
         """
@@ -256,16 +276,25 @@ class BM25Engine:
         scored.sort(key=lambda x: x[0], reverse=True)
 
         results = []
-        for score, chunk in scored[:top_k]:
+        for score, chunk in scored:
+            if doc_ids and chunk.get("doc_id") not in doc_ids:
+                continue
+            if allowed_roles:
+                groups = set(chunk.get("security_group") or [])
+                if not groups.intersection(allowed_roles):
+                    continue
             results.append({
                 "content": chunk["content"],
                 "source": chunk.get("source", ""),
                 "page_num": chunk.get("page_num", 0),
                 "chunk_id": chunk["chunk_id"],
                 "doc_id": chunk.get("doc_id", ""),
+                "security_group": chunk.get("security_group", ["admin"]),
                 "bm25_score": float(score),
                 "retrieval_source": "bm25",
             })
+            if len(results) >= top_k:
+                break
 
         return results
 
@@ -389,7 +418,7 @@ class RAGEngine:
         result = milvus_manager.batch_insert(records)
 
         # 3. 建立BM25索引
-        self.bm25.index_documents(doc_id, chunks)
+        self.bm25.index_documents(doc_id, chunks, security_group=security_group)
 
         return {
             "doc_id": doc_id,
@@ -426,7 +455,7 @@ class RAGEngine:
         _t0 = _t.perf_counter()
 
         # Query Cache：相同 query 直接返回缓存结果
-        cache_key = hashlib.md5(f"{query}_{top_k}_{doc_ids}".encode()).hexdigest()
+        cache_key = hashlib.md5(f"{query}_{top_k}_{doc_ids}_{visibility_expr}".encode()).hexdigest()
         if cache_key in self._query_cache:
             cached_time, cached_result = self._query_cache[cache_key]
             if _t.time() - cached_time < self._QUERY_CACHE_TTL:
@@ -446,7 +475,13 @@ class RAGEngine:
 
         # 2. BM25检索
         _t1 = _t.perf_counter()
-        bm25_results = self.bm25.search(query, top_k=settings.BM25_TOP_K)
+        bm25_allowed_roles = self._roles_from_visibility_expr(visibility_expr)
+        bm25_results = self.bm25.search(
+            query,
+            top_k=settings.BM25_TOP_K,
+            allowed_roles=bm25_allowed_roles,
+            doc_ids=doc_ids,
+        )
         _t_bm25 = _t.perf_counter() - _t1
 
         # 3. 合并去重
@@ -551,6 +586,16 @@ class RAGEngine:
         merged.sort(key=lambda x: x["rrf_score"], reverse=True)
 
         return merged
+
+    @staticmethod
+    def _roles_from_visibility_expr(visibility_expr: str) -> Optional[list[str]]:
+        """Extract role filters from the Milvus visibility expression for BM25 filtering."""
+        if not visibility_expr:
+            return None
+
+        import re
+        roles = re.findall(r'array_contains\(security_group,\s*"([^"]+)"\)', visibility_expr)
+        return roles or None
 
 
     @staticmethod

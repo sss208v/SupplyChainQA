@@ -277,6 +277,20 @@ def _read_pdf(file_path: str) -> str:
         text_parts = []
         with pdfplumber.open(file_path) as pdf:
             for page in pdf.pages:
+                # 提取表格 → Markdown（优先）
+                tables = page.extract_tables()
+                for table in tables:
+                    if not table:
+                        continue
+                    md_rows = []
+                    for row_idx, row in enumerate(table):
+                        cells = [c.strip() if c else "" for c in row]
+                        md_rows.append("| " + " | ".join(cells) + " |")
+                        if row_idx == 0:
+                            md_rows.append("| " + " | ".join(["---"] * len(cells)) + " |")
+                    text_parts.append("\n".join(md_rows))
+
+                # 提取段落文本
                 page_text = page.extract_text()
                 if page_text:
                     text_parts.append(page_text)
@@ -524,3 +538,60 @@ def _chunk_text(text: str, chunk_size: int = 512, chunk_overlap: int = 64) -> li
     _flush_current()
 
     return [c for c in chunks if c.get("content")]
+
+
+# ---- 批量入库接口 ----
+
+class IngestResponse(BaseModel):
+    """批量入库响应"""
+    success: bool = True
+    message: str = ""
+    total_chunks: int = 0
+    downloaded: int = 0
+
+
+@router.post("/ingest", response_model=IngestResponse)
+async def ingest_real_pdfs():
+    """
+    一键导入大厂供应链样本库
+
+    流程：
+    1. 下载 5 份真实大厂供应链公开报告（或使用本地知识库 fallback）
+    2. 解析 PDF/Markdown，提取文本和表格
+    3. 切片 + 嵌入 + 存入 Milvus
+    """
+    import sys
+    import os
+    import asyncio
+
+    scripts_dir = os.path.join(os.path.dirname(__file__), "..", "scripts")
+    sys.path.insert(0, scripts_dir)
+
+    try:
+        from scripts.ingest_pdfs import ingest_all, PDF_DIR
+        from scripts.download_real_pdfs import download_all
+
+        # 1. 下载 PDF
+        await asyncio.get_event_loop().run_in_executor(None, download_all)
+
+        # 统计下载的文件
+        if os.path.exists(PDF_DIR):
+            pdfs = [f for f in os.listdir(PDF_DIR) if f.lower().endswith(".pdf")]
+            mds = [f for f in os.listdir(PDF_DIR) if f.lower().endswith(".md")]
+            downloaded = len(pdfs) + len(mds)
+        else:
+            downloaded = 0
+
+        # 2. 入库
+        total_chunks = await asyncio.get_event_loop().run_in_executor(None, ingest_all)
+
+        return IngestResponse(
+            success=True,
+            message=f"下载 {downloaded} 份报告，入库 {total_chunks or 0} 个 chunk",
+            total_chunks=total_chunks or 0,
+            downloaded=downloaded,
+        )
+
+    except Exception as e:
+        logger.error(f"批量入库失败: {e}")
+        raise HTTPException(status_code=500, detail=f"批量入库失败: {e}")

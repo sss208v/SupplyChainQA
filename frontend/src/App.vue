@@ -14,10 +14,9 @@ import MainLayout from '@/components/Layout/MainLayout.vue'
 }
 html, body, #app {
   height: 100%;
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', Arial, sans-serif;
+  font-family: var(--font-body);
 }
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-thumb { background: #c0c4cc; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--color-text-meta); border-radius: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 </style>

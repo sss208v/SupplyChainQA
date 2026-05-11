@@ -13,11 +13,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(username, password) {
     const res = await loginApi(username, password)
+    // 确保使用后端返回的完整用户数据，不依赖旧 localStorage
+    const userData = res.user || {}
     token.value = res.token
     user.value = {
-      username: res.username,
-      role: res.role,
-      department: res.department,
+      username: userData.username || username,
+      role: userData.role || '',
+      department: userData.department || '',
     }
     localStorage.setItem('token', res.token)
     localStorage.setItem('user', JSON.stringify(user.value))
