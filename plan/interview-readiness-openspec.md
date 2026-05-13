@@ -10,7 +10,7 @@
 
 ---
 
-## 2. 当前基线
+## 2. 当前基线 (2026-05-14 更新)
 
 | 维度 | 状态 | 说明 |
 |------|------|------|
@@ -18,10 +18,13 @@
 | 知识库 | ✅ | 92 篇文档 (1.2MB)，7 部门 × 10+ 篇 |
 | 问题库 | ✅ | `plan/demo-questions.md` 100 题，10 类 × 10 题 |
 | 架构图 | ✅ | docs/architecture.svg 浅色主题，无重叠 |
-| 面试 HTML | ⚠️ | 2040 行，核心模块已校对，部分指标需刷新 |
-| 演示脚本 | ⚠️ | demo_start.ps1 可用，但知识库需重新索引 |
-| RAG 指标 | ⚠️ | 旧指标基于 20 篇文档，92 篇后需重跑 |
-| 推送 | ⚠️ | 4 个 commit 未 push |
+| 面试 HTML | ✅ | 19 导航项，行数/指标/PDF链/config语法与代码一致 |
+| 上传脚本 | ✅ | `scripts/upload_knowledge_base.py` — 批量索引 70 篇新文档 |
+| 验证脚本 | ✅ | `scripts/verify_demo.py` — 8 步全链路 API 测试 |
+| 话术审计 | ✅ | 18 项声明全部通过代码验证 |
+| 演示脚本 | ⚠️ | demo_start.ps1 可用，需先执行上传脚本索引知识库 |
+| RAG 指标 | ⚠️ | 旧指标基于 20 篇文档，92 篇后需重跑（REQ-2 待后端启动后执行） |
+| Git 推送 | ⚠️ | 6 个 commit 未 push（REQ-7） |
 
 ---
 
@@ -220,18 +223,18 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001
 
 ```
 系统完善:
-[ ] REQ-1: 70 篇新文档索引到 Milvus → knowledge_docs_count > 500
+[ ] REQ-1: 70 篇新文档索引到 Milvus → knowledge_docs_count > 500（脚本就绪：scripts/upload_knowledge_base.py）
 [ ] REQ-7: git push 成功，GitHub README 渲染正常
-[ ] REQ-8: 测试 58/59 通过（无回归）
+[✅] REQ-8: 测试 58/59 通过（无回归）
 
 手册完善:
-[ ] REQ-2: HTML 指标刷新为 92 篇 KB 实测值
-[ ] REQ-3: HTML 新增 3 个章节（知识库概览/部署/排查）
-[ ] REQ-6: 话术一致性审计通过（行数、功能描述与代码匹配）
+[ ] REQ-2: HTML 指标刷新为 92 篇 KB 实测值（需后端启动后重跑 eval）
+[✅] REQ-3: HTML 新增 3 个章节（知识库概览/部署/排查）+ 侧边栏 19 导航项
+[✅] REQ-6: 话术一致性审计通过（18/18 项声明与代码匹配）
 
 演示就绪:
-[ ] REQ-4: 8 步演示全链路验证通过
-[ ] REQ-5: 前端错误场景不白屏
+[✅] REQ-4: 验证脚本就绪（scripts/verify_demo.py — 8 步 API 测试）
+[ ] REQ-5: 前端错误场景不白屏（需手动浏览器验证）
 
 最终检查:
 [ ] demo_start.ps1 一键启动成功
