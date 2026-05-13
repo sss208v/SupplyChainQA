@@ -414,6 +414,11 @@
     <a href="#talk">面试话术</a>
     <a href="#faq">高频追问预判</a>
     <a href="#demo">演示流程</a>
+
+    <div class="section-label">运维</div>
+    <a href="#knowledge-overview">知识库概览</a>
+    <a href="#deployment">部署与运维</a>
+    <a href="#troubleshooting">问题排查</a>
   </div>
 </nav>
 
@@ -445,7 +450,7 @@
           <div class="card-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">🤖</div>
           <h3>Multi-Agent</h3>
           <p>三种 Agent 模式演进：手写 ReAct → LangChain → LangGraph，接口一致，一键切换</p>
-          <span class="tag blue">280行可控</span>
+          <span class="tag blue">291行可控</span>
         </div>
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#67c23a,#88d85e)">🛡️</div>
@@ -2029,7 +2034,153 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
       <div class="tip-box" style="margin-top:24px;">
         <strong>💡 面试要点：</strong> 每个功能点先说 <strong>「为什么这么做」</strong>，再说「怎么做的」。
         主动提局限性和 trade-off——面试官对「我也知道这里不完美」很有好感。
-        RAG 指标主动提及「R@3=0.53 是因为只有 20 篇文档，指标诚实可解释」。
+        RAG 指标主动提及「R@3=0.53 是因为文档量大且领域分散，指标诚实可解释」。
+      </div>
+    </section>
+
+    <!-- ===== 知识库概览 ===== -->
+    <section class="section" id="knowledge-overview">
+      <h2>知识库概览</h2>
+      <p>92 篇供应链专业文档，1.2MB，覆盖制造业 7 大部门。每个文档 3-5KB，含完整的管理职责、操作流程、KPI 指标和异常处理。</p>
+
+      <table class="stack-table">
+        <tr><th>部门</th><th>文档数</th><th>典型主题</th></tr>
+        <tr><td>采购部</td><td>11</td><td>合同条款、报价评估、紧急采购、进口通关、招标管理</td></tr>
+        <tr><td>仓库部</td><td>11</td><td>库位编码、先进先出、危险品存储、盘点作业、5S管理</td></tr>
+        <tr><td>质量部</td><td>11</td><td>AQL抽样、SPC控制、客诉处理、实验室标准、内审</td></tr>
+        <tr><td>生产部</td><td>11</td><td>排程规划、BOM管理、设备维护、换线作业、良率考核</td></tr>
+        <tr><td>财务部</td><td>11</td><td>付款结算、成本核算、账期管理、税务合规、预算偏差</td></tr>
+        <tr><td>物流部</td><td>11</td><td>承运商考核、冷链温控、跨境物流、保险理赔、路线优化</td></tr>
+        <tr><td>综合管理</td><td>11</td><td>KPI指标库、ERP手册、ESG管理、业务连续性、数字化转型</td></tr>
+        <tr><td>原有文档</td><td>15</td><td>供应商管理手册、质量检验标准、库存管理制度、FAQ等</td></tr>
+      </table>
+
+      <div class="card-grid" style="margin-top:16px">
+        <div class="card">
+          <h3>文档结构</h3>
+          <p>每篇文档包含：目的与范围 → 管理职责 → 操作流程（5 步）→ KPI 指标表 → 异常处理（3 类 + 紧急通道）→ 附录</p>
+        </div>
+        <div class="card">
+          <h3>检索覆盖</h3>
+          <p>Milvus 向量检索 + BM25 关键词双路召回，按 section 标题做 semantic chunking。</p>
+          <span class="tag blue">~600 chunks</span>
+        </div>
+        <div class="card">
+          <h3>权限配置</h3>
+          <p>每篇文档 upload 时指定 security_group。FAQ 等公共文档对所有 7 部门可见，财务/采购文档仅对相关部门可见。</p>
+          <span class="tag green">7 角色隔离</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 部署与运维 ===== -->
+    <section class="section" id="deployment">
+      <h2>部署与运维</h2>
+      <p>通过 Docker Compose 管理 6 个基础设施服务 + 本地启动前后端。全链路健康检查。</p>
+
+      <h3>服务清单</h3>
+      <table class="stack-table">
+        <tr><th>服务</th><th>端口</th><th>用途</th><th>健康检查</th></tr>
+        <tr><td>Milvus</td><td>19530</td><td>向量存储 + 检索 + 行级权限过滤</td><td>/healthz</td></tr>
+        <tr><td>Redis</td><td>6379</td><td>对话记忆 + Query Cache (TTL 1h)</td><td>PING</td></tr>
+        <tr><td>PostgreSQL</td><td>15432</td><td>RBAC 认证 + 用户管理</td><td>pg_isready</td></tr>
+        <tr><td>etcd</td><td>2379</td><td>Milvus 元数据协调</td><td>endpoint health</td></tr>
+        <tr><td>MinIO</td><td>9000/9001</td><td>Milvus 数据持久化</td><td>/minio/health/live</td></tr>
+        <tr><td>Attu</td><td>8000</td><td>Milvus 可视化管理（可选）</td><td>-</td></tr>
+        <tr><td>后端 (FastAPI)</td><td>8001</td><td>API + SSE 流式 + Agent 决策</td><td>/health</td></tr>
+        <tr><td>前端 (Vite)</td><td>3000</td><td>Vue3 SPA</td><td>HTTP 200</td></tr>
+      </table>
+
+      <h3 style="margin-top:16px">一键启动</h3>
+      <div class="code-block"><code>.\demo_start.ps1</code></div>
+      <p style="font-size:13px;color:var(--text-secondary);">
+        脚本自动：检查 Docker → docker-compose up -d（仅基础设施）→ 等待健康 → 后台启动 uvicorn → 后台启动 vite → 打开浏览器。<br>
+        总耗时约 30-60 秒（取决于 Docker 镜像缓存和 Milvus 启动速度）。
+      </p>
+
+      <h3 style="margin-top:16px">关键配置项 (.env)</h3>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;">
+        <tr style="background:#1d1e2c;color:#fff"><td style="padding:4px 12px">配置</td><td style="padding:4px 12px">默认值</td><td style="padding:4px 12px">说明</td></tr>
+        <tr><td style="padding:4px 12px;font-weight:600">RERANKER_ENABLED</td><td style="padding:4px 12px">false</td><td style="padding:4px 12px">面试设为 false，启动快（2s）。开启后 CP 从 0.53→0.67</td></tr>
+        <tr><td style="padding:4px 12px;font-weight:600">AGENT_TYPE</td><td style="padding:4px 12px">react</td><td style="padding:4px 12px">react / langchain / langgraph 三种切换</td></tr>
+        <tr><td style="padding:4px 12px;font-weight:600">LLM_PROVIDER</td><td style="padding:4px 12px">deepseek</td><td style="padding:4px 12px">可切换 minimax / ollama</td></tr>
+        <tr><td style="padding:4px 12px;font-weight:600">SELF_RAG_ENABLED</td><td style="padding:4px 12px">true</td><td style="padding:4px 12px">LLM自评检索相关性，过滤噪音chunk</td></tr>
+        <tr><td style="padding:4px 12px;font-weight:600">FAITHFULNESS_ENABLED</td><td style="padding:4px 12px">true</td><td style="padding:4px 12px">关键词覆盖率检测幻觉</td></tr>
+        <tr><td style="padding:4px 12px;font-weight:600">CLIP_ENABLED</td><td style="padding:4px 12px">true</td><td style="padding:4px 12px">纯本地图文嵌入，不依赖外部 API</td></tr>
+      </table>
+    </section>
+
+    <!-- ===== 常见问题排查 ===== -->
+    <section class="section" id="troubleshooting">
+      <h2>常见问题排查</h2>
+      <p>面试现场遇到问题时，快速诊断和修复。按症状查找即可。</p>
+
+      <div class="faq-item">
+        <div class="q">🖥️ 症状：前端页面空白，没有任何内容</div>
+        <div class="a">
+          <strong>诊断：</strong><br>
+          1. 检查后端是否启动：<code>curl http://localhost:8001/health</code> → 无响应 = 后端未启动<br>
+          2. 检查前端是否启动：<code>curl http://localhost:3000</code> → 应返回 HTML<br>
+          3. 检查 Vite 代理：<code>frontend/vite.config.js</code> 中 proxy 目标是否为 <code>localhost:8001</code><br>
+          4. 常见原因：后端端口 8001 被旧进程占用
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">🔌 症状：端口 8001 被占用</div>
+        <div class="a">
+          <strong>快速修复：</strong><br>
+          <code>.\scripts\kill_port8001.ps1</code>（杀掉占用 8001 的进程，然后重启 uvicorn）<br>
+          或手动：<code>netstat -ano | findstr :8001</code> → 记下 PID → <code>taskkill /F /PID xxxx</code>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">🐳 症状：Docker 服务（Milvus/Redis/PG）未启动</div>
+        <div class="a">
+          <strong>诊断：</strong><br>
+          1. Docker Desktop 是否在运行？任务栏应有 Docker 图标<br>
+          2. <code>docker ps</code> 检查容器状态 → 期望看到 smartqa-milvus、smartqa-redis、smartqa-postgres<br>
+          3. 首次启动 Milvus 需要 30-90 秒（健康检查 start_period=90s）<br>
+          4. 如果 etcd 不健康：<code>docker-compose restart etcd</code>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">🧠 症状：RAG 回答内容与问题无关</div>
+        <div class="a">
+          <strong>诊断：</strong><br>
+          1. 知识库未索引：检查 <code>/health</code> 的 <code>knowledge_docs_count</code> → 0 = 文档未上传<br>
+          2. 需要上传 knowledge/ 目录下所有 .md 文件到 Milvus<br>
+          3. 权限过滤过严：用 admin 账号登录测试（admin 看全部文档）<br>
+          4. 检索参数：增大 <code>RERANK_TOP_K</code> 或 <code>VECTOR_TOP_K</code>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">⏱️ 症状：后端启动很慢（> 2 分钟）</div>
+        <div class="a">
+          <strong>原因：</strong> BGE-Reranker-v2-m3 模型（2.1GB）在预热阶段下载。<br>
+          <strong>快速修复：</strong> 在 <code>.env</code> 中设 <code>RERANKER_ENABLED=false</code>，启动只需 5 秒。<br>
+          CP 指标会从 0.67 降到 0.53，面试够用。需要时可运行时激活：<code>POST /admin/reranker/enable</code>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">🌐 症状：DeepSeek API 调用超时或返回错误</div>
+        <div class="a">
+          <strong>诊断：</strong><br>
+          1. 检查 <code>.env</code> 中 <code>DEEPSEEK_API_KEY</code> 是否正确<br>
+          2. 系统有 3 次指数退避 retry（2s→4s→8s），等待自动恢复<br>
+          3. 如果仍然失败，SSE error 事件会告知前端显示降级提示<br>
+          4. 备选：将 <code>LLM_PROVIDER</code> 改为 <code>ollama</code> 使用本地模型
+        </div>
+      </div>
+
+      <div class="tip-box" style="margin-top:16px">
+        <strong>💡 面试应急话术：</strong>「这个报错我遇到过——原因是 XXX。修复方法很简单：XXX。
+        我在代码里留了优雅降级，所以不会整个系统崩溃。这个设计思路是……」<br>
+        <strong>关键：</strong> 遇到问题不要慌，<strong>主动展示排查思路就是加分项</strong>。
       </div>
     </section>
 
