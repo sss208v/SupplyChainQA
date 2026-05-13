@@ -238,15 +238,51 @@ def _parse_and_chunk(file_path: str, filename: str, doc_id: str) -> list[dict]:
 
 
 def _read_pdf(file_path: str) -> str:
-    """读取PDF文件内容（使用pymupdf4llm，结构化Markdown输出）
+    """读取PDF文件内容（三阶回退：opendataloader → pymupdf4llm → pdfplumber）
 
-    1. pymupdf4llm 输出结构化Markdown，保留标题层级和表格
-    2. 表格自动转为Markdown表格格式，检索时语义更完整
-    3. 支持图片提取和描述（需VLM配合）
-    4. 比纯文本提取（pdfplumber）保留更多结构信息
+    1. opendataloader-pdf（主解析器）：benchmark #1 综合精度 0.907
+       - 结构化 Markdown/JSON 输出，自动过滤页眉页脚/水印
+       - 多栏布局确定性阅读顺序、表格精度 0.93
+       - 支持扫描件（Hybrid 模式 + AI 引擎）、图片提取
+       - 需 Java 11+（不可用时自动降级）
 
-    表格自动转为Markdown格式，标题层级保留，比纯文本提取效果好很多。
+    2. pymupdf4llm（第一 fallback）：纯 Python，不需 Java
+       - Markdown 输出，保留标题层级和表格
+       - 成熟稳定，覆盖绝大多数普通 PDF
+
+    3. pdfplumber（最终兜底）：表格 → Markdown 手动转换
     """
+    # === Tier 1: opendataloader-pdf（精度最高）===
+    _java_ok = _check_java()
+    if _java_ok:
+        try:
+            import opendataloader_pdf
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                # 使用 convert() 替代已废弃的 run()
+                opendataloader_pdf.convert(
+                    input_path=file_path,
+                    output_dir=tmp_dir,
+                    format="markdown",
+                    quiet=True,
+                )
+                md_files = [f for f in os.listdir(tmp_dir) if f.endswith('.md')]
+                if md_files:
+                    md_path = os.path.join(tmp_dir, md_files[0])
+                    with open(md_path, 'r', encoding='utf-8') as f:
+                        md_text = f.read()
+                    if md_text.strip():
+                        logger.info(f"[opendataloader] PDF解析成功: {len(md_text)} 字符")
+                        return md_text
+                raise ValueError("OpenDataLoader未生成可读文件")
+        except ImportError:
+            logger.warning("[opendataloader] 未安装，回退到pymupdf4llm")
+        except Exception as e:
+            logger.warning(f"[opendataloader] 解析失败: {e}，回退到pymupdf4llm")
+    else:
+        logger.info("[opendataloader] Java未检测到，跳过（需Java 11+），回退到pymupdf4llm")
+
+    # === Tier 2: pymupdf4llm（不需要Java）===
     try:
         import pymupdf4llm
         md_text = pymupdf4llm.to_markdown(file_path)
@@ -254,47 +290,59 @@ def _read_pdf(file_path: str) -> str:
             logger.info(f"[pymupdf4llm] PDF解析成功: {len(md_text)} 字符")
             return md_text
     except Exception as e:
-        logger.warning(f"[pymupdf4llm] 解析失败: {e}，回退到opendataloader")
+        logger.warning(f"[pymupdf4llm] 解析失败: {e}，回退到pdfplumber")
 
+    # === Tier 3: pdfplumber（最终兜底）===
+    import pdfplumber
+    text_parts = []
+    with pdfplumber.open(file_path) as pdf:
+        for page in pdf.pages:
+            # 提取表格 → Markdown（优先）
+            tables = page.extract_tables()
+            for table in tables:
+                if not table:
+                    continue
+                md_rows = []
+                for row_idx, row in enumerate(table):
+                    cells = [c.strip() if c else "" for c in row]
+                    md_rows.append("| " + " | ".join(cells) + " |")
+                    if row_idx == 0:
+                        md_rows.append("| " + " | ".join(["---"] * len(cells)) + " |")
+                text_parts.append("\n".join(md_rows))
+
+            # 提取段落文本
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+    return "\n\n".join(text_parts)
+
+
+def _check_java() -> bool:
+    """检测 Java 11+ 是否可用（opendataloader-pdf 需要）"""
+    import subprocess
     try:
-        import opendataloader_pdf
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            opendataloader_pdf.run(
-                input_path=file_path,
-                output_folder=tmp_dir,
-                generate_markdown=True,
-            )
-            md_files = [f for f in os.listdir(tmp_dir) if f.endswith('.md')]
-            if md_files:
-                md_path = os.path.join(tmp_dir, md_files[0])
-                with open(md_path, 'r', encoding='utf-8') as f:
-                    return f.read()
-            raise ValueError("OpenDataLoader未生成可读文件")
-    except ImportError:
-        logger.warning("[opendataloader] 未安装，回退到pdfplumber")
-        import pdfplumber
-        text_parts = []
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
-                # 提取表格 → Markdown（优先）
-                tables = page.extract_tables()
-                for table in tables:
-                    if not table:
-                        continue
-                    md_rows = []
-                    for row_idx, row in enumerate(table):
-                        cells = [c.strip() if c else "" for c in row]
-                        md_rows.append("| " + " | ".join(cells) + " |")
-                        if row_idx == 0:
-                            md_rows.append("| " + " | ".join(["---"] * len(cells)) + " |")
-                    text_parts.append("\n".join(md_rows))
-
-                # 提取段落文本
-                page_text = page.extract_text()
-                if page_text:
-                    text_parts.append(page_text)
-        return "\n\n".join(text_parts)
+        result = subprocess.run(
+            ["java", "-version"],
+            capture_output=True, text=True, timeout=10
+        )
+        # java -version 输出到 stderr
+        output = result.stderr or result.stdout
+        if "version" in output.lower():
+            # 提取主版本号（如 "1.8.0" → 8, "11.0.2" → 11）
+            import re
+            m = re.search(r'version "(\d+)', output)
+            if not m:
+                m = re.search(r'version "1\.(\d+)', output)
+            if m:
+                ver = int(m.group(1))
+                ok = ver >= 11
+                logger.debug(f"[Java] 检测到版本 {ver}, 可用={ok}")
+                return ok
+        return False
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return False
 
 
 def _read_text(file_path: str) -> str:

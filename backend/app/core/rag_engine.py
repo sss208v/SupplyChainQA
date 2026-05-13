@@ -7,7 +7,6 @@ import hashlib
 from typing import Optional
 from functools import lru_cache
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
-from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from app.config import get_settings
 from app.core.milvus_client import milvus_manager
 
@@ -125,10 +124,10 @@ class EmbeddingEngine:
 
 
 class RerankerEngine:
-    """重排序引擎 (BGE-Reranker)"""
+    """重排序引擎 (BGE-Reranker via sentence_transformers.CrossEncoder)"""
 
     def __init__(self):
-        self._model: Optional[HuggingFaceCrossEncoder] = None
+        self._model = None  # Optional[CrossEncoder]
 
     def init(self):
         """初始化重排序模型（带容错：加载失败不抛异常，搜索时降级为纯混合召回）"""
@@ -136,23 +135,14 @@ class RerankerEngine:
             return
 
         try:
+            from sentence_transformers import CrossEncoder
             logger.info(f"正在加载重排序模型: {settings.RERANKER_MODEL}")
-            # 【注意】HuggingFaceCrossEncoder 在新版 langchain 中不再接受 device 参数
-            # 需要通过 model_kwargs 传递
-            try:
-                self._model = HuggingFaceCrossEncoder(
-                    model_name=settings.RERANKER_MODEL,
-                    model_kwargs={"device": settings.RERANKER_DEVICE},
-                )
-            except Exception:
-                # 如果 model_kwargs 也不行，就不传 device
-                self._model = HuggingFaceCrossEncoder(
-                    model_name=settings.RERANKER_MODEL,
-                )
+            self._model = CrossEncoder(
+                settings.RERANKER_MODEL,
+                device=settings.RERANKER_DEVICE,
+            )
             logger.info("重排序模型加载完成")
         except Exception as e:
-            # 【降级策略】重排序模型加载失败时，设置为None
-            # rerank() 方法会检测到 _model is None，直接按原始分数排序返回
             self._model = None
             logger.warning(f"重排序模型加载失败，将降级为无精排的混合检索: {e}")
 
@@ -192,7 +182,7 @@ class RerankerEngine:
         pairs = [(query, doc["content"]) for doc in documents]
 
         # 计算重排序分数
-        scores = self._model.score(pairs)
+        scores = self._model.predict(pairs)
 
         # 合并分数并排序
         for doc, score in zip(documents, scores):
@@ -466,11 +456,25 @@ class RAGEngine:
 
         query_embedding = self.embedding.embed_query(query)
         _t_embed = _t.perf_counter() - _t0
-        vector_results = milvus_manager.search(
-            query_embedding=query_embedding,
-            top_k=settings.VECTOR_TOP_K,
-            expr=visibility_expr if visibility_expr else None,
-        )
+
+        # 向量检索（gRPC 超时时自动重试，最多2次，间隔1s）
+        vector_results = None
+        from app.core.retry import _is_retriable
+        for retry_i in range(3):
+            try:
+                vector_results = milvus_manager.search(
+                    query_embedding=query_embedding,
+                    top_k=settings.VECTOR_TOP_K,
+                    expr=visibility_expr if visibility_expr else None,
+                )
+                break
+            except Exception as e:
+                if not _is_retriable(e) or retry_i == 2:
+                    logger.warning(f"[Retry] Milvus向量检索失败(尝试{retry_i+1}/3): {type(e).__name__}: {e}")
+                    vector_results = []  # 降级：返回空结果，不抛异常
+                    break
+                logger.warning(f"[Retry] Milvus向量检索失败，1s后重试(尝试{retry_i+1}/3): {type(e).__name__}")
+                time.sleep(1)
         _t_vec = _t.perf_counter() - _t0 - _t_embed
 
         # 2. BM25检索
@@ -501,7 +505,7 @@ class RAGEngine:
         # 4. Reranker精排（带降级检测）
         # 【降级策略】rerank()内部会尝试初始化模型，如果失败则按原始分数排序
         _t2 = _t.perf_counter()
-        if settings.RERANKER_ENABLED:
+        if settings.RERANKER_ENABLED or self.reranker._model is not None:
             reranked = self.reranker.rerank(query, merged_for_rerank, top_k=top_k)
         else:
             for doc in merged_for_rerank:

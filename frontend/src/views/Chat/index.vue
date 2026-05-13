@@ -42,6 +42,23 @@
 
       <!-- 输入区域 -->
       <div class="input-area">
+        <!-- 图片预览 -->
+        <div v-if="chatStore.uploadingImages.length > 0" class="image-preview-bar">
+          <div
+            v-for="(img, idx) in chatStore.uploadingImages"
+            :key="idx"
+            class="image-preview-item"
+          >
+            <img :src="'data:image/jpeg;base64,' + img" class="preview-thumb" />
+            <el-button
+              class="preview-remove"
+              :icon="Close"
+              circle
+              size="small"
+              @click="chatStore.removeImage(idx)"
+            />
+          </div>
+        </div>
         <div class="input-wrapper">
           <el-input
             v-model="inputText"
@@ -51,8 +68,23 @@
             :disabled="chatStore.streaming"
             resize="none"
             @keydown.enter.exact.prevent="handleSend"
+            @paste="handlePaste"
           />
           <div class="input-actions">
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              @change="handleFileSelect"
+            />
+            <el-button
+              :icon="PictureFilled"
+              :disabled="chatStore.streaming"
+              @click="$refs.fileInputRef.click()"
+              title="上传图片"
+            />
             <el-button
               type="primary"
               :icon="Promotion"
@@ -85,7 +117,7 @@
  */
 import { ref, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Promotion, Delete, Plus } from '@element-plus/icons-vue'
+import { Promotion, Delete, Plus, PictureFilled, Close } from '@element-plus/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import ChatMessage from './components/ChatMessage.vue'
 
@@ -135,6 +167,8 @@ function handleSend() {
   if (!query || chatStore.streaming) return
   inputText.value = ''
   chatStore.sendMessage(query)
+  // 发送后清除图片
+  chatStore.clearImages()
 }
 
 function handleQuickAction(text) {
@@ -144,6 +178,29 @@ function handleQuickAction(text) {
 
 function handleClear() {
   chatStore.clearChat()
+  chatStore.clearImages()
+}
+
+function handleFileSelect(e) {
+  const files = e.target.files
+  if (files && files.length > 0) {
+    chatStore.addImages(files)
+    e.target.value = '' // 重置 input，允许重复选同一文件
+  }
+}
+
+function handlePaste(e) {
+  const items = e.clipboardData?.items
+  if (!items) return
+  const imageFiles = []
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      imageFiles.push(item.getAsFile())
+    }
+  }
+  if (imageFiles.length > 0) {
+    chatStore.addImages(imageFiles)
+  }
 }
 
 // 自动滚动到底部（使用 requestAnimationFrame 节流，避免频繁 DOM 操作）
@@ -233,6 +290,36 @@ watch(
   padding: var(--space-3) var(--space-5) var(--space-4);
   background: var(--color-bg-subtle);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+/* 图片预览条 */
+.image-preview-bar {
+  display: flex;
+  gap: 8px;
+  padding: 0 0 8px 0;
+  overflow-x: auto;
+}
+
+.image-preview-item {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.preview-thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-light);
+}
+
+.preview-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
 }
 
 .input-wrapper {

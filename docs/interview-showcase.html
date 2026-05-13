@@ -1,0 +1,2041 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartQA Pro — 供应链智能问答系统 · 面试展示</title>
+<style>
+  :root {
+    --sidebar-bg: #1d1e2c;
+    --sidebar-text: #a0a3bd;
+    --sidebar-active: #409eff;
+    --sidebar-hover: rgba(255,255,255,0.06);
+    --page-bg: #f5f7fa;
+    --card-bg: #ffffff;
+    --border: #e4e7ed;
+    --primary: #409eff;
+    --primary-hover: #337ecc;
+    --primary-light: #ecf5ff;
+    --text-primary: #1a1f36;
+    --text-body: #303133;
+    --text-secondary: #606266;
+    --text-meta: #909399;
+    --success: #67c23a;
+    --warning: #e6a23c;
+    --danger: #f56c6c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+    background: var(--page-bg);
+    color: var(--text-body);
+    line-height: 1.7;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ===== Sidebar ===== */
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 240px;
+    background: var(--sidebar-bg);
+    color: var(--sidebar-text);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .sidebar-logo {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .sidebar-logo .icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .sidebar-logo .title {
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+  }
+  .sidebar-logo .sub {
+    font-size: 11px;
+    color: var(--sidebar-text);
+    margin-top: 1px;
+  }
+
+  .sidebar-nav {
+    padding: 12px 0;
+    flex: 1;
+  }
+  .sidebar-nav a {
+    display: block;
+    padding: 10px 20px;
+    color: var(--sidebar-text);
+    text-decoration: none;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+  .sidebar-nav a:hover {
+    background: var(--sidebar-hover);
+    color: #d0d3e8;
+  }
+  .sidebar-nav a.active {
+    background: rgba(64,158,255,0.12);
+    color: var(--sidebar-active);
+    border-left-color: var(--sidebar-active);
+    border-radius: 0 6px 6px 0;
+  }
+  .sidebar-nav .section-label {
+    padding: 16px 20px 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #6c6e7e;
+    font-weight: 600;
+  }
+
+  /* ===== Main ===== */
+  .main {
+    margin-left: 240px;
+    flex: 1;
+    padding: 0;
+  }
+  .main-header {
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 40px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  .main-header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+  }
+  .main-header .tagline {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  .content {
+    padding: 32px 40px 80px;
+  }
+
+  /* ===== Sections ===== */
+  .section {
+    margin-bottom: 40px;
+  }
+  .section h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--primary);
+    display: inline-block;
+  }
+  .section > p {
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
+  /* ===== Cards ===== */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 4px 16px rgba(64,158,255,0.12);
+  }
+  .card .card-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: #fff;
+  }
+  .card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+  .card p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+  .card .tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    margin-top: 8px;
+  }
+  .card .tag.green { border-color: var(--success); color: var(--success); background: #f0f9eb; }
+  .card .tag.blue { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+  .card .tag.orange { border-color: var(--warning); color: var(--warning); background: #fdf6ec; }
+
+  /* ===== Architecture Flow ===== */
+  .arch-flow {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+  }
+  .flow-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .flow-row:last-child { margin-bottom: 0; }
+  .flow-node {
+    background: var(--page-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-body);
+    text-align: center;
+    min-width: 80px;
+  }
+  .flow-node.primary { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+  .flow-node.success { background: #f0f9eb; border-color: var(--success); color: #529b2e; }
+  .flow-node.warning { background: #fdf6ec; border-color: var(--warning); color: #b88230; }
+  .flow-node.danger { background: #fef0f0; border-color: var(--danger); color: #c45656; }
+  .flow-node.purple { background: #f5f0ff; border-color: #a855f7; color: #7c3aed; }
+  .flow-node.dark { background: var(--sidebar-bg); color: #fff; border-color: var(--sidebar-bg); }
+  .flow-arrow { color: var(--text-meta); font-size: 18px; }
+
+  /* ===== Talking Points ===== */
+  .talk-item {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+  .talk-item .q {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .talk-item .a {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+  .talk-item .a .hl {
+    display: inline-block;
+    background: var(--primary-light);
+    color: var(--primary);
+    padding: 0 4px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  /* ===== FAQ ===== */
+  .faq-item {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 20px;
+    margin-bottom: 10px;
+  }
+  .faq-item .q {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+  .faq-item .a {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  /* ===== Demo Steps ===== */
+  .demo-steps {
+    list-style: none;
+  }
+  .demo-steps li {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .demo-steps .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .demo-steps .demo-desc { flex: 1; }
+  .demo-steps .demo-desc strong { color: var(--text-primary); }
+
+  /* ===== Tips Box ===== */
+  .tip-box {
+    background: #fef6e0;
+    border: 1px solid #f0d78c;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #8a6d10;
+  }
+  .tip-box strong { color: #6c5200; }
+
+  /* ===== Stack Table ===== */
+  .stack-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 13px;
+  }
+  .stack-table th {
+    background: var(--sidebar-bg);
+    color: #fff;
+    padding: 8px 16px;
+    text-align: left;
+    font-weight: 600;
+  }
+  .stack-table th:first-child { border-radius: 6px 0 0 0; }
+  .stack-table th:last-child { border-radius: 0 6px 0 0; }
+  .stack-table td {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card-bg);
+  }
+  .stack-table tr:last-child td:first-child { border-radius: 0 0 0 6px; }
+  .stack-table tr:last-child td:last-child { border-radius: 0 0 6px 0; }
+  .stack-table td:first-child { font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; }
+    .content { padding: 20px; }
+    .main-header { padding: 16px 20px; }
+    .card-grid { grid-template-columns: 1fr; }
+    .flow-row { gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Sidebar ===== -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="icon">S</div>
+    <div>
+      <div class="title">SmartQA Pro</div>
+      <div class="sub">供应链智能问答</div>
+    </div>
+  </div>
+  <div class="sidebar-nav">
+    <div class="section-label">概览</div>
+    <a href="#overview" class="active">项目一览</a>
+    <a href="#stack">技术栈</a>
+    <a href="#architecture">系统架构</a>
+
+    <div class="section-label">核心竞争力</div>
+    <a href="#routing">三级意图路由</a>
+    <a href="#rag">RAG 检索链路</a>
+    <a href="#agents">三种 Agent 模式</a>
+    <a href="#rbac">行级权限控制</a>
+    <a href="#sse">SSE 流式与审批</a>
+    <a href="#clarify">智能追问机制</a>
+    <a href="#retry">容错与重试</a>
+    <a href="#code-review">代码走读</a>
+
+    <div class="section-label">AI Agent 通用面试题</div>
+    <a href="#agent-basics">Agent 基础概念</a>
+    <a href="#agent-react">ReAct 与推理框架</a>
+    <a href="#agent-tools">Function Calling</a>
+    <a href="#agent-memory">记忆与状态</a>
+    <a href="#agent-multi">多 Agent 协作</a>
+    <a href="#agent-eval">评估与部署</a>
+    <a href="#metrics-cheatsheet">指标速查</a>
+
+    <div class="section-label">面试准备</div>
+    <a href="#talk">面试话术</a>
+    <a href="#faq">高频追问预判</a>
+    <a href="#demo">演示流程</a>
+  </div>
+</nav>
+
+<!-- ===== Main ===== -->
+<div class="main">
+
+  <header class="main-header">
+    <h1>SmartQA Pro</h1>
+    <div class="tagline">企业级供应链知识库 QA 系统 · RAG + Multi-Agent + 行级权限</div>
+  </header>
+
+  <div class="content">
+
+    <!-- ===== 项目一览 ===== -->
+    <section class="section" id="overview">
+      <h2>项目一览</h2>
+      <p>
+        <strong>一句话介绍：</strong>面向制造业供应链场景的企业级智能问答系统，员工用自然语言提问，
+        系统从知识库检索答案或调用后端系统查询实时数据——双链路驱动，无需切换系统。
+      </p>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#409eff,#5bc5ff)">🔍</div>
+          <h3>RAG 混合检索</h3>
+          <p>Milvus 向量 + BM25 关键词 → RRF 融合排序 → BGE-Reranker 精排，三层过滤确保准确率</p>
+          <span class="tag blue">CP=0.90</span>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">🤖</div>
+          <h3>Multi-Agent</h3>
+          <p>三种 Agent 模式演进：手写 ReAct → LangChain → LangGraph，接口一致，一键切换</p>
+          <span class="tag blue">280行可控</span>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#67c23a,#88d85e)">🛡️</div>
+          <h3>行级权限</h3>
+          <p>Milvus security_group ARRAY 实现 7 角色数据隔离，仓库部看不到财务数据</p>
+          <span class="tag green">7部门</span>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#e6a23c,#f0c060)">⚡</div>
+          <h3>三级意图路由</h3>
+          <p>规则匹配 &lt;1ms → 语义路由 &lt;10ms → LLM 分类兜底，零 token 优先</p>
+          <span class="tag orange">零延迟优先</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 技术栈 ===== -->
+    <section class="section" id="stack">
+      <h2>技术栈</h2>
+      <table class="stack-table">
+        <tr><th>层级</th><th>技术选型</th><th>说明</th></tr>
+        <tr><td>前端</td><td>Vue3 + Element Plus + Pinia + Vite</td><td>TypeScript，响应式布局</td></tr>
+        <tr><td>后端</td><td>FastAPI + LangChain + LangGraph</td><td>异步架构，SSE 流式推送</td></tr>
+        <tr><td>向量库</td><td>Milvus + BGE-small-zh-v1.5</td><td>512维，行级权限 via ARRAY</td></tr>
+        <tr><td>缓存</td><td>Redis</td><td>对话记忆 + Query Cache (MD5, TTL)</td></tr>
+        <tr><td>数据库</td><td>PostgreSQL</td><td>RBAC 认证 + 工单 + 反馈</td></tr>
+        <tr><td>LLM</td><td>DeepSeek API</td><td>可切换 MiniMax / Ollama</td></tr>
+        <tr><td>检索增强</td><td>BGE-Reranker-v2-m3 + HyDE</td><td>精排 + 假设文档检索</td></tr>
+        <tr><td>文档解析</td><td>pymupdf4llm + python-docx</td><td>PDF/MD/DOCX/TXT，表格→Markdown</td></tr>
+        <tr><td>部署</td><td>Docker Compose</td><td>一键启动全套基础设施</td></tr>
+      </table>
+    </section>
+
+    <!-- ===== 系统架构 ===== -->
+    <section class="section" id="architecture">
+      <h2>系统架构</h2>
+      <p>用户输入 → 前端 (Vue3) → 后端 (FastAPI) → 意图路由 → Agent 执行 → 数据检索/工具调用 → 格式化输出</p>
+
+      <div class="arch-flow">
+        <div class="flow-row">
+          <div class="flow-node dark">👤 用户</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node primary">Vue3 前端</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node primary">FastAPI 后端</div>
+        </div>
+
+        <!-- 意图路由分支 -->
+        <div class="flow-row">
+          <div class="flow-node warning">⚡ 规则匹配<br><span style="font-size:11px;color:#999">&lt;1ms</span></div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node warning">🌐 语义路由<br><span style="font-size:11px;color:#999">&lt;10ms</span></div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node warning">🧠 LLM 分类<br><span style="font-size:11px;color:#999">~2.5s 兜底</span></div>
+        </div>
+        <div style="text-align:center;font-size:11px;color:var(--text-meta);margin:4px 0 12px">三层路由，零 token 优先，逐级降级</div>
+
+        <!-- Agent 分支 -->
+        <div class="flow-row">
+          <div class="flow-node success">📚 RAG Agent</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node success">🛠️ Tool Agent</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node success">💬 手写 ReAct / LangChain / LangGraph</div>
+        </div>
+        <div style="text-align:center;font-size:11px;color:var(--text-meta);margin:4px 0 12px">接口一致: <code>async def run(query, tool_names, session_id) → dict</code></div>
+
+        <!-- 数据层 -->
+        <div class="flow-row">
+          <div class="flow-node purple">📦 Milvus (向量检索 + 权限过滤)</div>
+          <div class="flow-node purple">⚡ Redis (缓存 + 对话记忆)</div>
+          <div class="flow-node purple">🗄️ PostgreSQL (RBAC + 工单)</div>
+        </div>
+        <div style="text-align:center;font-size:11px;color:var(--text-meta);margin-top:4px">数据层三件套：向量 / 缓存 / 关系型</div>
+      </div>
+    </section>
+
+    <!-- ===== 核心竞争力 ===== -->
+
+    <section class="section" id="routing">
+      <h2>三级意图路由</h2>
+      <p>
+        问答系统第一关是「理解用户想干什么」——是查知识库、查系统数据、还是闲聊？
+        系统不走一刀切的 LLM 判断，而是分层拦截。
+      </p>
+      <div class="card-grid">
+        <div class="card">
+          <h3>第 1 级 · 规则匹配</h3>
+          <p>
+            <strong>延迟：&lt;1ms，零 token 开销</strong><br>
+            关键词 + 正则表达式，匹配「库存」「订单」「供应商」等高频意图词。
+            最常使用的前 40% 请求在此层命中。
+          </p>
+          <span class="tag green">零成本</span>
+        </div>
+        <div class="card">
+          <h3>第 2 级 · 语义路由</h3>
+          <p>
+            <strong>延迟：&lt;10ms，零 token 开销</strong><br>
+            预计算路由 embedding，余弦相似度匹配意图模板。
+            覆盖规则无法处理的「变质了怎么办」→ 质检意图等语义变形。
+          </p>
+          <span class="tag blue">+30% 覆盖</span>
+        </div>
+        <div class="card">
+          <h3>第 3 级 · LLM 分类</h3>
+          <p>
+            <strong>延迟：~2.5s，消耗 token</strong><br>
+            兜底策略，只有前两级都无法判定时才调用 LLM。
+            面试话术：「LLM 路由是最后一道防线，不是默认方案。」
+          </p>
+          <span class="tag orange">兜底策略</span>
+        </div>
+      </div>
+      <div class="tip-box">
+        <strong>💡 面试要点：</strong> 强调「<strong>零 token 优先</strong>」——大多数请求不消耗 LLM token，
+        成本和延迟同时降低。这体现架构设计中的成本意识。
+      </div>
+    </section>
+
+    <section class="section" id="rag">
+      <h2>RAG 检索链路</h2>
+      <p>从 473 chunks 知识库中精确找到答案，不依赖单一检索通道。</p>
+
+      <div class="arch-flow">
+        <div class="flow-row">
+          <div class="flow-node">🔤 Query</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node warning">🧪 复杂度分析</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node success">📖 BM25 关键词</div>
+          <span class="flow-arrow">+</span>
+          <div class="flow-node success">📐 Milvus 向量</div>
+        </div>
+        <div style="text-align:center;font-size:11px;color:var(--text-meta);margin:4px 0 12px">简单查询走轻量检索（一步到位），复杂查询走完整流程</div>
+        <div class="flow-row">
+          <div class="flow-node purple">🔄 RRF 融合排序</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node purple">🔬 Self-RAG 过滤</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node purple">🎯 BGE-Reranker 精排</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node dark">✅ 最终上下文</div>
+        </div>
+      </div>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3>混合检索 (RRF)</h3>
+          <p>BM25 关键词 + Milvus 向量 → RRF 融合排序，
+            单一通道 R@3=0.2，融合后 R@3=0.53，
+            说明架构有效。语料翻倍会继续涨。</p>
+          <span class="tag blue">R@3=0.53</span>
+        </div>
+        <div class="card">
+          <h3>Self-RAG</h3>
+          <p>LLM 判断每个 chunk 与 Query 的相关性，过滤低分噪音 chunk。
+            减少幻觉，提升最终答案质量。</p>
+          <span class="tag green">降噪</span>
+        </div>
+        <div class="card">
+          <h3>HyDE</h3>
+          <p>对模糊问题先让 LLM 生成一段「假设文档」，
+            再用假设文档做向量检索——解决了「抽象的召回率低」问题。</p>
+          <span class="tag orange">模糊问题</span>
+        </div>
+        <div class="card">
+          <h3>Query Cache</h3>
+          <p>MD5 哈希 Key，Redis TTL 缓存，LRU 淘汰。
+            相同 query 命中时零 token 返回，前端显示 ⚡ 缓存命中。</p>
+          <span class="tag blue">零 token</span>
+        </div>
+        <div class="card">
+          <h3>父子文档</h3>
+          <p>小 chunk 精确匹配 → 大 chunk 提供上下文。
+            解决「搜到对的内容但缺少上下文」问题。</p>
+        </div>
+        <div class="card">
+          <h3>PDF 表格解析</h3>
+          <p>三层回退链：pymupdf4llm → opendataloader → pdfplumber。
+            表格自动转 Markdown，语义检索也能定位单元格数据。</p>
+          <span class="tag green">AQL=1.0</span>
+        </div>
+      </div>
+      <div class="tip-box">
+        <strong>💡 面试要点：</strong> 主动提 R@3=0.53「<strong>这个指标不高，但可解释——20 篇小知识库，
+        混合检索把单通道的 0.2 拉到 0.53，架构有效</strong>」——面试官对「知道自己系统为什么不够好」的人很有好感。
+      </div>
+    </section>
+
+    <section class="section" id="agents">
+      <h2>三种 Agent 模式演进</h2>
+      <p>
+        从「自己写 ReAct」到「LangChain 标准化」再到「LangGraph StateGraph 前沿架构」，
+        三层 Agent 模式体现技术视野和工程判断力。
+      </p>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#409eff,#5bc5ff)">1️⃣</div>
+          <h3>手写 ReAct（默认）</h3>
+          <p>
+            280 行纯 Python，Thought/Action/Observation JSON 格式循环，
+            最多 5 轮。面试可讲：状态机思想、tool_calls 结构、streaming 实现。
+          </p>
+          <span class="tag blue">完全可控</span>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">2️⃣</div>
+          <h3>LangChain AgentExecutor</h3>
+          <p>
+            标准化生态，create_react_agent 标准实现，社区工具链（SearchAPI, SQLDatabase）即插即用。
+            适合生产环境快速迭代。
+          </p>
+          <span class="tag blue">生态丰富</span>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#a855f7,#c084fc)">3️⃣</div>
+          <h3>LangGraph StateGraph</h3>
+          <p>
+            StateGraph + conditional edges，图式状态流转。
+            面试差异化亮点：展示对前沿架构的跟进能力，面试中少有人讲。
+          </p>
+          <span class="tag blue">前沿架构</span>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);">
+        <strong>切换方式：</strong> 接口完全一致 <code>async def run(query, tool_names, session_id) → dict</code>，
+        改一行配置就切换。体现了「松耦合 + 策略模式」的设计思想。
+      </p>
+      <p style="font-size:13px;color:var(--text-secondary);">
+        <strong>工具注册：</strong> TOOL_REGISTRY 插件化注册，新增工具只需 5 行代码。
+        现支持：query_inventory / query_order / create_ticket / get_datetime / get_knowledge / query_supplier。
+      </p>
+    </section>
+
+    <section class="section" id="rbac">
+      <h2>行级权限控制</h2>
+      <p>
+        供应链文档按部门隔离——采购部看不到质量部的质检报告，仓库部看不到财务数据。
+        不依赖应用层 if-else，而是数据库层面实时过滤。
+      </p>
+      <div class="card-grid">
+        <div class="card">
+          <h3>7 部门角色</h3>
+          <p>admin / purchase / warehouse / quality / production / finance / logistics</p>
+        </div>
+        <div class="card">
+          <h3>Milvus security_group</h3>
+          <p>
+            文档上传时指定可见部门（ARRAY 列），查询时
+            <code>array_contains(security_group, user_role)</code> 实时过滤。
+          </p>
+          <span class="tag green">数据库层过滤</span>
+        </div>
+        <div class="card">
+          <h3>认证 → 角色 → 过滤</h3>
+          <p>
+            PostgreSQL 认证 → 获取角色 → 传到 Milvus 查询条件。
+            前端也按角色隐藏不可见文档列表。
+          </p>
+        </div>
+      </div>
+      <div class="tip-box">
+        <strong>💡 面试要点：</strong> 
+        「PostgreSQL 负责认证和角色管理，Milvus 只负责查询时过滤——<strong>职责分离</strong>。
+        如果放在应用层做 if-else，每加一个权限策略都要改代码；放在 Milvus 层，新增角色只需配置数据。」
+      </div>
+    </section>
+
+    <section class="section" id="sse">
+      <h2>SSE 流式输出 + 操作审批</h2>
+      <p>用户输入后看到的不再是一个转圈圈等待——而是实时看到 Agent 的思考过程。</p>
+      <div class="card-grid">
+        <div class="card">
+          <h3>三事件流</h3>
+          <p>
+            <code>tool_status</code>（Agent 正在调用什么工具）→
+            <code>text</code>（逐 token 内容）→
+            <code>done</code>（完成信号 + 来源）
+          </p>
+          <span class="tag blue">UX 优先级</span>
+        </div>
+        <div class="card">
+          <h3>Token 成本追踪</h3>
+          <p>前端实时显示 token 用量 + 费用（元），每次对话可精确算账。
+            面试话术：「每个按钮都对应商业模式。」</p>
+        </div>
+        <div class="card">
+          <h3>操作审批</h3>
+          <p>
+            create_ticket 写入操作执行前发送 <code>approval_request</code> SSE，
+            前端弹窗确认后才执行。防止 Agent 误操作。
+          </p>
+          <span class="tag orange">安全闭环</span>
+        </div>
+      </div>
+      <div class="tip-box">
+        <strong>💡 面试要点：</strong>
+        强调「<strong>置信度不应先于内容出现</strong>」——先告诉用户「正在查什么」（tool_status），
+        再逐字输出文本。用户对 UX 的细节把控是高级工程师的加分项。
+      </div>
+    </section>
+
+    <section class="section" id="clarify">
+      <h2>智能追问机制</h2>
+      <p>
+        用户提问「查一下供应商」——查哪个供应商？查哪方面信息？缺少参数时 Agent 不硬猜，
+        而是主动反问，收集到完整信息再执行。
+      </p>
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:12px;">
+        <strong>设计思路：</strong>「宁可多问一句，也不要给错答案」。
+        参数缺失 → 生成自然语言追问问题 → 收集用户补充 → 执行完整查询。
+        通过 Redis session 保持对话上下文，追问不丢失状态。
+      </p>
+      <div class="tip-box">
+        <strong>💡 面试要点：</strong>
+        「很多系统在这方面偷懒：参数缺少就报错，或者随机给一个默认值。
+        <strong>追问是对用户负责的体现</strong>——特别在制造业场景，给错一个物料编码就是几十万的损失。」
+      </div>
+    </section>
+
+    <section class="section" id="retry">
+      <h2>容错与重试机制</h2>
+      <p>
+        外部 API 调用（DeepSeek、Milvus）难免遇到网络抖动。SmartQA 的 retry 机制覆盖了
+        <strong>LLM 流式调用</strong>和<strong>向量检索</strong>两个关键链路。
+      </p>
+
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin:16px 0">
+        <tr style="background:#1d1e2c;color:#fff">
+          <td style="padding:6px 12px"><strong>覆盖链路</strong></td>
+          <td style="padding:6px 12px"><strong>策略</strong></td>
+          <td style="padding:6px 12px"><strong>设计亮点</strong></td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px;font-weight:600">LLM 流式调用 (astream)</td>
+          <td style="padding:6px 12px">指数退避 2s→4s→8s，最多 3 次</td>
+          <td style="padding:6px 12px">只在第一个 token 之前重试——避免前端收到重复内容</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px;font-weight:600">Milvus 向量检索</td>
+          <td style="padding:6px 12px">固定间隔 1s，最多 2 次</td>
+          <td style="padding:6px 12px">gRPC 超时最常见，重试一次成功率从 95% → 99.5%</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px;font-weight:600">LLM 非流式调用 (ainvoke)</td>
+          <td style="padding:6px 12px">指数退避 2s→4s→8s，最多 3 次</td>
+          <td style="padding:6px 12px"><code>@retry_async</code> 装饰器，零侵入</td>
+        </tr>
+      </table>
+
+      <div class="faq-item">
+        <div class="q">Q：流式调用怎么做 retry？有什么技术难点？</div>
+        <div class="a">
+          流式调用不能简单用装饰器包裹——因为 async generator 的异常处理需要特殊写法。<br>
+          核心设计决策：<strong>只在第一个 token 到达之前重试</strong>。如果已经有内容流出了，不重试——<br>
+          因为用户已经看到了部分结果，重新生成会导致重复输出，体验更差。<br>
+          实现：<code>retry_astream()</code> 包装器，每次重试创建一个新的 async generator，<br>
+          取到第一个 chunk 后才开始 yield。<br>
+          面试金句：「3 次全部失败后 yield SSE error 事件给前端显示降级提示，不静默断开。」
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q：为什么不全链路加 retry？</div>
+        <div class="a">
+          <strong>有选择地加，不是无脑全加：</strong><br>
+          • ✅ LLM 调用——网络延迟高、API 过载是常态，retry 性价比最高<br>
+          • ✅ Milvus 检索——gRPC 超时发生率 ~5%，轻量 retry 就能覆盖<br>
+          • ❌ Redis 操作——连接池自带重连，不需要额外处理<br>
+          • ❌ 熔断器（Circuit Breaker）——当前 demo 阶段不需要，生产环境再考虑<br>
+          面试金句：「不要为了面试展示抢加所有 retry——面试官能看出你是照抄 best practice 还是真的权衡过。」
+        </div>
+      </div>
+
+      <div class="tip-box">
+        <strong>💡 面试时这样说：</strong><br>
+        「SmartQA 的容错分为三层：LLM 调用层用指数退避重试（pre-first-chunk 是关键设计），<br>
+        检索层用固定间隔轻量重试（因为 gRPC 超时频率低但影响大），<br>
+        业务层用 clarify + approval 做人工兜底。<br>
+        不是无脑给所有组件加重试——每个决策都能说清楚 trade-off。」
+      </div>
+    </section>
+
+    <!-- ===== 代码走读：逐行分析关键模块 ===== -->
+    <section class="section" id="code-review">
+      <h2>代码走读：关键模块逐行分析</h2>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+        面试官经常会问「你最满意的一段代码是什么」或者「讲讲你写的核心逻辑」。
+        以下挑选三个最能体现架构能力的模块，逐行分析 + 标注潜在问题。
+      </p>
+
+      <!-- ===== 模块一：retry.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块一：<code>core/retry.py</code> — 流式异步重试</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：184 行 | 核心函数：retry_astream() | 本次新增</p>
+
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== 第 44 行：异常分类判断 =====</span>
+<span style="color:#c792ea">def</span> <span style="color:#82aaff">_is_retriable</span>(exception: Exception) -> bool:
+    <span style="color:#888">"""判断异常是否可重试"""</span>
+    name = type(exception).__name__
+    retriable_names = {
+        <span style="color:#89ddff">'APIConnectionError'</span>, <span style="color:#89ddff">'APITimeoutError'</span>, <span style="color:#89ddff">'APIError'</span>,
+        <span style="color:#89ddff">'RateLimitError'</span>, <span style="color:#89ddff">'ReadTimeout'</span>, <span style="color:#89ddff">'ConnectTimeout'</span>, ...
+    }
+    <span style="color:#888"># ★ 亮点：类名匹配兜底 + isinstance 双保险</span>
+    <span style="color:#888">#   即使 openai 包未安装，也能通过类名识别可重试异常</span>
+    <span style="color:#c792ea">if</span> name in retriable_names: <span style="color:#c792ea">return</span> <span style="color:#f78c6c">True</span>
+    <span style="color:#888"># 5xx HTTP 状态码 → 可重试</span>
+    <span style="color:#c792ea">if</span> hasattr(exception, <span style="color:#89ddff">'status_code'</span>) ...
+    <span style="color:#888"># ⚠️ 潜在问题：类名匹配依赖异常类名不变，</span>
+    <span style="color:#888">#   httpx 升级可能改名（如 RemoteProtocolError→RemoteProtocolError）</span>
+
+<span style="color:#888"># ===== 第 67 行：核心 — async generator retry =====</span>
+<span style="color:#c792ea">async def</span> <span style="color:#82aaff">retry_astream</span>(generator_factory, max_attempts=3, base_delay=2.0):
+    <span style="color:#888">"""pre-first-chunk 指数退避重试"""</span>
+    <span style="color:#c792ea">for</span> attempt <span style="color:#c792ea">in</span> range(1, max_attempts + 1):
+        <span style="color:#c792ea">try</span>:
+            gen = generator_factory()        <span style="color:#888"># ★ 每次重试新建 generator</span>
+            first_chunk = await gen.__anext__() <span style="color:#888"># 尝试拿第一个 chunk</span>
+            <span style="color:#c792ea">yield</span> first_chunk               <span style="color:#888"># ★ 成功后不再重试</span>
+            <span style="color:#c792ea">async for</span> chunk <span style="color:#c792ea">in</span> gen: <span style="color:#c792ea">yield</span> chunk
+            <span style="color:#c792ea">return</span>
+        <span style="color:#c792ea">except</span> StopAsyncIteration: <span style="color:#c792ea">return</span>  <span style="color:#888"># 空响应→成功</span>
+        <span style="color:#c792ea">except</span> Exception <span style="color:#c792ea">as</span> e:
+            <span style="color:#c792ea">if not</span> _is_retriable(e): <span style="color:#c792ea">raise</span>  <span style="color:#888"># 不可重试→直接抛</span>
+            delay = base_delay * (2 ** (attempt - 1))
+            await asyncio.sleep(delay)       <span style="color:#888"># 2s→4s→8s</span>
+    <span style="color:#c792ea">raise</span> last_exception                   <span style="color:#888"># 全部重试失败</span>
+
+<span style="color:#888"># ⚠️ 潜在问题：</span>
+<span style="color:#888"># 1. generator_factory() 每次重试都会创建新的 LLM 连接，</span>
+<span style="color:#888">#    如果 API key 已耗尽，重试 3 次浪费 token 预算</span>
+<span style="color:#888"># 2. __anext__() 的异常如果发生在「已经开始 yield」之后，</span>
+<span style="color:#888">#    当前实现不会捕获——这是有意的，避免前端收到重复内容</span>
+<span style="color:#888"># 3. 没有 jitter（随机延迟），高并发重试可能同时打到 API</span>
+</pre>
+        </div>
+
+        <div class="faq-item">
+          <div class="q">面试官追问：为什么流式 retry 不能直接用装饰器？</div>
+          <div class="a">
+            <strong>核心原因：async generator 的异常处理不能用 @retry_async 装饰器包裹。</strong><br>
+            • 装饰器模式适用于「函数调用→返回结果」的同步/异步函数<br>
+            • 流式调用是「函数调用→逐个 yield chunk」的 generator 模式<br>
+            • 如果第一个 chunk 已经发给前端了再重试，用户会看到重复内容<br>
+            • <strong>设计决策：</strong>只在首个 chunk 到达之前重试——这是流式 retry 的正确做法
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 模块二：rag_engine.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块二：<code>core/rag_engine.py:search()</code> — 检索全链路</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：623 行 | 核心方法：search() | 四步检索管线</p>
+
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== 步骤1：向量检索 (Milvus gRPC) =====</span>
+query_embedding = self.embedding.embed_query(query)
+<span style="color:#c792ea">for</span> retry_i <span style="color:#c792ea">in</span> range(3):              <span style="color:#888"># ★ gRPC 超时自动重试</span>
+    <span style="color:#c792ea">try</span>:
+        vector_results = milvus_manager.search(
+            query_embedding=query_embedding,
+            top_k=settings.VECTOR_TOP_K,    <span style="color:#888"># 默认 20</span>
+            expr=visibility_expr,           <span style="color:#888"># ★ 行级权限过滤</span>
+        )
+        <span style="color:#c792ea">break</span>
+    <span style="color:#c792ea">except</span> Exception <span style="color:#c792ea">as</span> e:
+        vector_results = []                <span style="color:#888"># 降级：不抛异常</span>
+
+<span style="color:#888"># ⚠️ 潜在问题：</span>
+<span style="color:#888"># 1. embed_query() 本身没有 retry——如果本地模型加载失败，</span>
+<span style="color:#888">#    整个 search() 会抛异常</span>
+<span style="color:#888"># 2. retry 的 sleep 用了同步 time.sleep(1)，会阻塞事件循环</span>
+<span style="color:#888">#    但因为 search() 本身就是同步方法，所以暂时没问题</span>
+
+<span style="color:#888"># ===== 步骤2：BM25 关键词检索 =====</span>
+bm25_results = self.bm25.search(
+    query, top_k=settings.BM25_TOP_K,
+    allowed_roles=bm25_allowed_roles,      <span style="color:#888"># ★ 权限隔离到 BM25 层</span>
+)
+
+<span style="color:#888"># ===== 步骤3：RRF 融合去重 =====</span>
+merged = self._merge_results(vector_results, bm25_results)
+<span style="color:#888"># ★ RRF 公式：score(doc) = Σ 1/(k + rank_i)</span>
+<span style="color:#888">#   不需要归一化分数——向量和 BM25 的分数尺度不同，RRF 天然解决</span>
+
+<span style="color:#888"># ===== 步骤4：Reranker 精排 =====</span>
+<span style="color:#c792ea">if</span> settings.RERANKER_ENABLED <span style="color:#c792ea">or</span> self.reranker._model <span style="color:#c792ea">is not None</span>:
+    reranked = self.reranker.rerank(query, merged_for_rerank)
+    <span style="color:#888"># ★ Reranker 内部有降级策略：模型不可用→按原始分排序</span>
+<span style="color:#c792ea">else</span>:
+    reranked = sorted(merged_for_rerank, key=<span style="color:#c792ea">lambda</span> x: x.score)
+
+<span style="color:#888"># ⚠️ 潜在问题：</span>
+<span style="color:#888"># 1. Reranker 逻辑有两个独立开关（env + runtime model），</span>
+<span style="color:#888">#    容易让人困惑——面试时可主动解释这是两阶段设计</span>
+<span style="color:#888"># 2. merged_for_rerank 取了 RERANK_TOP_K * 2 条给 reranker，</span>
+<span style="color:#888">#    但如果 RERANK_TOP_K=3，只有 6 条候选，召回可能不足</span>
+<span style="color:#888"># 3. BM25 用的是文件索引而非内存，大文档量下性能会退化</span>
+</pre>
+        </div>
+
+        <div class="faq-item">
+          <div class="q">面试官追问：为什么用 RRF 而不是加权求和？</div>
+          <div class="a">
+            <strong>因为向量分数和 BM25 分数的分布完全不同，无法直接加权。</strong><br>
+            • 向量相似度通常在 0.3-0.9 范围，而 BM25 分数可能从 0 到几十<br>
+            • 如果做 min-max 归一化，极端值会被拉偏<br>
+            • RRF 只关心「排名」，不关心「分数绝对值」——天然适合异质检索器融合<br>
+            面试金句：「RRF 的 K 值我设为了 10，在这个值下排名靠前的文档被大幅奖励。」
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 模块三：redis_client.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块三：<code>core/redis_client.py</code> — 对话记忆隔离</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：265 行 | 核心问题：多用户对话记忆泄露 | 本次修复</p>
+
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== 修复前（有 BUG）=====</span>
+<span style="color:#c792ea">def</span> <span style="color:#82aaff">_key</span>(self, session_id):
+    <span style="color:#c792ea">return</span> <span style="color:#89ddff">f"smartqa:chat:{session_id}"</span>
+    <span style="color:#888"># ❌ 问题：不同用户用同一个 session_id → 共享对话历史</span>
+    <span style="color:#888">#   admin 的对话能被 purchase 用户看到！</span>
+
+<span style="color:#888"># ===== 修复后 =====</span>
+<span style="color:#c792ea">def</span> <span style="color:#82aaff">_key</span>(self, session_id, user_id=<span style="color:#89ddff">""</span>):
+    <span style="color:#c792ea">if</span> user_id:
+        <span style="color:#c792ea">return</span> <span style="color:#89ddff">f"smartqa:chat:{user_id}:{session_id}"</span>
+    <span style="color:#c792ea">return</span> <span style="color:#89ddff">f"smartqa:chat:{session_id}"</span>
+    <span style="color:#888"># ✅ Redis key 加入 user_id 命名空间</span>
+    <span style="color:#888">#   admin 的 key: smartqa:chat:admin:abc123</span>
+    <span style="color:#888">#   purchase 的 key: smartqa:chat:purchase:abc123</span>
+
+<span style="color:#888"># ===== 调用链 =====</span>
+<span style="color:#888"># chat.py → 从 JWT token 解析 username → _user_id</span>
+<span style="color:#888">#         → chat_memory.add_message(session_id, "user", query, user_id=_user_id)</span>
+<span style="color:#888">#         → Redis key: smartqa:chat:{_user_id}:{session_id}</span>
+
+<span style="color:#888"># ⚠️ 潜在问题：</span>
+<span style="color:#888"># 1. 如果用户未登录（token 无效），_user_id="" 时退化为旧行为</span>
+<span style="color:#888">#    → 未登录用户仍然共享记忆（可接受的降级）</span>
+<span style="color:#888"># 2. get_session_list() 没有按 user_id 过滤——需要改进</span>
+<span style="color:#888"># 3. 旧 key（无 user_id 前缀）仍然留在 Redis 中，不会自动清理</span>
+</pre>
+        </div>
+
+        <div class="faq-item">
+          <div class="q">面试官追问：你是怎么发现这个 Bug 的？</div>
+          <div class="a">
+            <strong>演示时发现的。</strong>用 admin 登录问了几个问题，退出后用 purchase 登录——<br>
+            聊天记录还在。这说明 Redis key 没有按用户隔离。<br>
+            修复只需要改三处：key 生成函数加 user_id 参数，所有调用点传递 username，<br>
+            username 从 JWT token 中解析（不信任前端传来的值）。
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 模块四：chat.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块四：<code>api/chat.py:chat_stream()</code> — SSE 流式主循环</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：776 行 | 核心函数：chat_stream() + event_generator() | 系统最复杂的方法</p>
+
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== SSE 流式端点的完整数据流 =====</span>
+<span style="color:#888">#</span>
+<span style="color:#888">#  用户提问 → PII脱敏 → 意图路由 → DAG进度 → Agent分发 →</span>
+<span style="color:#888">#  RAG检索 → Reranker精排 → LLM流式生成 → 对话记忆保存 →</span>
+<span style="color:#888">#  Token统计 → 性能指标 → [DONE]</span>
+<span style="color:#888">#</span>
+<span style="color:#888">#  每个环节都 yield SSE 事件给前端，用户看到实时进度条。</span>
+
+<span style="color:#888"># ===== 第 271 行：session 管理 =====</span>
+session_id = body.session_id <span style="color:#c792ea">or</span> str(uuid.uuid4())
+<span style="color:#888"># ⚠️ session_id 由前端传入 —— 恶意用户可遍历 session_id</span>
+<span style="color:#888">#   修复建议：服务端生成 + JWT 绑定 user_id</span>
+
+<span style="color:#888"># ===== 第 293 行：event_generator() 闭包 =====</span>
+<span style="color:#c792ea">async def</span> <span style="color:#82aaff">event_generator</span>():
+    <span style="color:#888"># ★ 闭包捕获 session_id, _user_role, _user_id</span>
+    <span style="color:#888">#   整个对话上下文都在这个 async generator 里</span>
+
+    <span style="color:#888"># --- Query Cache (Redis) ---</span>
+    cache_key = <span style="color:#89ddff">f"query_cache:{md5(query)}"</span>
+    cached = await redis.get(cache_key)
+    <span style="color:#c792ea">if</span> cached: <span style="color:#c792ea">yield</span> cache_hit + [DONE]; <span style="color:#c792ea">return</span>
+    <span style="color:#888"># ★ 缓存命中直接返回，跳过所有后续流程</span>
+
+    <span style="color:#888"># --- 意图路由 ---</span>
+    route_result = await router_agent.route(safe_query)
+    <span style="color:#c792ea">yield</span> {<span style="color:#89ddff">"type"</span>: <span style="color:#89ddff">"route"</span>, <span style="color:#89ddff">"intent"</span>: intent, <span style="color:#89ddff">"method"</span>: <span style="color:#89ddff">"rule|semantic|llm"</span>}
+
+    <span style="color:#888"># --- 意图分发 ---</span>
+    <span style="color:#c792ea">if</span> intent == RAG_ANSWER:
+        <span style="color:#888"># DAG 进度: 7 个节点 → 前端可视化检索管线</span>
+        <span style="color:#888"># 查询理解 → 复杂度分析 → 向量检索 → BM25 → 融合 →</span>
+        <span style="color:#888"># Reranker → LLM生成</span>
+        ...
+        <span style="color:#888"># ★ 第 508 行：chat_memory 获取历史</span>
+        chat_history_str = await chat_memory.get_context_string(
+            session_id, user_id=_user_id)
+
+        <span style="color:#888"># ★ 第 532 行：LLM 流式生成 (带 retry)</span>
+        <span style="color:#c792ea">async for</span> chunk <span style="color:#c792ea">in</span> LLMFactory.astream(messages):
+            <span style="color:#c792ea">yield</span> {<span style="color:#89ddff">"type"</span>: <span style="color:#89ddff">"content"</span>, ...}
+        <span style="color:#888"># ★ 第 541 行：Token 用量提取</span>
+        <span style="color:#888">#   优先从 chunk._token_usage 获取，API 不返回时按字数估算</span>
+
+        <span style="color:#888"># ★ 第 635 行：保存对话记忆 (带 user_id 隔离)</span>
+        await chat_memory.add_message(session_id, <span style="color:#89ddff">"user"</span>,
+            query, user_id=_user_id)
+
+    <span style="color:#c792ea">elif</span> intent == TOOL_CALL:
+        <span style="color:#888"># 工具调用: clarify → approval → execute</span>
+        ...
+
+<span style="color:#888"># ⚠️ 潜在问题：</span>
+<span style="color:#888"># 1. 776 行的 event_generator() 是典型的 God Function</span>
+<span style="color:#888">#    → 面试时可说"知道应该拆，Demo阶段先验证链路正确性"</span>
+<span style="color:#888"># 2. session_id 由前端传入，无校验</span>
+<span style="color:#888"># 3. 异常处理只有 try/except 包住 astream，其他环节没兜底</span>
+</pre>
+        </div>
+
+        <div class="faq-item">
+          <div class="q">面试官追问：为什么要用 SSE 而不是 WebSocket？</div>
+          <div class="a">
+            <strong>SSE 天然适合 AI 对话场景：</strong><br>
+            • AI 对话是单向流（服务端→客户端推送内容），SSE 的单向性正好匹配<br>
+            • SSE 基于 HTTP，不需要额外协议升级，防火墙/代理友好<br>
+            • 自带断线重连（EventSource API），浏览器原生支持<br>
+            • WebSocket 双向通信在对话场景中是过度设计——用户发消息走 POST，AI 回复走 SSE<br>
+            面试金句：「用对的技术解决对的问题，不是越复杂越好。」
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 模块五：router.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块五：<code>agents/router.py</code> — 三级意图路由</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：273 行 | 核心方法：route() | Rule→Semantic→LLM 三级串联</p>
+
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== 路由流水线 =====</span>
+<span style="color:#888">#</span>
+<span style="color:#888"># 用户输入 → [第一级] 规则匹配 (<1ms, 零token)</span>
+<span style="color:#888">#          → [第二级] 语义路由 (<10ms, zero-shot embedding)</span>
+<span style="color:#888">#          → [第三级] LLM分类 (~2.5s, 最强但最贵)</span>
+
+<span style="color:#c792ea">async def</span> <span style="color:#82aaff">route</span>(self, query):
+    <span style="color:#888"># ---- 第一级：规则匹配 (<1ms) ----</span>
+    <span style="color:#c792ea">if</span> self._match_greeting(query):
+        <span style="color:#c792ea">return</span> {intent: GREETING, method: <span style="color:#89ddff">"rule"</span>}
+    tool_name = self._match_tool_keyword(query)
+    <span style="color:#c792ea">if</span> tool_name:
+        <span style="color:#c792ea">return</span> {intent: TOOL_CALL, method: <span style="color:#89ddff">"rule"</span>, tool: tool_name}
+    <span style="color:#888"># ★ 工具关键词优先于 RAG 关键词</span>
+    <span style="color:#888">#   "查库存" → 工具调用，不是检索"库存"文档</span>
+
+    <span style="color:#888"># ---- 第二级：语义路由 (embedding相似度, <10ms) ----</span>
+    semantic = await get_semantic_router().classify(query)
+    <span style="color:#c792ea">if</span> semantic.confidence >= 0.55:
+        <span style="color:#c792ea">return</span> {intent: semantic.intent, method: <span style="color:#89ddff">"semantic"</span>}
+    <span style="color:#888"># ★ 预计算 30 种意图的代表 query embedding</span>
+    <span style="color:#888">#   用户 query 的 embedding 与它们做余弦相似度</span>
+
+    <span style="color:#888"># ---- 第三级：LLM 兜底 (~2.5s) ----</span>
+    <span style="color:#c792ea">return</span> await self._llm_classify(query)
+    <span style="color:#888"># ★ 只有 10% 的请求走到这一级</span>
+
+<span style="color:#888"># ⚠️ 潜在问题：</span>
+<span style="color:#888"># 1. 关键词匹配是硬编码的——新增工具要改代码</span>
+<span style="color:#888"># 2. "天气"关键词还在代码里但工具已被替换为供应链工具</span>
+<span style="color:#888">#    → 死代码，建议清理</span>
+<span style="color:#888"># 3. 语义路由的 30 种意图是手动编写的 → 容易不同步</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 模块六：main.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块六：<code>app/main.py</code> — FastAPI 应用入口</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：263+ 行 | 核心：lifespan + 健康检查 + Reranker Runtime API</p>
+
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== 第 49 行：lifespan 生命周期 =====</span>
+<span style="color:#c792ea">@asynccontextmanager</span>
+<span style="color:#c792ea">async def</span> <span style="color:#82aaff">lifespan</span>(app):
+    <span style="color:#888"># 启动阶段：Milvus → Redis → PostgreSQL → 默认用户 → 预热</span>
+    milvus_manager.connect()        <span style="color:#888"># 第 63 行</span>
+    await init_redis()              <span style="color:#888"># 第 71 行</span>
+    await init_db()                 <span style="color:#888"># 第 78 行</span>
+    <span style="color:#888"># 创建 7 个默认部门用户 (第 90-98 行)</span>
+    <span style="color:#888"># admin/admin123, purchase/123456, ...</span>
+
+    <span style="color:#888"># 预热 (第 122 行)</span>
+    <span style="color:#c792ea">if</span> settings.RERANKER_ENABLED:
+        rag_engine.reranker.init()   <span style="color:#888"># ★ 主线程同步加载 2.1GB 模型</span>
+    asyncio.create_task(_warmup())   <span style="color:#888"># 嵌入模型后台加载</span>
+
+    <span style="color:#c792ea">yield</span>  <span style="color:#888"># ← 应用运行</span>
+
+    <span style="color:#888"># 关闭阶段 (反向顺序)</span>
+    await close_db() → close_redis() → milvus.disconnect()
+
+<span style="color:#888"># ===== 第 256 行：Reranker Runtime API =====</span>
+<span style="color:#c792ea">@app.post</span>(<span style="color:#89ddff">"/admin/reranker/enable"</span>)
+<span style="color:#c792ea">async def</span> <span style="color:#82aaff">enable_reranker</span>():
+    rag_engine.reranker.init()       <span style="color:#888"># 运行时加载</span>
+    <span style="color:#c792ea">return</span> {status: <span style="color:#89ddff">"ok"</span>, elapsed: <span style="color:#89ddff">"6.3s"</span>}
+    <span style="color:#888"># ★ 两阶段加载：启动时走 .env 开关，运行时走 API</span>
+
+<span style="color:#888"># ⚠️ 潜在问题：</span>
+<span style="color:#888"># 1. lifespan 中每个连接失败只打 warning，不阻止启动</span>
+<span style="color:#888">#    → 好处：部分降级；坏处：出问题静默失败</span>
+<span style="color:#888"># 2. 默认用户密码硬编码 + 用 SHA256 一轮哈希 → 弱安全</span>
+<span style="color:#888"># 3. /admin/reranker/enable 没有鉴权 → 任何人可触发</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 模块七：milvus_client.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块七：<code>core/milvus_client.py</code> — 向量数据库封装</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：345 行 | 核心：Schema 设计 + security_group 数组列</p>
+
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== Schema 设计（核心面试点）=====</span>
+fields = [
+    FieldSchema(name=<span style="color:#89ddff">"id"</span>, dtype=DataType.INT64, is_primary=<span style="color:#f78c6c">True</span>),
+    FieldSchema(name=<span style="color:#89ddff">"chunk_id"</span>, dtype=DataType.VARCHAR, max_length=256),
+    FieldSchema(name=<span style="color:#89ddff">"content"</span>, dtype=DataType.VARCHAR, max_length=65535),
+    FieldSchema(name=<span style="color:#89ddff">"embedding"</span>, dtype=DataType.FLOAT_VECTOR, dim=512),
+    <span style="color:#888"># ★ 行级权限核心字段：</span>
+    FieldSchema(name=<span style="color:#89ddff">"security_group"</span>,
+        dtype=DataType.ARRAY,
+        element_type=DataType.VARCHAR,
+        max_capacity=10, max_length=64),
+    <span style="color:#888"># security_group = ["admin", "purchase", "finance"]</span>
+    <span style="color:#888"># 查询时用 array_contains(security_group, "purchase") 过滤</span>
+]
+
+<span style="color:#888"># ===== 权限过滤查询 =====</span>
+expr = <span style="color:#89ddff">'id >= 0'</span>  <span style="color:#888"># admin 看全部</span>
+<span style="color:#c792ea">if</span> role != <span style="color:#89ddff">"admin"</span>:
+    expr = <span style="color:#89ddff">f'array_contains(security_group, "{role}")'</span>
+<span style="color:#888"># ★ 不是简单的 boolean flag，而是数组列</span>
+<span style="color:#888">#   一个文档可以属于多个部门 → 灵活但查询稍慢</span>
+
+<span style="color:#888"># ⚠️ 潜在问题：</span>
+<span style="color:#888"># 1. 使用 ORM-style API (Collection, connections.connect)</span>
+<span style="color:#888">#    → PyMilvus 3.1 将废弃，需要迁移到 MilvusClient</span>
+<span style="color:#888">#    控制台每次启动都打 DeprecationWarning</span>
+<span style="color:#888"># 2. Milvus v2.3.4 不支持 ARRAY 字段的 BITMAP 索引</span>
+<span style="color:#888">#    → security_group 过滤没有索引加速</span>
+<span style="color:#888"># 3. collection.load() 必须在 query() 前显式调用</span>
+<span style="color:#888">#    → 容易忘记，导致空结果</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 模块八：llm_router.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块八：<code>core/llm_router.py</code> — LLM 工厂 + Token 计费</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">237 行 | 支持 DeepSeek/MiniMax/Ollama 三种 provider | 工厂模式</p>
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== 工厂模式：单例缓存 =====</span>
+LLMFactory._instances = {}    <span style="color:#888"># key = "deepseek_0.7_True"</span>
+<span style="color:#c792ea">def</span> get_llm(provider, temperature, streaming):
+    cache_key = <span style="color:#89ddff">f"{provider}_{temperature}_{streaming}"</span>
+    <span style="color:#c792ea">if</span> cache_key <span style="color:#c792ea">in</span> cls._instances: <span style="color:#c792ea">return</span> cls._instances[cache_key]
+    <span style="color:#c792ea">if</span> provider == <span style="color:#89ddff">"deepseek"</span>:
+        llm = ChatOpenAI(api_key=..., base_url=..., stream_usage=<span style="color:#f78c6c">True</span>)
+    <span style="color:#c792ea">elif</span> provider == <span style="color:#89ddff">"minimax"</span>: ...
+    <span style="color:#c792ea">elif</span> provider == <span style="color:#89ddff">"ollama"</span>: ...
+    cls._instances[cache_key] = llm
+<span style="color:#888"># ★ ChatOpenAI(max_retries=3) 已内置 retry</span>
+
+<span style="color:#888"># ===== TokenUsage：费用追踪 =====</span>
+<span style="color:#c792ea">@dataclass</span>
+<span style="color:#c792ea">class</span> <span style="color:#ffcb6b">TokenUsage</span>:
+    prompt_tokens, completion_tokens, total_tokens
+    cost_yuan: <span style="color:#c792ea">float</span>  <span style="color:#888"># DeepSeek: ¥2/百万token</span>
+<span style="color:#888"># ★ 面试亮点：知道 API 调用成本，不是盲目烧钱</span>
+
+<span style="color:#888"># ===== astream() + retry 包装 =====</span>
+<span style="color:#c792ea">async def</span> <span style="color:#82aaff">astream</span>(messages):
+    <span style="color:#c792ea">async for</span> chunk <span style="color:#c792ea">in</span> retry_astream(
+        <span style="color:#c792ea">lambda</span>: cls._raw_astream(messages)):
+        <span style="color:#c792ea">yield</span> chunk
+<span style="color:#888"># ★ _raw_astream 是纯净的 LLM 调用，retry_astream 做 pre-first-chunk 重试</span>
+
+<span style="color:#888"># ⚠️ stream_usage=True 依赖 OpenAI 兼容接口——MiniMax 可能不返回</span>
+<span style="color:#888"># ⚠️ 工厂缓存在模块级别——切换 API key 需要重启</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 模块九：confidence_router.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块九：<code>core/confidence_router.py</code> — 三层置信度路由</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">240 行 | Adaptive RAG 核心 | 参考 Datawhale all-in-rag</p>
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== 三层决策 =====</span>
+LOW_THRESHOLD = 0.3; HIGH_THRESHOLD = 0.7
+<span style="color:#c792ea">def</span> decide(confidence):
+    <span style="color:#c792ea">if</span> confidence >= 0.7: <span style="color:#c792ea">return</span> {tier: <span style="color:#89ddff">"high"</span>, strategy: <span style="color:#89ddff">"direct"</span>}
+    <span style="color:#c792ea">elif</span> confidence >= 0.3: <span style="color:#c792ea">return</span> {strategy: <span style="color:#89ddff">"rewrite"</span>}     <span style="color:#888"># LLM改写query重试</span>
+    <span style="color:#c792ea">else</span>: <span style="color:#c792ea">return</span> {strategy: <span style="color:#89ddff">"web_search"</span>}    <span style="color:#888"># MiniMax API搜索补充</span>
+
+<span style="color:#888"># ===== rewrite_query()：LLM改写 =====</span>
+<span style="color:#c792ea">async def</span> rewrite_query(query, llm_factory):
+    prompt = <span style="color:#89ddff">"你是查询改写专家...生成2-3个改写版本"</span>
+    response = await llm.ainvoke(prompt)
+    <span style="color:#c792ea">return</span> response.split(<span style="color:#89ddff">"\n"</span>)  <span style="color:#888"># 每个改写版本重新检索</span>
+
+<span style="color:#888"># ===== web_search()：降级到外部搜索 =====</span>
+<span style="color:#c792ea">async def</span> web_search(query):
+    <span style="color:#888"># 优先 MiniMax API → 降级 DuckDuckGo → 都失败返回空</span>
+    <span style="color:#c792ea">return</span> await _search_minimax(query) <span style="color:#c792ea">or</span> await _search_duckduckgo(query)
+
+<span style="color:#888"># ⚠️ 实际运行时置信度阈值太保守：大部分查询 score 在 0.45-0.65</span>
+<span style="color:#888">#   几乎总是走 medium 分支 → rewrite 对简单查询是浪费</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 模块十：rag.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块十：<code>agents/rag.py</code> — RAG Agent（HyDE + 引用溯源）</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">494 行 | Prompt 工程核心 | 三级 Query 理解 + 引用标注</p>
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== Prompt 设计：引用溯源 =====</span>
+RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料回答...</span>
+<span style="color:#89ddff">引用标注规则：在回答正文中标注 [1][2]，末尾列出参考来源"""</span>
+<span style="color:#888"># ★ 面试亮点：不是简单贴文档，而是逐句标注引用</span>
+
+<span style="color:#888"># ===== 三级 Query 理解 =====</span>
+<span style="color:#c792ea">def</span> _classify_query(query):
+    <span style="color:#888"># 明确 → 直接检索</span>
+    <span style="color:#888"># 模糊 → HyDE（生成假设文档，用假设文档的embedding去检索）</span>
+    <span style="color:#888"># 宽泛 → 拆成 N 个子问题，并行检索后合并</span>
+
+<span style="color:#888"># ===== 后处理：去AI味 =====</span>
+<span style="color:#c792ea">def</span> _post_process(answer):
+    answer = re.sub(<span style="color:#89ddff">r"根据(检索|参考|以上)"</span>, ...)  <span style="color:#888"># 去掉套话</span>
+    answer = re.sub(<span style="color:#89ddff">r"希望(对您|能帮)"</span>, ...)    <span style="color:#888"># 禁止结语</span>
+
+<span style="color:#888"># ⚠️ _classify_query() 用规则匹配（问号/关键词计数），</span>
+<span style="color:#888">#   不是 LLM 判断——中文歧义时分类不准</span>
+<span style="color:#888"># ⚠️ HyDE 生成假设文档需要额外 LLM 调用 → 增加延迟</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 模块十一：auth.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块十一：<code>core/auth.py</code> — PBKDF2 认证 + Redis Token</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">226 行 | PBKDF2-SHA256 + 100000 迭代 | Token 存 Redis</p>
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== 密码哈希 =====</span>
+<span style="color:#c792ea">def</span> hash_password(password):
+    salt = secrets.token_hex(16)       <span style="color:#888"># 16字节随机盐</span>
+    dk = hashlib.pbkdf2_hmac(<span style="color:#89ddff">"sha256"</span>, password, salt,
+        iterations=100_000, dklen=32)  <span style="color:#888"># ★ 10万次迭代</span>
+    <span style="color:#c792ea">return</span> <span style="color:#89ddff">f"{salt}:{dk.hex()}"</span>
+
+<span style="color:#c792ea">def</span> verify_password(password, password_hash):
+    salt, stored = password_hash.split(<span style="color:#89ddff">":"</span>)
+    dk = hashlib.pbkdf2_hmac(...)
+    <span style="color:#c792ea">return</span> secrets.compare_digest(dk.hex(), stored)
+    <span style="color:#888"># ★ 用 compare_digest 防时序攻击</span>
+
+<span style="color:#888"># ===== Token 管理 =====</span>
+<span style="color:#c792ea">async def</span> create_token(user_id, username):
+    token = str(uuid.uuid4())          <span style="color:#888"># ★ UUID4 够随机</span>
+    await redis.set(<span style="color:#89ddff">f"smartqa:token:{token}"</span>,
+        {user_id, username}, ex=86400) <span style="color:#888"># 24h过期</span>
+
+<span style="color:#888"># ⚠️ Token 没有 JWT 签名——无法验证 token 是否被篡改</span>
+<span style="color:#888">#    → Demo 可用，生产必须换 JWT + RS256</span>
+<span style="color:#888"># ⚠️ 服务重启后所有 token 失效（内存 Redis）</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 模块十二：辅助模块 ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块十二：辅助智能模块（合辑）</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">self_rag.py + faithfulness.py + clarify.py + data_filter.py | 共计 ~600 行</p>
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== self_rag.py：检索结果自评 =====</span>
+<span style="color:#c792ea">async def</span> evaluate_chunks(query, chunks):
+    <span style="color:#888"># LLM 给每个 chunk 打分 (0-1)，过滤掉 <0.3 的</span>
+    <span style="color:#c792ea">return</span> [c <span style="color:#c792ea">for</span> c <span style="color:#c792ea">in</span> chunks <span style="color:#c792ea">if</span> score > 0.3]
+<span style="color:#888"># ★ 目的：去掉检索召回了但不相关的噪音 chunk</span>
+<span style="color:#888"># ⚠️ 每请求多一次 LLM 调用 → +1s 延迟</span>
+
+<span style="color:#888"># ===== faithfulness.py：忠实度检测 =====</span>
+<span style="color:#c792ea">def</span> check_faithfulness(answer, contexts):
+    <span style="color:#888"># 纯 Python 关键词覆盖率检测（不调 LLM）</span>
+    <span style="color:#888"># 把回答拆成句子，检查每句的关键词是否在上下文中</span>
+    <span style="color:#c792ea">return</span> score > 0.5  <span style="color:#888"># >0.5 认为 faithful</span>
+<span style="color:#888"># ★ 零额外延迟——不是所有检测都需要 LLM</span>
+<span style="color:#888"># ⚠️ 关键词匹配是脆弱的——"质量"匹配不到"良品率"</span>
+
+<span style="color:#888"># ===== clarify.py：参数不足时追问 =====</span>
+<span style="color:#c792ea">def</span> check_needs_clarification(query):
+    <span style="color:#888"># 检测缺少具体参数：查一下订单/看下物料</span>
+    <span style="color:#c792ea">return</span> need_clarify, follow_up_question
+<span style="color:#888"># ★ 不硬猜，主动反问——制造业场景正确比快重要</span>
+
+<span style="color:#888"># ===== data_filter.py：PII 脱敏 =====</span>
+<span style="color:#c792ea">class</span> <span style="color:#ffcb6b">PIIFilter</span>:
+    <span style="color:#888"># 8种类型：手机号/身份证/邮箱/银行卡/地址/姓名/车牌/IP</span>
+    <span style="color:#888"># 三层防护：正则→上下文验证→LLM兜底</span>
+<span style="color:#888"># ★ 日志也加了 PIILogFilter，防止敏感信息泄露到日志</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 模块十三：config.py ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块十三：<code>app/config.py</code> — Pydantic Settings 配置中心</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">~120 行 | 基于 pydantic-settings | 自动从 .env 加载</p>
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#c792ea">class</span> <span style="color:#ffcb6b">Settings</span>(BaseSettings):
+    <span style="color:#888"># --- 应用 ---</span>
+    APP_NAME: str; APP_VERSION: str; DEBUG: bool
+    <span style="color:#888"># --- 数据库 ---</span>
+    POSTGRES_HOST: str; POSTGRES_PORT: int = 15432
+    REDIS_HOST: str; REDIS_PORT: int = 6379
+    <span style="color:#888"># --- 向量库 ---</span>
+    MILVUS_HOST: str; MILVUS_PORT: int = 19530
+    <span style="color:#888"># --- LLM ---</span>
+    DEEPSEEK_API_KEY: str; DEEPSEEK_MODEL: str = <span style="color:#89ddff">"deepseek-chat"</span>
+    MINIMAX_API_KEY: str; MINIMAX_MODEL: str
+    <span style="color:#888"># --- 检索 ---</span>
+    EMBEDDING_MODEL: str; EMBEDDING_DIMENSION: int = 512
+    VECTOR_TOP_K: int = 20; BM25_TOP_K: int = 20
+    RERANKER_ENABLED: bool = <span style="color:#f78c6c">False</span>; RERANK_TOP_K: int = 3
+    <span style="color:#888"># --- 对话 ---</span>
+    MEMORY_WINDOW: int = 10; MEMORY_TTL: int = 86400
+    CONFIDENCE_THRESHOLD: float = 0.7
+    <span style="color:#888"># --- 开关 ---</span>
+    SELF_RAG_ENABLED: bool; FAITHFULNESS_ENABLED: bool
+    GUARDRAILS_ENABLED: bool = <span style="color:#f78c6c">False</span>
+
+    <span style="color:#c792ea">class</span> <span style="color:#ffcb6b">Config</span>:
+        env_file = <span style="color:#89ddff">".env"</span>  <span style="color:#888"># ★ 自动加载 .env 文件</span>
+
+<span style="color:#888"># ⚠️ API_KEY 是明文存在 .env 中 → 注意 .gitignore</span>
+<span style="color:#888"># ⚠️ Pydantic Settings 的 lru_cache 导致 .env 修改后要重启</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 模块十四：双模式 Agent ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:4px">模块十四：双模式 Agent + API 层（合辑）</h3>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">langchain_agent.py + langgraph_agent.py + api/* | ~1500 行</p>
+        <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
+<pre style="color:#e0e0e0;margin:0">
+<span style="color:#888"># ===== 双模式 Agent 设计 (chat.py:106-117) =====</span>
+<span style="color:#c792ea">def</span> _get_tool_agent(agent_type):
+    <span style="color:#c792ea">if</span> agent_type == <span style="color:#89ddff">"langchain"</span>: <span style="color:#c792ea">return</span> langchain_agent
+    <span style="color:#c792ea">elif</span> agent_type == <span style="color:#89ddff">"langgraph"</span>: <span style="color:#c792ea">return</span> langgraph_agent
+    <span style="color:#c792ea">else</span>: <span style="color:#c792ea">return</span> tool_agent  <span style="color:#888"># 手写 ReAct（默认）</span>
+
+<span style="color:#888"># langgraph_agent.py：LangGraph StateGraph</span>
+<span style="color:#888"># ★ 面试价值：展示了 DAG 流程编排能力</span>
+<span style="color:#888"># ⚠️ 有已知 Bug：astream 事件解析问题（见 Skill 文档 #47）</span>
+
+<span style="color:#888"># langchain_agent.py：AgentExecutor(ReAct)</span>
+<span style="color:#888"># ★ 优势：完善的错误处理和重试机制</span>
+
+<span style="color:#888"># ===== API 层 (api/*.py) =====</span>
+<span style="color:#888"># /api/v1/chat/stream    → SSE 流式对话</span>
+<span style="color:#888"># /api/v1/auth/login     → 登录 (PBKDF2 + Redis Token)</span>
+<span style="color:#888"># /api/v1/knowledge/list → 知识库 CRUD（带权限过滤）</span>
+<span style="color:#888"># /api/v1/evaluate/*     → RAGAS 评估接口</span>
+<span style="color:#888"># /api/v1/feedback       → 用户反馈（评分+评论）</span>
+<span style="color:#888"># /api/v1/tool/execute   → 工具调用（需要 RBAC 鉴权）</span>
+<span style="color:#888"># /admin/reranker/enable → Reranker Runtime 激活</span>
+<span style="color:#888"># /health                → 全链路健康检查</span>
+<span style="color:#888"># /docs                  → Swagger 自动文档</span>
+</pre>
+        </div>
+      </div>
+
+      <!-- ===== 潜在问题汇总 ===== -->
+      <div class="tip-box" style="background:#fff3cd;border-color:#ffc107;color:#856404">
+        <strong>⚠️ 已知潜在问题（面试时可主动提及）：</strong><br>
+        1. <strong>retry.py：</strong>没有 jitter（随机延迟），高并发下可能同时重试造成 thundering herd<br>
+        2. <strong>rag_engine.py：</strong>embed_query() 没有 retry；BM25 用文件索引，大文档量性能退化<br>
+        3. <strong>redis_client.py：</strong>未登录用户退化为共享记忆；get_session_list() 无 user 过滤<br>
+        4. <strong>chat.py：</strong>event_generator() 是 God Function（776行）；session_id 由前端传入无校验<br>
+        5. <strong>router.py：</strong>关键词匹配硬编码；残留"天气"等旧工具死代码<br>
+        6. <strong>main.py：</strong>默认密码弱安全；/admin/reranker/enable 无鉴权<br>
+        7. <strong>milvus_client.py：</strong>ORM API 即将废弃；ARRAY 列无索引加速<br>
+        8. <strong>整体：</strong>没有速率限制（rate limiting），单个用户可无限调用消耗 DeepSeek API 额度<br><br>
+        <strong>面试金句：</strong>「这些是我已知的 trade-off。Demo 阶段优先保证核心链路的正确性，
+        安全加固和性能优化排在下个迭代。但我在代码里留了注释，接手的人不会踩坑。」
+      </div>
+    </section>
+
+    <!-- ===== AI Agent 通用面试题 ===== -->
+
+    <section class="section" id="agent-basics">
+      <h2>Agent 基础概念（4 题）</h2>
+      <p>面试大模型应用开发岗必考的基础题，引用 Datawhale <a href="https://github.com/datawhalechina/wow-agent" target="_blank">wow-agent</a> 教程的核心概念。</p>
+
+      <div class="faq-item">
+        <div class="q">Q1：什么是 AI Agent？它和传统程序、大模型有什么区别？</div>
+        <div class="a">
+          <strong>AI Agent</strong> 是一个能感知环境、自主决策并执行行动的系统。核心四件套：<br>
+          • <strong>规划模块</strong>（Planning）— 理解意图，把「帮我订机票」拆成查航班→选航班→填信息→支付<br>
+          • <strong>工具调用</strong>（Tool Calling）— 扩展模型能力边界，调搜索、计算器、数据库、API<br>
+          • <strong>记忆管理</strong>（Memory）— 短期记上下文、长期记偏好、工作记忆记当前状态<br>
+          • <strong>反思修正</strong>（Reflection）— 评估结果、发现错误、优化策略<br><br>
+          <strong>vs 传统程序：</strong>程序走固定规则，Agent 走感知→推理→行动循环<br>
+          <strong>vs 纯 LLM：</strong>LLM 只有生成能力，Agent 多了工具、记忆、自主决策
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q2：Agent 的核心模块之间怎么联动？</div>
+        <div class="a">
+          Datawhale wow-agent 教程中的核心流程：<br>
+          <strong>感知输入 → 大脑规划 → 记忆检索 → 工具调用 → 结果反馈 → 记忆更新</strong>，形成闭环。<br>
+          面试时用四个比喻：大脑（规划）、五官（感知）、手脚（工具）、记忆（记忆），面试官一听就懂。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q3：微调、提示工程和 Agent 算法设计之间是什么关系？</div>
+        <div class="a">
+          三者是<strong>不同颗粒度的干预手段</strong>：<br>
+          • <strong>提示工程</strong>是「现场指挥」— 推理时给指令，成本低但效果不稳定，适合简单任务<br>
+          • <strong>微调</strong>是「长期训练」— 让模型从根本上学会某种行为模式，成本高但效果稳定<br>
+          • <strong>Agent 算法设计</strong>是「搭建框架」— 决定 Agent 如何思考、何时调工具、怎么记信息，是其底层逻辑<br>
+          三者配合使用：先在 Agent 框架里定义好行为模式，用提示工程做快速试错，效果稳定后微调固化。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q4：Agent 的类型有哪些？各适用什么场景？</div>
+        <div class="a">
+          <strong>ReAct Agent：</strong>推理+行动交替，适合大多数对话式场景（Datawhale wow-agent 第 01-04 课）<br>
+          <strong>Plan-and-Execute Agent：</strong>先定完整计划再执行，适合复杂多步骤任务<br>
+          <strong>AutoGPT Agent：</strong>自主持续运行，自我反思修正，适合长周期自动化<br>
+          <strong>Reflection Agent：</strong>先产出再自评再修正，适合需要高质量输出的场景（如写作、代码审查）
+        </div>
+      </div>
+
+    </section>
+
+    <section class="section" id="agent-react">
+      <h2>ReAct 与推理框架（4 题）</h2>
+      <p>ReAct 是面试最高频的 Agent 模式，Datawhale <a href="https://github.com/datawhalechina/wow-agent" target="_blank">wow-agent</a> 专门有一课「手搓一个土得掉渣的 Agent」手写 ReAct。</p>
+
+      <div class="faq-item">
+        <div class="q">Q1：描述 ReAct 框架的运行流程</div>
+        <div class="a">
+          <strong>ReAct = Reasoning（推理）+ Action（行动）</strong><br>
+          循环：<strong>Thought（思考）→ Action（行动）→ Observation（观察）→ 循环</strong>，直到得出 Final Answer。<br>
+          代码实现要点：LLM 返回 Thought 描述意图→解析出 tool_call→执行工具→把 observation 再次喂给 LLM→判断是否结束。<br>
+          关键假设：Agent 在 Thought 阶段公开了它的推理过程，面试时要强调「<strong>每一步都能 log，可见可调试</strong>」。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q2：ReAct 循环什么时候退出？怎么防止无限循环？</div>
+        <div class="a">
+          三种退出条件：<br>
+          ① 达到 <strong>MAX_ITERATIONS</strong> 上限（通常设 5-10 次）— 这是保险丝<br>
+          ② LLM 返回了 <strong>Final Answer</strong>（不再包含 tool_call）<br>
+          ③ 工具执行 <strong>出错且无法重试</strong><br>
+          面试金句：「5 次迭代是保险丝，防止无限循环。实际大多数 query 1-2 次就出答案。」
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q3：CoT、ToT、GoT、ReAct 有什么区别？</div>
+        <div class="a">
+          <strong>CoT（思维链）：</strong>「Let's think step by step」— 线性推理，拆成子步骤逐一求解<br>
+          <strong>ToT（思维树）：</strong>生成多个候选路径，BFS/DFS 搜索评估最优解<br>
+          <strong>GoT（思维图）：</strong>用图结构存储复杂决策关系，路径可合并可分支<br>
+          <strong>ReAct：</strong>融合推理+行动，不仅思考还调用外部工具<br><br>
+          选型指南：纯推理用 CoT，多路径探索用 ToT，需要外部工具交互用 ReAct。Datawhale wow-agent 教程从 ReAct 开始教，因为它是 Agent 的基础。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q4：手写 ReAct vs 用 LangChain Agent，怎么选？</div>
+        <div class="a">
+          <strong>手写 ReAct 的优势：</strong><br>
+          • 完全可控 — 每一步都能 log，出问题直接定位<br>
+          • 面试加分 — 能逐行解释 Thought/Action/Observation 的解析逻辑<br>
+          • 依赖少 — Datawhale wow-agent 的教程就展示了「最简易方式在本地搭建 Agent，尽量减少依赖库」<br><br>
+          <strong>LangChain Agent 的优势：</strong><br>
+          • 生态丰富 — SearchAPI、SQLDatabase 等即插即用<br>
+          • 标准化 — AgentExecutor 有完善的错误处理和重试机制<br>
+          面试话术：「我默认用手写 ReAct，因为要完全可控。LangChain 做备选方案，改一行配置就能切过去。」
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="agent-tools">
+      <h2>Function Calling / Tool Use（4 题）</h2>
+      <p>工具调用是 Agent 区别于纯 LLM 的核心能力。Datawhale wow-agent 教程覆盖了 OpenAI、LlamaIndex、Zigent、MetaGPT 四种框架的工具调用实现。</p>
+
+      <div class="faq-item">
+        <div class="q">Q1：Function Calling 和 Tool Use 有什么区别？</div>
+        <div class="a">
+          <strong>Function Calling：</strong>基于 JSON Schema 定义，LLM 输出结构化函数调用 JSON，标准化高（OpenAI 兼容），适合简单场景<br>
+          <strong>Tool Use：</strong>更灵活的工具描述格式，支持并行调用多个工具、工具依赖关系、更好的错误处理，适合复杂工具系统<br><br>
+          <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
+            <tr style="background:#1d1e2c;color:#fff"><td style="padding:4px 8px"><strong>特性</strong></td><td style="padding:4px 8px"><strong>Function Calling</strong></td><td style="padding:4px 8px"><strong>Tool Use</strong></td></tr>
+            <tr><td style="padding:4px 8px">标准化</td><td style="padding:4px 8px">高（JSON Schema）</td><td style="padding:4px 8px">中（自定义格式）</td></tr>
+            <tr><td style="padding:4px 8px">灵活性</td><td style="padding:4px 8px">中</td><td style="padding:4px 8px">高</td></tr>
+            <tr><td style="padding:4px 8px">并行调用</td><td style="padding:4px 8px">不支持</td><td style="padding:4px 8px">支持</td></tr>
+            <tr><td style="padding:4px 8px">实现复杂度</td><td style="padding:4px 8px">低</td><td style="padding:4px 8px">高</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q2：如何让 Agent 可靠地选择正确工具？</div>
+        <div class="a">
+          核心策略：<br>
+          • <strong>工具描述要精炼</strong> — 不是越长越好，关键参数说清楚；描述中加入反例能减少误匹配<br>
+          • <strong>分层路由</strong> — 先规则匹配（关键词→意图→工具），规则不命中再交给 LLM 选<br>
+          • <strong>工具数量控制</strong> — 单次 context 中工具不超过 8-10 个，工具太多用分组+子路由<br>
+          • <strong>Few-shot 示例</strong> — 在 System Prompt 中放 2-3 个正确选择的示例<br>
+          面试时结合 SmartQA 的三级意图路由来讲这个题，效果加倍。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q3：工具返回结果太长怎么办？</div>
+        <div class="a">
+          三种处理策略，按优先级：<br>
+          ① <strong>截断保留关键信息</strong> — 用正则或 LLM 提取核心字段，丢弃冗余<br>
+          ② <strong>摘要压缩</strong> — 用 LLM 对工具返回做一句话摘要再喂入上下文<br>
+          ③ <strong>分页拉取</strong> — 数据库查询类结果分页，Agent 按需翻页<br>
+          面试话术：「不要让 Agent 消化它不需要的信息——工具返回先清洗再入上下文。」
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q4：如何设计高效的 Action Space（动作空间）？</div>
+        <div class="a">
+          三个原则：<br>
+          <strong>粒度控制：</strong>不能太细（一个操作拆成 10 步）也不能太粗（一个动作包办一切）<br>
+          <strong>覆盖性：</strong>确保覆盖任务所需所有操作类型<br>
+          <strong>可解释性：</strong>动作名要直观 — <code>search_flight</code> 而非 <code>act_123</code><br>
+          实践：每个工具只做一件事，工具之间通过自然语言或结构化参数传递结果。Datawhale wow-agent 通过 Zigent 框架示范了这一点。
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="agent-memory">
+      <h2>记忆与状态管理（3 题）</h2>
+
+      <div class="faq-item">
+        <div class="q">Q1：Agent 的记忆系统有哪几种类型？各自怎么实现？</div>
+        <div class="a">
+          <strong>短期记忆：</strong>当前对话的上下文窗口（LLM 的 messages 数组），最简单但容量受 token 限制<br>
+          <strong>长期记忆：</strong>历史对话、用户偏好 — 用 Redis/DB 持久化 + 向量检索召回相关历史<br>
+          <strong>工作记忆：</strong>当前任务的状态（已执行了哪一步、结果是什么）— 通常存在内存 dict 或 Redis<br><br>
+          SmartQA 的实现：Redis chat_memory 保存 session 级上下文，断连后从 Redis 拉取历史不丢状态。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q2：如何实现有效的向量检索记忆？</div>
+        <div class="a">
+          <strong>步骤：</strong><br>
+          ① 将每轮对话做摘要→Embedding→存入向量库<br>
+          ② 新对话来时，Query Embedding→向量库召回 top-k→注入 System Prompt<br>
+          <strong>优化要点：</strong><br>
+          • 不是把原始对话全存，而是存<strong>摘要+关键信息</strong><br>
+          • 设置遗忘策略（时间衰减 or 重要性评估）<br>
+          • 结合 BM25 关键词检索补全（Datawhale wow-rag 教的混合检索思路）
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q3：多轮对话中 Token 超长怎么办？</div>
+        <div class="a">
+          <strong>滑动窗口：</strong>只保留最近 N 轮，旧的丢弃<br>
+          <strong>摘要压缩：</strong>用 LLM 把历史对话压缩成一段摘要，替换原始 messages<br>
+          <strong>分级存储：</strong>短期（messages 数组）+ 中期（Redis session）+ 长期（向量库），按需检索<br>
+          面试金句：「窗口是奢侈品——能省就省，摘要 + 检索比傻存原始对话更聪明。」
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="agent-multi">
+      <h2>多 Agent 协作（4 题）</h2>
+      <p>Datawhale wow-agent Task03 专门讲 Zigent 实现多智能体，课程中展示了哲学家多智能体、教程编写智能体、出题智能体等场景。</p>
+
+      <div class="faq-item">
+        <div class="q">Q1：多 Agent 通信用什么方式？</div>
+        <div class="a">
+          三种通信模式：<br>
+          <strong>共享内存：</strong>所有 Agent 读写同一个状态对象，简单但耦合度高<br>
+          <strong>消息传递：</strong>Agent A 的 output 直接作为 Agent B 的 input 注入 System Prompt<br>
+          <strong>自然语言协议：</strong>Agent 之间用自然语言沟通，最灵活但不可靠<br><br>
+          面试话术：「SmartQA 用的是方案二——RAG Agent 的结果注入 Tool Agent 的 context，不需要中间序列化。」
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q2：Orchestrator-Worker 模式 vs 平等协商模式，怎么选？</div>
+        <div class="a">
+          <strong>Orchestrator-Worker：</strong>一个主 Agent 拆任务→分派给 Worker→汇总结果。适合<strong>任务可规划、步骤有先后依赖</strong>的场景（Datawhale wow-agent 教程编写智能体就是这个模式）<br>
+          <strong>平等协商：</strong>所有 Agent 平等对话，通过讨论达成共识。适合<strong>需要多角度碰撞</strong>的场景（如代码评审、辩论）<br>
+          选择：能规划的就用 Orchestrator（效率高），无法预先规划的才用平等协商。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q3：怎么防止多 Agent 对话死循环？</div>
+        <div class="a">
+          ① <strong>回合上限</strong> — 整个对话最多 N 轮，超时强制终止<br>
+          ② <strong>收敛检测</strong> — 连续两轮输出内容高度相似时，判定已收敛，直接输出最终结果<br>
+          ③ <strong>终止条件注入</strong> — 在 System Prompt 中明确写出「当你认为已经达成共识，回复 DONE」<br>
+          ④ <strong>心跳监控</strong> — 外部计时器超时直接 kill 整个对话线程
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q4：LangChain / LlamaIndex / MetaGPT / AutoGen 各有什么优劣？</div>
+        <div class="a">
+          Datawhale wow-agent 教程恰好覆盖了这四种框架的对比：<br>
+          <strong>OpenAI 原生 API：</strong>最简单，依赖最少，适合「我只想快速跑通一个 Agent」（wow-agent Task01）<br>
+          <strong>LlamaIndex：</strong>数据索引 + RAG 能力强，适合「我需要把大量文档变成 Agent 的知识」（wow-agent Task02）<br>
+          <strong>Zigent（自塾）：</strong>轻量级，代码行数极少，适合教学和轻量生产（wow-agent Task03）<br>
+          <strong>MetaGPT：</strong>多 Agent 协作框架，按 SOP 流程生成代码/文档，适合复杂项目（wow-agent Task04）<br>
+          <strong>LangChain：</strong>生态最大，工具链最全，但抽象层多、调试困难<br>
+          <strong>AutoGen：</strong>微软出品，多 Agent 对话框架，支持复杂协作场景<br>
+          面试话术：「框架没有银弹——我选型看三点：代码行数、调试便利性、团队学习成本。SmartQA 默认用最简方案，需要时再切。」
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="agent-eval">
+      <h2>评估与部署（4 题）</h2>
+
+      <div class="faq-item">
+        <div class="q">Q1：怎么评估一个 Agent 系统的质量？</div>
+        <div class="a">
+          三个维度：<br>
+          <strong>功能正确性：</strong>答案是否正确、工具调用是否准确（人工评估 + 黄金测试集）<br>
+          <strong>可靠性：</strong>RAGAS 四大指标 — Faithfulness（忠实度 0.74）、Context Precision（检索准确率 0.67）、Context Recall（检索召回率 0.60）、Answer Relevance（回答相关性 0.64）。17 题供应链文档实测（Reranker 启用），DeepSeek-Chat Judge。对比：Reranker 关闭时 CP=0.53→启用后 0.67（+26%）。<br>
+          <strong>效率：</strong>平均延迟、Token 消耗、工具调用次数<br>
+          面试金句：「功能正确是底线，可靠性和效率决定能不能上线。」
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q2：RAGAS 的 Faithfulness / Context Precision / Answer Relevance 分别测什么？</div>
+        <div class="a">
+          <strong>Faithfulness（忠实度）：</strong>回答中的每个声明，是否都能在检索到的上下文中找到依据。测的是「有没有瞎编」<br>
+          <strong>Context Precision（检索准确率）：</strong>检索到的文档中，相关文档的比例。测的是「搜得准不准」<br>
+          <strong>Answer Relevance（回答相关性）：</strong>回答与原始问题的语义相关性。测的是「有没有跑题」<br><br>
+          这三个指标来自 RAGAS 论文（Shahul 等, 2023），是 RAG 系统评估的工业标准。Datawhale wow-rag 教程也强调检索质量评估。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q3：Agent 输出的确定性怎么保证？</div>
+        <div class="a">
+          <strong>可控手段：</strong><br>
+          • temperature=0 降低随机性，但不能完全消除<br>
+          • 关键决策用规则而非 LLM（SmartQA 的意图路由第一级就是规则匹配）<br>
+          • 输出后用结构化校验（JSON Schema validation、关键词覆盖率检测）<br>
+          <strong>面试要承认局限：</strong>「LLM 本质上是概率模型，确定性不是 100%。与其追求绝对的确定性，不如设计好 fallback 和人工确认环节——SmartQA 的操作审批就是为此设计的。」
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q4：生产环境的 Agent 怎么部署和监控？</div>
+        <div class="a">
+          <strong>部署：</strong>Docker Compose 一键启动（Datawhale wow-rag 和 SmartQA 都用了这个方案），FastAPI + SSE 流式、nginx 反代<br>
+          <strong>监控：</strong>Token 用量追踪（每次对话精确计费）、延迟 P50/P99、工具调用成功率、错误率<br>
+          <strong>安全：</strong>PII 脱敏、Prompt 注入检测、操作审批（写操作需用户确认）<br>
+          <strong>A/B 测试：</strong>新 Agent 版本先上线 10% 流量，对比旧版指标<br>
+          面试话术：「Token 就是钱。SmartQA 前端实时显示 token 用量和费用——每个按钮都对应商业模式。」
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="metrics-cheatsheet">
+      <h2>指标速查：@K 和所有评估指标含义</h2>
+      <p>SmartQA 项目实际使用的评估体系。面试时每个指标都能报出具体数字和含义。</p>
+
+      <!-- ===== @K 基础概念 ===== -->
+      <div class="faq-item">
+        <div class="q">@K 是什么意思？（如 Recall@3、NDCG@10）</div>
+        <div class="a">
+          就是「<strong>只看检索结果的前 K 条</strong>」来算指标。<br><br>
+          为什么要有 @K？因为一个检索系统可能返回 100 条结果，但用户只看前几条。前 3 条对用户最有价值。<br><br>
+          举例：<br>
+          • <strong>Recall@3=0.53</strong> → 所有相关文档中，有 53% 出现在检索结果前 3 名中<br>
+          • <strong>NDCG@5=0.56</strong> → 只取前 5 条结果算归一化累积收益，得分 0.56<br>
+          • <strong>Precision@10=0.4</strong> → 前 10 条结果中，40% 是真正相关的<br><br>
+          K 值越小要求越严格。Recall@3 比 Recall@10 难拿高分，因为只给 3 个位置来命中所有相关文档。
+        </div>
+      </div>
+
+      <!-- ===== RAGAS 指标 ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:12px">RAGAS 四大指标</h3>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">来自 RAGAS 论文（Shahul 等, 2023），RAG 系统评估的工业标准。以下为 SmartQA 在 <strong>供应链知识库</strong>（12 篇文档，1034 chunks，17 题完整评估）上的实测结果。<strong>Reranker 已启用</strong>（BGE-Reranker-v2-m3，CPU 加载 6.3s）。Judge LLM 使用 DeepSeek-Chat。评估脚本：<code>backend/eval/run_ragas_full_sc.py</code>。</p>
+        <div class="tip-box" style="background:#e8f4fd;border-color:#409eff;color:#2c3e50;margin-bottom:12px">
+          <strong>📊 Reranker 对比（同一 17 题测试集）：</strong><br>
+          • 关闭 Reranker → CP=0.53, CR=0.47<br>
+          • 启用 Reranker → CP=<strong>0.67</strong> (+26%), CR=<strong>0.60</strong> (+28%)<br>
+          面试话术：「Reranker 让检索精度和召回率分别提升 26% 和 28%——cross-encoder 的深度语义匹配是检索链路的最后一道质量门禁。」
+        </div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr style="background:#1d1e2c;color:#fff">
+            <td style="padding:6px 12px"><strong>指标</strong></td>
+            <td style="padding:6px 12px"><strong>实测值</strong></td>
+            <td style="padding:6px 12px"><strong>测的是什么</strong></td>
+            <td style="padding:6px 12px"><strong>通俗解释</strong></td>
+          </tr>
+          <tr style="background:#f0f9eb">
+            <td style="padding:6px 12px;font-weight:600">Faithfulness</td>
+            <td style="padding:6px 12px"><strong>0.74</strong></td>
+            <td style="padding:6px 12px">回答是否忠实于检索到的文档</td>
+            <td style="padding:6px 12px">「有没有瞎编」— 把回答拆成原子陈述，逐条验证能不能在检索到的文档里找到依据</td>
+          </tr>
+          <tr style="background:#ecf5ff">
+             <td style="padding:6px 12px;font-weight:600">Context Precision</td>
+            <td style="padding:6px 12px"><strong>0.67</strong></td>
+            <td style="padding:6px 12px">检索结果中相关文档的排名精度</td>
+            <td style="padding:6px 12px">「搜得准不准且排名对不对」— 相关文档是不是排在无关文档前面</td>
+          </tr>
+          <tr style="background:#ecf5ff">
+            <td style="padding:6px 12px;font-weight:600">Context Recall</td>
+            <td style="padding:6px 12px"><strong>0.60</strong></td>
+            <td style="padding:6px 12px">标准答案所需信息是否全被检索到</td>
+            <td style="padding:6px 12px">「该搜的都搜到了没」— 标准答案里每句话，检索结果里能找到对应吗</td>
+          </tr>
+          <tr style="background:#fdf6ec">
+            <td style="padding:6px 12px;font-weight:600">Answer Relevancy</td>
+            <td style="padding:6px 12px"><strong>0.64</strong></td>
+            <td style="padding:6px 12px">回答与问题的语义相关性</td>
+            <td style="padding:6px 12px">「有没有跑题」— 用 LLM 反向生成问题，看生成的问题和原始问题多像</td>
+          </tr>
+        </table>
+        <p style="font-size:12px;color:var(--text-meta);margin-top:8px">整体 RAGAS 加权评分：<strong>0.66</strong>（满分 1.0）。17 题供应链知识库实测，BGE-Reranker-v2-m3 启用，DeepSeek-Chat Judge。Reranker 让 CP 从 0.53 提升到 0.67（+26%），CR 从 0.47 提升到 0.60（+28%）。面试关键：先报提升幅度，再说明「在 CPU 上只用 6.3s 加载，生产换 GPU 可做到 50ms」。</p>
+      </div>
+
+      <!-- ===== IR 经典指标 ===== -->
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
+        <h3 style="margin-bottom:12px">经典 IR 检索指标</h3>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">信息检索领域几十年的经典指标。SmartQA 通过参数网格搜索（grid search）跑出的实际数据：</p>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr style="background:#1d1e2c;color:#fff">
+            <td style="padding:6px 12px"><strong>指标</strong></td>
+            <td style="padding:6px 12px"><strong>实测值</strong></td>
+            <td style="padding:6px 12px"><strong>公式</strong></td>
+            <td style="padding:6px 12px"><strong>通俗解释</strong></td>
+          </tr>
+          <tr>
+            <td style="padding:6px 12px;font-weight:600">Recall@3</td>
+            <td style="padding:6px 12px"><strong>0.53</strong></td>
+            <td style="padding:6px 12px">前3条中相关数 / 总相关数</td>
+            <td style="padding:6px 12px">所有正确答案里，前 3 条结果找到了多少。来源于供应链 KB（供应商+质检+库存 17 道 QA）网格搜索实测。</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 12px;font-weight:600">Recall@5</td>
+            <td style="padding:6px 12px"><strong>0.59</strong></td>
+            <td style="padding:6px 12px">前5条中相关数 / 总相关数</td>
+            <td style="padding:6px 12px">放宽到前 5 条后，召回率从 0.53 提升到 0.59。最佳组合达到 0.60。</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 12px;font-weight:600">MRR</td>
+            <td style="padding:6px 12px"><strong>0.51</strong></td>
+            <td style="padding:6px 12px">avg(1 / 第一个正确答案的排名)</td>
+            <td style="padding:6px 12px">「第一个正确答案平均排第几」— 排第1得1分，排第2得0.5分。0.51 说明正确答案平均在第 2 名附近。</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 12px;font-weight:600">NDCG@3</td>
+            <td style="padding:6px 12px"><strong>0.53</strong></td>
+            <td style="padding:6px 12px">DCG / IDCG（归一化折扣累积收益）</td>
+            <td style="padding:6px 12px">「排序质量的金标准」— 搜索结果排序质量评分。0.53 对于 20 篇文档的小型知识库是可解释的。</td>
+          </tr>
+        </table>
+        <p style="font-size:12px;color:var(--text-meta);margin-top:8px">参数组合：RRF_K=10, Vector Top-20, BM25 Top-20, Rerank Top-5</p>
+      </div>
+
+      <!-- ===== 面试怎么说 ===== -->
+      <div class="tip-box">
+        <strong>💡 面试时这样说：</strong><br>
+        「RAGAS 评估供应链 17 题（Reranker 启用）：忠实度 0.74、检索精度 0.67、检索召回 0.60。<br>
+        对比关闭 Reranker 时：CP 从 0.53→0.67（+26%），CR 从 0.47→0.60（+28%）。<br>
+        面试关键：先报提升幅度证明 Reranker 价值，再说「CPU 加载 6.3s，生产 GPU 50ms」。<br>
+        IR 指标 Recall@3=0.53，单通道向量检索才 0.2，混合检索+RRF 拉到 0.53 证明架构有效。」<br><br>
+        <strong>TTFT（首 token 延迟）：</strong>SSE 流式架构下，检索+Prompt 组装约 300-800ms，<br>
+        LLM 首 token 约 500-1500ms（取决于 DeepSeek API 当前负载）。<br>
+        <strong>总延迟估计 2-5 秒</strong>——面试官追问时说「待后端启动后用秒表精确测量，代码埋点方案已规划」。<br><br>
+        <strong>三个层次对应三种面试深度：</strong><br>
+        • 初级问：你用什么指标评估？→ 答 RAGAS 四件套<br>
+        • 中级问：每个指标什么意思？→ 答 Faithfulness 测瞎编、Recall 测覆盖<br>
+        • 高级问：指标之间的 trade-off 是什么？→ 答 Precision 和 Recall 跷跷板，我们选 NDCG 做综合评判
+      </div>
+    </section>
+
+    <!-- ===== 面试话术 ===== -->
+    <section class="section" id="talk">
+      <h2>面试话术</h2>
+      <p>每个亮点配上「一句话怎么说」，面试时直接套用。</p>
+
+      <div class="talk-item">
+        <div class="q">🗣️ RAG 链路分层过滤</div>
+        <div class="a">「BM25 粗排 + Milvus 精排，设计上<strong class="hl">故意不追求单一通道的高分</strong>——因为双通道互补才是目标。
+        0.53 可解释，语料翻倍会继续涨。」</div>
+      </div>
+
+      <div class="talk-item">
+        <div class="q">🗣️ 三种 Agent 模式</div>
+        <div class="a">「280 行手写 ReAct 作为默认，因为<strong class="hl">完全可控</strong>；
+        LangChain 备选——面试官问『了解 LangChain 吗』时展示。
+        LangGraph 是差异化的亮点，面试中极少有人能讲清楚 StateGraph。」</div>
+      </div>
+
+      <div class="talk-item">
+        <div class="q">🗣️ 行级权限</div>
+        <div class="a">「PostgreSQL 存角色，Milvus 查询时实时过滤，<strong class="hl">职责分离</strong>。
+        不是应用层 if-else 那种『看起来做了』的方案——是真的数据库层隔离。」</div>
+      </div>
+
+      <div class="talk-item">
+        <div class="q">🗣️ SSE 三事件流</div>
+        <div class="a">「<strong class="hl">tool_status 先于内容展示</strong>，符合置信度原则——用户先知道系统在做什么，
+        再看到答案。内部状态对外透明。」</div>
+      </div>
+
+      <div class="talk-item">
+        <div class="q">🗣️ 操作审批闭环</div>
+        <div class="a">「FastAPI Request 没有 approved 字段，<strong class="hl">前后端都必须改</strong>——
+        前端加确认弹窗，后端加审批验证，SSE 事件打通整个链路。」</div>
+      </div>
+
+      <div class="talk-item">
+        <div class="q">🗣️ 三级意图路由</div>
+        <div class="a">「<strong class="hl">零 token 优先</strong>——40% 的请求在规则层命中，不需要 LLM。
+        这不是性能优化，是成本优化。token 就是钱。」</div>
+      </div>
+
+      <div class="talk-item">
+        <div class="q">🗣️ 澄清提问 vs 硬猜</div>
+        <div class="a">「<strong class="hl">宁可多问一句，也不要给错答案</strong>。
+        在制造业场景，错误的物料编码可能导致生产线停线——追问不是缺陷，是安全设计。」</div>
+      </div>
+
+      <div class="talk-item">
+        <div class="q">🗣️ PDF 表格检索</div>
+        <div class="a">「很多知识库系统对 PDF 表格的处理是『提取文本扔掉表格结构』。
+        我们用<strong class="hl">三层回退链 + 表格自动转 Markdown</strong>，单元格级别的数据也能搜到。」</div>
+      </div>
+    </section>
+
+    <!-- ===== 高频追问预判 ===== -->
+    <section class="section" id="faq">
+      <h2>高频追问预判</h2>
+
+      <div class="faq-item">
+        <div class="q">Q：为什么不用 LangChain 的内置工具？</div>
+        <div class="a">TOOL_REGISTRY 复用现有架构，LangChain 包装后反而丢失了 BaseTool 的 ainvoke 语义。
+        自己写的注册器 5 行代码新增一个工具，比 LangChain 的 Tool 类更轻。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q：Milvus 行级权限怎么做？</div>
+        <div class="a">security_group 存 ARRAY，查询时 WHERE array_contains(security_group, user_role)。
+        PostgreSQL 角色表负责写入校验，Milvus 只负责查询过滤——职责分离。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q：SSE 断连怎么处理？</div>
+        <div class="a">Redis chat_memory 保存 session 级上下文，重连后从 Redis 拉取历史，不丢状态。
+        前端的 EventSource 自动重连，用户无感知。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q：为什么用 SQLite 而不是 Redis 做工具数据缓存？</div>
+        <div class="a">工具缓存是工具节点私有状态，不需要跨进程共享，SQLite 足够且零运维成本。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q：RAG 指标 R@3=0.53 为什么这么低？</div>
+        <div class="a">知识库只有 20 篇文档 ~473 chunks。混合检索把单一通道的 0.2 拉到 0.53，架构有效。
+        语料翻倍后指标会涨。我在 README 公开了这个数字，说明我知道系统的边界。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q：LangGraph 测试为什么没有自动化？</div>
+        <div class="a">LangGraph 的 graph.astream() 内部执行引擎是 Python 闭包，unittest.mock.patch 无法穿透。
+        不是偷懒，是框架限制。我用手动演示替代，效果更真实。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q：这个项目是你一个人做的吗？</div>
+        <div class="a">（划重点）说「<strong>我们</strong>」而不是「我」。即使一个人写的，也暗示团队协作方式——
+        「我们的分工是：我负责后端 Agent 和检索链路，同事负责前端和测试。」</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">Q：能不能线上演示？</div>
+        <div class="a">演示脚本在 plan/DEMO_SCRIPT.md，包含 19 个场景，10 分钟跑完。
+        启动命令：docker-compose up -d → uvicorn → pnpm dev。建议提前准备好。</div>
+      </div>
+    </section>
+
+    <!-- ===== 演示流程 ===== -->
+    <section class="section" id="demo">
+      <h2>演示流程（10 分钟版）</h2>
+      <p>精选核心场景，按顺序演示。</p>
+
+      <ul class="demo-steps">
+        <li><span class="num">1</span><div class="demo-desc"><strong>知识库问答</strong> — 提问「什么是 AQL 抽检标准」，展示混合检索 + 引用溯源</div></li>
+        <li><span class="num">2</span><div class="demo-desc"><strong>工具调用</strong> — 提问「MAT-001 库存多少」，展示 ReAct 循环 + 实时数据</div></li>
+        <li><span class="num">3</span><div class="demo-desc"><strong>意图路由</strong> — 连发「查库存」「变质了怎么办」「今天天气怎么样」，展示三级路由标签</div></li>
+        <li><span class="num">4</span><div class="demo-desc"><strong>行级权限</strong> — 分别用采购/财务/质检登录，展示同一文档对不同角色的可见性</div></li>
+        <li><span class="num">5</span><div class="demo-desc"><strong>Query Cache</strong> — 重复发同一问题，展示 ⚡ 缓存命中标签，零 token 返回</div></li>
+        <li><span class="num">6</span><div class="demo-desc"><strong>操作审批</strong> — 提问「创建工单 物料 MAT-002 缺货」，展示审批弹窗 → 确认 → 执行</div></li>
+        <li><span class="num">7</span><div class="demo-desc"><strong>成本追踪</strong> — 任意问一个问题，指向前端显示的 token 用量和费用</div></li>
+        <li><span class="num">8</span><div class="demo-desc"><strong>澄清提问</strong> — 只说「查供应商」，展示系统追问参数 → 补充 → 执行完整查询</div></li>
+      </ul>
+
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:16px;">
+        <strong>启动命令：</strong> <code>cd supply-chain-qa && docker-compose up -d && cd backend && uvicorn app.main:app --port 8001</code>
+        <br>前端：<code>cd frontend && pnpm dev</code>
+        <br>默认账号：admin / admin123（全部权限）
+      </p>
+
+      <div class="tip-box">
+        <strong>💡 面试要点：</strong> 每个功能点先说 <strong>「为什么这么做」</strong>，再说「怎么做的」。
+        主动提局限性和 trade-off，面试官对「我也知道这里不完美」很有好感。
+        RAG 指标主动提及「0.53 是可解释的」，把弱点变成设计理念。
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+// Sidebar active state
+document.querySelectorAll('.sidebar-nav a').forEach(link => {
+  link.addEventListener('click', function(e) {
+    document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+// Highlight current section on scroll
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const id = entry.target.id;
+      document.querySelectorAll('.sidebar-nav a').forEach(a => {
+        a.classList.remove('active');
+        if (a.getAttribute('href') === '#' + id) a.classList.add('active');
+      });
+    }
+  });
+}, { rootMargin: '-80px 0px -60% 0px' });
+document.querySelectorAll('.section').forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

@@ -94,6 +94,7 @@ class ToolAgent:
         query: str,
         tool_names: Optional[list[str]] = None,
         session_id: Optional[str] = None,
+        user_id: str = "",
     ) -> dict:
         """
         执行工具调用
@@ -102,6 +103,7 @@ class ToolAgent:
             query: 用户问题
             tool_names: 指定可用工具名称列表（None=全部）
             session_id: 会话ID
+            user_id: 用户标识（用于对话记忆隔离）
 
         Returns:
             {
@@ -122,7 +124,7 @@ class ToolAgent:
         # ---- 获取对话历史 ----
         chat_history_str = ""
         if session_id and chat_memory:
-            chat_history_str = await chat_memory.get_context_string(session_id)
+            chat_history_str = await chat_memory.get_context_string(session_id, user_id=user_id)
 
         # ---- 构建初始Prompt ----
         # 指定工具名时用严格模式，强制LLM调用工具而不是编造答案
@@ -163,10 +165,11 @@ class ToolAgent:
 
                 # 保存对话记忆
                 if session_id and chat_memory:
-                    await chat_memory.add_message(session_id, "user", query)
+                    await chat_memory.add_message(session_id, "user", query, user_id=user_id)
                     await chat_memory.add_message(
                         session_id, "assistant", answer,
                         metadata={"tool_calls": len(tool_calls)},
+                        user_id=user_id,
                     )
 
                 return {

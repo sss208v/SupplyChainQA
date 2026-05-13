@@ -55,6 +55,7 @@ playwright-report/
 
 # Temporary scripts
 *.ps1
+!demo_start.ps1
 *.tmp
 *.bak
 *.cache
@@ -100,6 +101,7 @@ backend/eval/reset_milvus.py
 backend/eval/upload_all_knowledge.py
 backend/check_venv.py
 DEMO_SCRIPT.md
+!plan/DEMO_SCRIPT.md
 upload_knowledge.py
 rebuild_permissions.py
 rebuild_collection.py

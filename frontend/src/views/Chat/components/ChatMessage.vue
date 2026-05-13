@@ -4,6 +4,15 @@
     <template v-if="message.role === 'user'">
       <div class="message-content user-content">
         <p>{{ message.content }}</p>
+        <!-- 用户上传的图片 -->
+        <div v-if="message.images && message.images.length > 0" class="user-images">
+          <img
+            v-for="(img, idx) in message.images"
+            :key="idx"
+            :src="'data:image/jpeg;base64,' + img"
+            class="user-image"
+          />
+        </div>
       </div>
       <el-avatar :size="36" class="avatar user-avatar">
         <el-icon><User /></el-icon>
@@ -55,6 +64,16 @@
             round
           >
             ⚡ 缓存命中
+          </el-tag>
+          <!-- CLIP 图像检索结果 -->
+          <el-tag
+            v-if="message.imageSearch"
+            type="info"
+            size="small"
+            effect="plain"
+            round
+          >
+            🖼️ 图像检索: {{ message.imageSearch.count }}张 ({{ message.imageSearch.duration_ms }}ms)
           </el-tag>
           <el-tag
             v-if="message.confidence > 0"
@@ -478,6 +497,22 @@ const queryAnalysisTagType = computed(() => {
 
 .copy-btn:hover {
   opacity: 1 !important;
+}
+
+/* 用户上传图片 */
+.user-images {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.user-image {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-light);
 }
 
 /* 意图标签 */

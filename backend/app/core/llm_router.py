@@ -10,7 +10,7 @@ from langchain_ollama import ChatOllama
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from app.config import get_settings
-from app.core.retry import retry_async
+from app.core.retry import retry_async, retry_astream
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -160,13 +160,13 @@ class LLMFactory:
         return response, usage
 
     @classmethod
-    async def astream(
+    async def _raw_astream(
         cls,
         messages: list[BaseMessage],
         provider: Optional[str] = None,
         temperature: float = 0.7,
     ) -> AsyncIterator:
-        """异步流式调用LLM，最后一个chunk附带token_usage属性"""
+        """[内部] 异步流式调用LLM（无 retry，由 astream 包装）"""
         llm = cls.get_llm(provider, temperature, streaming=True)
         provider_name = provider or settings.LLM_PROVIDER
         model_name = cls._get_model_name(provider_name)
@@ -177,8 +177,27 @@ class LLMFactory:
         # 流结束后，从最后一个chunk提取token用量
         if last_chunk is not None:
             usage = cls._extract_token_usage(last_chunk, model_name, provider_name)
-            # 将usage附加到last_chunk上，调用方可通过此属性获取
             last_chunk._token_usage = usage
+
+    @classmethod
+    async def astream(
+        cls,
+        messages: list[BaseMessage],
+        provider: Optional[str] = None,
+        temperature: float = 0.7,
+    ) -> AsyncIterator:
+        """异步流式调用LLM，pre-first-chunk 指数退避重试
+
+        在第一个 token 到达之前，如果网络异常会自动重试（最多3次，2s→4s→8s）。
+        如果第一个 token 已发出，后续异常不重试——避免前端收到重复内容。
+        """
+        async for chunk in retry_astream(
+            lambda: cls._raw_astream(messages, provider, temperature),
+            max_attempts=3,
+            base_delay=2.0,
+            context_name="LLM astream",
+        ):
+            yield chunk
 
     @classmethod
     def _get_model_name(cls, provider: str) -> str:

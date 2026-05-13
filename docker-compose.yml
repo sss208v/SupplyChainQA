@@ -11,7 +11,7 @@ services:
       - "8001:8001"
     environment:
       - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
+      - POSTGRES_PORT=15432
       - POSTGRES_USER=smartqa
       - POSTGRES_PASSWORD=smartqa123
       - POSTGRES_DB=smartqa

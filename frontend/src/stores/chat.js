@@ -33,6 +33,7 @@ export const useChatStore = defineStore('chat', () => {
   const pendingApproval = ref(null) // 待审批操作
   const currentDagProgress = ref(null) // 当前RAG DAG进度
   const currentRouteInfo = ref(null) // 当前路由信息（method + 耗时）
+  const uploadingImages = ref([])      // 待上传图片（base64列表）
 
   // ---- 计算属性 ----
   const messageCount = computed(() => messages.value.length)
@@ -58,6 +59,7 @@ export const useChatStore = defineStore('chat', () => {
       id: Date.now(),
       role: 'user',
       content: displayQuery,
+      images: uploadingImages.value.length > 0 ? [...uploadingImages.value] : undefined,
       timestamp: new Date().toLocaleTimeString(),
     })
 
@@ -85,7 +87,7 @@ export const useChatStore = defineStore('chat', () => {
     currentToolCalls.value = []
     currentTokenUsage.value = null
     currentDagProgress.value = null
-
+    uploadingImages.value = []
     try {
       debugLog('[ChatStore] 开始 chatStream，streaming=true')
       await chatStream(
@@ -95,6 +97,7 @@ export const useChatStore = defineStore('chat', () => {
           stream: true,
           approved: options.approved || false,
           approved_tool: options.approved_tool,
+          images: uploadingImages.value.length > 0 ? [...uploadingImages.value] : undefined,
         },
         // SSE 事件回调
         {
@@ -170,6 +173,10 @@ export const useChatStore = defineStore('chat', () => {
             debugLog('[ChatStore] onCacheHit:', data)
             messages.value[aiIdx].cacheHit = true
             messages.value[aiIdx].intent = 'rag_answer'
+          },
+          onImageSearch: (data) => {
+            debugLog('[ChatStore] onImageSearch:', data)
+            messages.value[aiIdx].imageSearch = data
           },
           onContent: (content) => {
             // 拼接内容 → 打字机效果
@@ -291,6 +298,24 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
+  /** 图片管理 */
+  function addImages(files) {
+    for (const file of files) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const base64 = e.target.result.split(',')[1] // 去掉 data:xxx;base64, 前缀
+        uploadingImages.value.push(base64)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+  function removeImage(index) {
+    uploadingImages.value.splice(index, 1)
+  }
+  function clearImages() {
+    uploadingImages.value = []
+  }
+
   return {
     messages,
     sessionId,
@@ -306,5 +331,10 @@ export const useChatStore = defineStore('chat', () => {
     approveAction,
     denyAction,
     clearChat,
+    // 图片管理
+    uploadingImages,
+    addImages,
+    removeImage,
+    clearImages,
   }
 })

@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     # ---- Self-RAG ----
     SELF_RAG_ENABLED: bool = True
 
+    # ---- CLIP 多模态嵌入（图文混合检索）----
+    CLIP_ENABLED: bool = True
+    CLIP_MODEL: str = "openai/clip-vit-base-patch32"
+    CLIP_IMAGE_COLLECTION: str = "smartqa_images"
+    CLIP_TOP_K: int = 3  # 图像检索返回Top-K
+    CLIP_DEVICE: str = "cpu"  # cpu / cuda
+
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"

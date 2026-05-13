@@ -340,6 +340,100 @@ class MilvusManager:
         logger.info(f"获取文档列表: 共{len(doc_map)}个文档")
         return list(doc_map.values())
 
+    # ---- 多模态图像Collection（架构三）----
+
+    def create_image_collection(self, collection_name: str, dim: int = 512) -> Collection:
+        """创建图像向量集合（CLIP embedding）"""
+        if utility.has_collection(collection_name):
+            col = Collection(collection_name)
+            logger.info(f"[CLIP] 图像集合已存在: {collection_name}")
+            return col
+
+        fields = [
+            FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+            FieldSchema(name="image_id", dtype=DataType.VARCHAR, max_length=64),
+            FieldSchema(name="source", dtype=DataType.VARCHAR, max_length=256),
+            FieldSchema(name="clip_embedding", dtype=DataType.FLOAT_VECTOR, dim=dim),
+            FieldSchema(name="base64_data", dtype=DataType.VARCHAR, max_length=65535),
+            FieldSchema(name="description", dtype=DataType.VARCHAR, max_length=2048),
+            FieldSchema(name="security_group", dtype=DataType.ARRAY,
+                        element_type=DataType.VARCHAR, max_capacity=10, max_length=64),
+        ]
+        schema = CollectionSchema(fields, description="SmartQA CLIP 多模态图像索引")
+        col = Collection(collection_name, schema)
+
+        # 创建向量索引
+        index_params = {
+            "metric_type": "IP",  # Inner Product（CLIP 使用 L2 normalized vectors → IP = cosine）
+            "index_type": "IVF_FLAT",
+            "params": {"nlist": 128},
+        }
+        col.create_index("clip_embedding", index_params)
+        col.load()
+        logger.info(f"[CLIP] 图像集合创建完成: {collection_name}, dim={dim}")
+        return col
+
+    def insert_image(
+        self,
+        collection_name: str,
+        image_id: str,
+        source: str,
+        clip_embedding: list[float],
+        base64_data: str = "",
+        description: str = "",
+        security_group: list[str] = None,
+    ):
+        """插入一张图片到 CLIP 图像集合"""
+        col = self.create_image_collection(collection_name, dim=len(clip_embedding))
+        data = [{
+            "image_id": image_id,
+            "source": source,
+            "clip_embedding": clip_embedding,
+            "base64_data": base64_data,
+            "description": description,
+            "security_group": security_group or ["admin"],
+        }]
+        col.insert(data)
+        col.flush()
+        logger.info(f"[CLIP] 图片入库: {image_id}")
+
+    def search_images(
+        self,
+        collection_name: str,
+        query_embedding: list[float],
+        top_k: int = 3,
+        expr: str = "",
+    ) -> list[dict]:
+        """在图像集合中搜索相似图片"""
+        if not utility.has_collection(collection_name):
+            logger.warning(f"[CLIP] 图像集合不存在: {collection_name}")
+            return []
+
+        col = Collection(collection_name)
+        col.load()
+
+        search_params = {"metric_type": "IP", "params": {"nprobe": 16}}
+        results = col.search(
+            data=[query_embedding],
+            anns_field="clip_embedding",
+            param=search_params,
+            limit=top_k,
+            expr=expr if expr else None,
+            output_fields=["image_id", "source", "base64_data", "description"],
+        )
+
+        images = []
+        for hits in results:
+            for hit in hits:
+                images.append({
+                    "image_id": hit.entity.get("image_id", ""),
+                    "source": hit.entity.get("source", ""),
+                    "base64_data": hit.entity.get("base64_data", ""),
+                    "description": hit.entity.get("description", ""),
+                    "score": float(hit.score),
+                })
+        return images
+
 
 # 全局单例
 milvus_manager = MilvusManager()

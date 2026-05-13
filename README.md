@@ -13,10 +13,7 @@
 
 ## 架构
 
-![架构图](./architecture.svg)
-
-
-
+![架构图](./docs/architecture.svg)
 ## 核心功能
 
 ### 意图路由（三级）
@@ -68,20 +65,32 @@
 
 ## 快速开始
 
-### 1. 启动基础设施
+### 一键启动（推荐）
 
-```bash
-docker-compose up -d
+```powershell
+.\demo_start.ps1
 ```
 
-### 2. 配置后端
+自动启动 Docker 基础设施 + 后端 + 前端。
+
+### 手动启动
+
+#### 1. 启动基础设施
+
+```bash
+# 仅启动基础设施，不构建后端/前端镜像
+docker-compose up -d etcd minio milvus redis postgres
+```
+
+#### 2. 配置后端
 
 ```bash
 cd backend
-# 创建 .env，填入 DEEPSEEK_API_KEY
+cp ../.env.example .env
+# 编辑 .env，填入 DEEPSEEK_API_KEY
 ```
 
-### 3. 启动后端
+#### 3. 启动后端
 
 ```bash
 cd backend
@@ -90,7 +99,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001
 # API 文档：http://localhost:8001/docs
 ```
 
-### 4. 启动前端
+#### 4. 启动前端
 
 ```bash
 cd frontend
@@ -99,7 +108,7 @@ pnpm dev
 # 访问 http://localhost:3000
 ```
 
-### 5. 上传知识库
+#### 5. 上传知识库
 
 访问 http://localhost:3000/knowledge，上传 knowledge/ 目录下的供应链文档。
 

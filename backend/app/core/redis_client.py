@@ -54,13 +54,19 @@ class ChatMemory:
     def __init__(self, redis_manager: RedisManager):
         self.redis = redis_manager
 
-    def _key(self, session_id: str) -> str:
+    def _key(self, session_id: str, user_id: str = "") -> str:
+        if user_id:
+            return f"smartqa:chat:{user_id}:{session_id}"
         return f"smartqa:chat:{session_id}"
 
-    def _summary_key(self, session_id: str) -> str:
+    def _summary_key(self, session_id: str, user_id: str = "") -> str:
+        if user_id:
+            return f"smartqa:chat_summary:{user_id}:{session_id}"
         return f"smartqa:chat_summary:{session_id}"
 
-    def _count_key(self, session_id: str) -> str:
+    def _count_key(self, session_id: str, user_id: str = "") -> str:
+        if user_id:
+            return f"smartqa:chat_count:{user_id}:{session_id}"
         return f"smartqa:chat_count:{session_id}"
 
     async def add_message(
@@ -69,10 +75,11 @@ class ChatMemory:
         role: str,
         content: str,
         metadata: Optional[dict] = None,
+        user_id: str = "",
     ) -> None:
         """添加一条消息到对话记忆"""
         client = self.redis.client
-        key = self._key(session_id)
+        key = self._key(session_id, user_id)
 
         message = {
             "role": role,
@@ -92,7 +99,7 @@ class ChatMemory:
         await client.expire(key, settings.MEMORY_TTL)
 
         # ---- 摘要触发：每SUMMARY_INTERVAL条消息生成摘要 ----
-        count_key = self._count_key(session_id)
+        count_key = self._count_key(session_id, user_id)
         msg_count = await client.incr(count_key)
         await client.expire(count_key, settings.MEMORY_TTL)
 
@@ -100,14 +107,14 @@ class ChatMemory:
             # 重置计数
             await client.set(count_key, 0, ex=settings.MEMORY_TTL)
             # 生成摘要（异步，不阻塞响应）
-            await self._generate_and_save_summary(session_id)
+            await self._generate_and_save_summary(session_id, user_id)
 
     async def get_messages(
-        self, session_id: str, limit: Optional[int] = None
+        self, session_id: str, limit: Optional[int] = None, user_id: str = ""
     ) -> list[dict]:
         """获取对话历史"""
         client = self.redis.client
-        key = self._key(session_id)
+        key = self._key(session_id, user_id)
 
         max_len = limit or settings.MEMORY_WINDOW * 2
         raw_messages = await client.lrange(key, 0, max_len - 1)
@@ -119,10 +126,10 @@ class ChatMemory:
 
         return messages
 
-    async def get_context_string(self, session_id: str) -> str:
+    async def get_context_string(self, session_id: str, user_id: str = "") -> str:
         """获取格式化的对话上下文字符串（含摘要+近期对话）"""
-        summary = await self.get_summary(session_id)
-        messages = await self.get_messages(session_id)
+        summary = await self.get_summary(session_id, user_id)
+        messages = await self.get_messages(session_id, user_id=user_id)
 
         parts = []
         if summary:
@@ -136,11 +143,11 @@ class ChatMemory:
 
         return "\n\n".join(parts) if parts else ""
 
-    async def _generate_and_save_summary(self, session_id: str) -> None:
+    async def _generate_and_save_summary(self, session_id: str, user_id: str = "") -> None:
         """生成对话摘要并保存（被遗忘的历史对话压缩成摘要）"""
         import asyncio
         try:
-            messages = await self.get_messages(session_id, limit=settings.SUMMARY_TRUNCATE_LEN)
+            messages = await self.get_messages(session_id, limit=settings.SUMMARY_TRUNCATE_LEN, user_id=user_id)
             if not messages:
                 return
 
@@ -167,29 +174,29 @@ class ChatMemory:
             ])
 
             summary = response.content.strip()
-            await self.save_summary(session_id, summary)
-            logger.info(f"对话摘要已生成: session_id={session_id[:8]}..., len={len(summary)}")
+            await self.save_summary(session_id, summary, user_id)
+            logger.info(f"对话摘要已生成: user={user_id} session={session_id[:8]}...")
 
         except Exception as e:
             logger.warning(f"生成对话摘要失败: {e}")
 
-    async def save_summary(self, session_id: str, summary: str) -> None:
+    async def save_summary(self, session_id: str, summary: str, user_id: str = "") -> None:
         """保存对话摘要（Token超限时使用）"""
         client = self.redis.client
-        key = self._summary_key(session_id)
+        key = self._summary_key(session_id, user_id)
         await client.set(key, summary, ex=settings.MEMORY_TTL)
 
-    async def get_summary(self, session_id: str) -> Optional[str]:
+    async def get_summary(self, session_id: str, user_id: str = "") -> Optional[str]:
         """获取对话摘要"""
         client = self.redis.client
-        key = self._summary_key(session_id)
+        key = self._summary_key(session_id, user_id)
         return await client.get(key)
 
-    async def clear_session(self, session_id: str) -> None:
+    async def clear_session(self, session_id: str, user_id: str = "") -> None:
         """清除会话记忆"""
         client = self.redis.client
-        await client.delete(self._key(session_id))
-        await client.delete(self._summary_key(session_id))
+        await client.delete(self._key(session_id, user_id))
+        await client.delete(self._summary_key(session_id, user_id))
 
     async def get_session_list(self) -> list[str]:
         """获取所有活跃会话列表"""

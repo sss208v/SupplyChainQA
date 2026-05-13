@@ -11,6 +11,12 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    allowedHosts: [
+      '.ngrok-free.dev',
+      '.ngrok-free.app',
+      '.ngrok.io',
+      'localhost',
+    ],
     proxy: {
       // 代理API请求到后端FastAPI，避免CORS问题
       '/api': {

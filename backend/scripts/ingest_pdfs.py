@@ -7,6 +7,18 @@ SmartQA Pro - PDF 批量入库脚本
 - 表格 → Markdown 格式保留
 - 语义切片（按段落/标题边界）
 - 权限组标记（默认 public）
+
+两种使用方式：
+1. 通过 API 触发（推荐）：POST /api/v1/knowledge/ingest
+   前端知识库页面点击「📥 一键导入大厂供应链样本库」
+
+2. 作为独立脚本运行：
+   powershell> cd backend
+   powershell> .\venv\Scripts\Activate.ps1
+   powershell> $env:PYTHONPATH="."; python scripts/ingest_pdfs.py
+   ⚠️ 注意：独立运行需要 Milvus/Redis/PostgreSQL 服务已启动，
+      且 rag_engine 单例已完成初始化（即 uvicorn 已启动过至少一次）。
+      推荐方式是通过 API 触发，脚本内部会正确处理依赖。
 ============================================================
 """
 import os

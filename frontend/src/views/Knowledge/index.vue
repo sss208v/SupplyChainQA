@@ -175,7 +175,7 @@ import request from '@/api/request'
 const knowledgeStore = useKnowledgeStore()
 const uploadRef = ref(null)
 const pendingFiles = ref([])
-const selectedGroups = ref(['admin', 'employee'])
+const selectedGroups = ref(['admin'])
 const ingesting = ref(false)
 
 // 部门标签映射
@@ -187,7 +187,6 @@ const groupLabels = {
   production: '生产部',
   finance: '财务部',
   logistics: '物流部',
-  employee: '全员',
 }
 
 onMounted(() => {

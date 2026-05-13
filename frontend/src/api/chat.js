@@ -243,6 +243,9 @@ export async function chatStream(data, callbacks = {}) {
           case 'cache_hit':
             callbacks.onCacheHit?.(parsed)
             break
+          case 'image_search':
+            callbacks.onImageSearch?.(parsed)
+            break
           case 'approval_request':
             callbacks.onApprovalRequest?.(parsed)
             break

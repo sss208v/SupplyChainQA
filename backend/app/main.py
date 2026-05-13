@@ -119,19 +119,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"🎉 {settings.APP_NAME} 启动完成！")
     logger.info(f"📖 API文档: http://localhost:8001/docs")
 
-    # 4. 预热模型（后台加载，不阻塞启动）
-    import asyncio
-    async def _warmup():
-        try:
-            from app.core.rag_engine import rag_engine
-            logger.info("🔥 预热: 正在加载嵌入模型...")
-            await asyncio.get_event_loop().run_in_executor(None, rag_engine.embedding.init)
-            logger.info("🔥 预热: 正在加载重排序模型...")
-            await asyncio.get_event_loop().run_in_executor(None, rag_engine.reranker.init)
-            logger.info("🔥 预热完成！")
-        except Exception as e:
-            logger.warning(f"⚠️ 预热失败（不影响服务）: {e}")
-    asyncio.create_task(_warmup())
+    # 4. 预热模型（跳过——首次请求时懒加载）
+    # 注：warmup 需要多次 HuggingFace HEAD 请求验证缓存，网络不好时可能很慢
+    # 模型会在首次使用时自动初始化
+    logger.info("🔥 预热: 跳过（模型首次使用时懒加载）")
 
     yield  # ← 应用运行期间
 
@@ -243,6 +234,34 @@ async def get_config():
         "confidence_threshold": settings.CONFIDENCE_THRESHOLD,
         "memory_window": settings.MEMORY_WINDOW,
     }
+
+
+@app.post("/admin/reranker/enable")
+async def enable_reranker():
+    """Runtime 启用重排序模型（避免启动时加载导致 Windows 崩溃）
+
+    首次调用需 20-40 秒加载 2.1GB 模型，后续调用秒回。
+    """
+    from app.core.rag_engine import rag_engine
+    import time
+
+    if rag_engine.reranker._model is not None:
+        return {"status": "ok", "message": "重排序模型已在运行", "already_loaded": True}
+
+    t0 = time.time()
+    try:
+        rag_engine.reranker.init()
+        elapsed = time.time() - t0
+        return {
+            "status": "ok",
+            "message": f"重排序模型加载完成，耗时 {elapsed:.1f}s",
+            "elapsed_seconds": round(elapsed, 1),
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"加载失败: {str(e)}",
+        }
 
 
 @app.get("/")

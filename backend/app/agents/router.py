@@ -166,14 +166,21 @@ class RouterAgent:
         """
         query_lower = query.lower().strip()
 
-        # 1. 问候匹配
+        # 1. 问候匹配（仅当 query 短且不含业务关键词时）
         for pattern in self._greeting_patterns:
             if re.match(pattern, query_lower):
-                return {
-                    "intent": IntentType.GREETING,
-                    "tool_name": None,
-                    "method": "rule",
-                }
+                # 检查是否同时也包含业务意图
+                has_business = any(kw in query for kw in self._tool_keywords) or \
+                               any(kw in query for kw in self._rag_keywords)
+                # 短 query 或纯问候 → GREETING；长 query 含业务词 → 继续往下走
+                if len(query) <= 10 and not has_business:
+                    return {
+                        "intent": IntentType.GREETING,
+                        "tool_name": None,
+                        "method": "rule",
+                    }
+                # 否则不返回，让后续匹配处理
+                break
 
         # 2. 工具关键词优先（精确匹配 > 模糊匹配）
         tool_matched = None

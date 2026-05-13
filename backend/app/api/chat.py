@@ -61,6 +61,24 @@ def _apply_output_guard(answer: str) -> str:
     return answer
 
 
+def _detect_mime(base64_data: str) -> str:
+    """根据 base64 数据头检测图片 MIME 类型"""
+    import base64 as b64
+    try:
+        raw = b64.b64decode(base64_data[:64])
+        if raw[:4] == b'\x89PNG':
+            return "image/png"
+        elif raw[:2] == b'\xff\xd8':
+            return "image/jpeg"
+        elif raw[:4] == b'RIFF':
+            return "image/webp"
+        elif raw[:4] == b'GIF8':
+            return "image/gif"
+    except Exception:
+        pass
+    return "image/jpeg"  # 默认
+
+
 # ---- 角色中文标签 ----
 ROLE_LABELS = {
     "admin": "管理员",
@@ -88,6 +106,7 @@ class ChatRequest(BaseModel):
     agent_type: Optional[str] = Field(None, description="Agent类型: react（手写ReAct）/ langchain（LangChain Agent），为空则使用配置默认值")
     approved: bool = Field(False, description="是否已确认执行写操作")
     approved_tool: Optional[str] = Field(None, description="已确认执行的工具名")
+    images: Optional[list[str]] = Field(None, description="图片列表（base64编码，不含data:前缀）")
 
 
 class ChatResponse(BaseModel):
@@ -142,19 +161,9 @@ async def switch_model(body: dict):
     return {"message": f"已切换到 {provider}", "provider": provider}
 
 
-@router.post("/completions", response_model=ChatResponse)
 async def chat_completions(request: Request, body: ChatRequest):
-    """
-    对话接口（非流式）
-    完整处理流程：
-    用户问题 → 意图路由 → 分发到对应Agent → 返回结果
-    """
-    # 可选认证：识别用户身份（不强制要求登录）
-    # 从请求头获取，不影响正常对话流程
+    """对话接口（非流式）"""
     session_id = body.session_id or str(uuid.uuid4())
-
-    # PII脱敏：在调用LLM API前过滤用户输入中的敏感信息
-    # 使用脱敏后的safe_query进行路由和推理，防止PII泄露到云端LLM
     safe_query = _pii_filter.filter_text(body.query)
 
     # Step 1: 意图路由（使用脱敏后的查询）
@@ -278,11 +287,13 @@ async def chat_stream(request: Request, body: ChatRequest):
 
     # 获取用户角色用于权限过滤（默认finance最小权限，token无效时会被拦截）
     _user_role = "finance"
+    _user_id = ""  # 用于对话记忆隔离
     try:
         _current_user = await get_current_user_full(request)
         if _current_user:
             _user_role = _current_user.get("role", "finance")
-            logger.info(f"[Permission] 用户角色: {_user_role}, 用户信息: {_current_user}")
+            _user_id = _current_user.get("username", "") or _current_user.get("sub", "")
+            logger.info(f"[Permission] 用户: {_user_id}, 角色: {_user_role}")
         else:
             logger.warning("[Permission] get_current_user_full returned None")
     except Exception as e:
@@ -290,13 +301,38 @@ async def chat_stream(request: Request, body: ChatRequest):
 
     async def event_generator():
         """SSE事件生成器"""
-        nonlocal _t_route, _t_gen
+        nonlocal _t_route, _t_gen, _user_id
         try:
             # 1. 发送会话ID
             yield _sse_format({
                 "type": "session",
                 "session_id": session_id,
             })
+
+            # ---- 多模态：图片通过 CLIP 入库（纯本地嵌入 + 跨模态检索）----
+            if body.images and len(body.images) > 0:
+                # CLIP 图像嵌入入库（纯本地，始终执行）
+                clip_stored = 0
+                if settings.CLIP_ENABLED:
+                    try:
+                        from app.core.multimodal_embedding import clip_engine
+                        import uuid as _uuid
+                        for img_b64 in body.images:
+                            clip_vec = clip_engine.encode_image_base64(img_b64)
+                            milvus_manager.insert_image(
+                                collection_name=settings.CLIP_IMAGE_COLLECTION,
+                                image_id=str(_uuid.uuid4())[:12],
+                                source=f"chat_upload_{session_id}",
+                                clip_embedding=clip_vec,
+                                base64_data=img_b64,
+                                description=safe_query,  # 用用户查询作为初始描述
+                                security_group=["admin"],
+                            )
+                            clip_stored += 1
+                        if clip_stored:
+                            logger.info(f"[CLIP] {clip_stored}张图片已入库（纯本地）")
+                    except Exception as e:
+                        logger.warning(f"[CLIP] 入库失败: {e}")
 
             # ---- Query Cache 检查 ----
             import hashlib
@@ -327,9 +363,10 @@ async def chat_stream(request: Request, body: ChatRequest):
                 logger.warning(f"[QueryCache] 缓存读取失败（Redis未连接或异常）")
             # ---- 缓存检查结束 ----
 
-            # 2. 意图路由（使用脱敏后的查询）
+            # 2. 意图路由
             _t1 = time.perf_counter()
-            route_result = await router_agent.route(safe_query)
+            route_query = safe_query
+            route_result = await router_agent.route(route_query)
             intent = route_result["intent"]
             _t_route = time.perf_counter() - _t1
             logger.info(f"{_elapsed('意图路由')} intent={intent.value} method={route_result['method']} 耗时={_t_route*1000:.0f}ms")
@@ -343,12 +380,79 @@ async def chat_stream(request: Request, body: ChatRequest):
             })
 
             # 3. 根据意图分发
+            # GREETING: 用户主动问候（你好/谢谢/再见等）
+            # UNCLEAR:  系统无法理解意图 → 不扔客套话，走 RAG 检索兜底
+            has_images = body.images and len(body.images) > 0
+
             if intent == IntentType.GREETING:
                 _t2 = time.perf_counter()
                 answer = _handle_greeting(safe_query)
                 _t_gen = time.perf_counter() - _t2
-                logger.info(f"{_elapsed('GREETING处理')} 耗时={_t_gen*1000:.0f}ms")
+                logger.info(f"{_elapsed('GREETING')} 耗时={_t_gen*1000:.0f}ms")
                 yield _sse_format({"type": "content", "content": _apply_output_guard(answer)})
+
+            elif intent == IntentType.UNCLEAR:
+                # 意图不明 → RAG 检索兜底（不直接放弃）
+                yield _sse_format({
+                    "type": "route_fallback",
+                    "message": "意图不明确，正在搜索知识库...",
+                })
+                _t2 = time.perf_counter()
+                try:
+                    # 轻量检索：只用向量搜索（不触发完整 RAG pipeline）
+                    quick_results = rag_engine.search(
+                        query=safe_query,
+                        top_k=3,
+                        visibility_expr=milvus_manager.build_visibility_expr(_user_role, body.doc_ids),
+                    )
+                    found_chunks = quick_results.get("results", [])
+                    if found_chunks:
+                        # 搜到了 → 构建上下文让 LLM 回答
+                        context_str, sources = rag_agent._format_context(found_chunks, all_chunks=found_chunks)
+                        confidence = found_chunks[0].get("rerank_score", 0.0)
+                        yield _sse_format({
+                            "type": "sources",
+                            "sources": sources,
+                            "confidence": confidence,
+                        })
+
+                        messages = [
+                            SystemMessage(content=(
+                                "你是一个供应链智能助手。用户的问题意图不明确，但知识库中有相关内容。"
+                                "请根据以下上下文，友好地回答用户的问题。如果不是用户想要的，请引导用户明确需求。"
+                            )),
+                            HumanMessage(content=(
+                                f"用户问题：{safe_query}\n\n"
+                                f"知识库相关内容：\n{context_str}\n\n"
+                                "请根据以上内容回答。如果与用户问题无关，请友好地引导用户换个方式提问。"
+                            )),
+                        ]
+                        llm = LLMFactory.get_llm(temperature=0.3)
+                        full_content = ""
+                        async for chunk in LLMFactory.astream(llm, messages):
+                            content = chunk.content if hasattr(chunk, 'content') else str(chunk)
+                            full_content += content
+                            yield _sse_format({"type": "content", "content": content})
+                    else:
+                        # 没搜到 → 坦诚告知 + 给建议
+                        yield _sse_format({
+                            "type": "content",
+                            "content": (
+                                "抱歉，我不确定你具体想问什么。你可以试试：\n"
+                                "• 查库存：「MAT-001 的库存是多少」\n"
+                                "• 查制度：「新供应商准入需要什么资质」\n"
+                                "• 查订单：「PO-20250601 的状态」\n"
+                                "• 上传图片辅助说明"
+                            ),
+                        })
+                except Exception as e:
+                    logger.error(f"UNCLEAR 兜底检索失败: {e}")
+                    yield _sse_format({
+                        "type": "content",
+                        "content": "抱歉，系统暂时无法处理你的问题，请稍后重试。",
+                    })
+                _t_gen = time.perf_counter() - _t2
+                logger.info(f"{_elapsed('UNCLEAR兜底')} 耗时={_t_gen*1000:.0f}ms")
 
             elif intent == IntentType.RAG_ANSWER:
                 # ---- DAG Progress: 意图路由完成 ----
@@ -442,6 +546,43 @@ async def chat_stream(request: Request, body: ChatRequest):
 
                 context_str, sources = rag_agent._format_context(unique_results, all_chunks=all_chunks)
                 confidence = unique_results[0].get("rerank_score", 0.0) if unique_results else 0.0
+
+                # ---- CLIP 多模态图像检索（架构三：图文混合召回）----
+                clip_images = []
+                if settings.CLIP_ENABLED:
+                    try:
+                        from app.core.multimodal_embedding import clip_engine
+                        _t_clip = time.perf_counter()
+                        clip_text_vec = clip_engine.encode_text(safe_query)
+                        clip_images = milvus_manager.search_images(
+                            settings.CLIP_IMAGE_COLLECTION,
+                            query_embedding=clip_text_vec,
+                            top_k=settings.CLIP_TOP_K,
+                        )
+                        if clip_images:
+                            img_context = "\n\n[相关图片]\n" + "\n".join(
+                                f"- 图片{i+1}: {img.get('description', '无描述')} (来源: {img.get('source', '未知')})"
+                                for i, img in enumerate(clip_images)
+                            )
+                            context_str += img_context
+                            _t_clip_elapsed = time.perf_counter() - _t_clip
+                            yield _sse_format({
+                                "type": "image_search",
+                                "count": len(clip_images),
+                                "duration_ms": int(_t_clip_elapsed * 1000),
+                                "images": [
+                                    {"image_id": img["image_id"], "description": img.get("description", "")[:200]}
+                                    for img in clip_images
+                                ],
+                            })
+                            logger.info(
+                                f"{_elapsed('CLIP图像检索')} 命中{len(clip_images)}张, "
+                                f"耗时={_t_clip_elapsed*1000:.0f}ms"
+                            )
+                    except Exception as e:
+                        logger.warning(f"[CLIP] 图像检索失败: {e}")
+                # ---- CLIP 检索结束 ----
+
                 _t_rerank = time.perf_counter() - _t3 - _t_search
 
                 # ---- 三层置信度路由 ----
@@ -505,7 +646,7 @@ async def chat_stream(request: Request, body: ChatRequest):
                 # 获取对话历史
                 chat_history_str = ""
                 if session_id and chat_memory:
-                    chat_history_str = await chat_memory.get_context_string(session_id)
+                    chat_history_str = await chat_memory.get_context_string(session_id, user_id=_user_id)
 
                 # 构建Prompt
                 system_prompt = rag_agent.RAG_SYSTEM_PROMPT.format(
@@ -529,10 +670,20 @@ async def chat_stream(request: Request, body: ChatRequest):
                 ]
 
                 full_content = ""
-                async for chunk in LLMFactory.astream(messages):
-                    if chunk.content:
-                        full_content += chunk.content
-                        yield _sse_format({"type": "content", "content": chunk.content})
+                try:
+                    async for chunk in LLMFactory.astream(messages):
+                        if chunk.content:
+                            full_content += chunk.content
+                            yield _sse_format({"type": "content", "content": chunk.content})
+                except Exception as e:
+                    logger.error(f"[Chat] LLM流式调用失败（所有retry已耗尽）: {type(e).__name__}: {e}")
+                    yield _sse_format({
+                        "type": "error",
+                        "message": "服务暂时不可用，请稍后重试",
+                        "detail": f"{type(e).__name__}",
+                    })
+                    # 仍然尝试提取已有的 token 估算
+                    chunk = None
                 # 提取token用量（最后一个chunk附带了_token_usage）
                 token_usage = None
                 if 'chunk' in locals() and hasattr(chunk, '_token_usage') and chunk._token_usage:
@@ -620,10 +771,11 @@ async def chat_stream(request: Request, body: ChatRequest):
 
                 # 保存对话记忆（应用输出安全过滤）
                 if session_id and chat_memory:
-                    await chat_memory.add_message(session_id, "user", body.query)
+                    await chat_memory.add_message(session_id, "user", body.query, user_id=_user_id)
                     await chat_memory.add_message(
                         session_id, "assistant", _apply_output_guard(full_content),
                         metadata={"confidence": confidence, "sources": sources[:3]},
+                        user_id=_user_id,
                     )
 
             elif intent == IntentType.TOOL_CALL:
@@ -695,6 +847,7 @@ async def chat_stream(request: Request, body: ChatRequest):
                     query=safe_query,
                     tool_names=[tool_name] if tool_name else None,
                     session_id=session_id,
+                    user_id=_user_id,
                 )
                 _t_gen = time.perf_counter() - _t2
 
