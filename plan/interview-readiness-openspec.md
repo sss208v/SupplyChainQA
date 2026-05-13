@@ -18,13 +18,14 @@
 | 知识库 | ✅ | 92 篇文档 (1.2MB)，7 部门 × 10+ 篇 |
 | 问题库 | ✅ | `plan/demo-questions.md` 100 题，10 类 × 10 题 |
 | 架构图 | ✅ | docs/architecture.svg 浅色主题，无重叠 |
-| 面试 HTML | ✅ | 19 导航项，行数/指标/PDF链/config语法与代码一致 |
+| 面试 HTML | ✅ | 24 导航项，行数/指标/PDF链/config语法与代码一致 |
 | 上传脚本 | ✅ | `scripts/upload_knowledge_base.py` — 批量索引 70 篇新文档 |
 | 验证脚本 | ✅ | `scripts/verify_demo.py` — 8 步全链路 API 测试 |
 | 话术审计 | ✅ | 18 项声明全部通过代码验证 |
-| 演示脚本 | ⚠️ | demo_start.ps1 可用，需先执行上传脚本索引知识库 |
+| 启动脚本 | ✅ | `demo_start.ps1` 7 步（含自动知识库索引检查） |
+| 演示脚本 | ⚠️ | 需确保知识库已索引（首次运行自动处理） |
 | RAG 指标 | ⚠️ | 旧指标基于 20 篇文档，92 篇后需重跑（REQ-2 待后端启动后执行） |
-| Git 推送 | ⚠️ | 6 个 commit 未 push（REQ-7） |
+| Git 推送 | ⚠️ | 7 个 commit 未 push（REQ-7） |
 
 ---
 
