@@ -439,7 +439,7 @@
           <div class="card-icon" style="background:linear-gradient(135deg,#409eff,#5bc5ff)">🔍</div>
           <h3>RAG 混合检索</h3>
           <p>Milvus 向量 + BM25 关键词 → RRF 融合排序 → BGE-Reranker 精排，三层过滤确保准确率</p>
-          <span class="tag blue">CP=0.90</span>
+          <span class="tag blue">CP=0.67</span>
         </div>
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">🤖</div>
@@ -474,7 +474,7 @@
         <tr><td>数据库</td><td>PostgreSQL</td><td>RBAC 认证 + 工单 + 反馈</td></tr>
         <tr><td>LLM</td><td>DeepSeek API</td><td>可切换 MiniMax / Ollama</td></tr>
         <tr><td>检索增强</td><td>BGE-Reranker-v2-m3 + HyDE</td><td>精排 + 假设文档检索</td></tr>
-        <tr><td>文档解析</td><td>pymupdf4llm + python-docx</td><td>PDF/MD/DOCX/TXT，表格→Markdown</td></tr>
+        <tr><td>文档解析</td><td>opendataloader + pymupdf4llm</td><td>PDF/MD/DOCX/TXT，三阶回退链</td></tr>
         <tr><td>部署</td><td>Docker Compose</td><td>一键启动全套基础设施</td></tr>
       </table>
     </section>
@@ -625,7 +625,7 @@
         </div>
         <div class="card">
           <h3>PDF 表格解析</h3>
-          <p>三层回退链：pymupdf4llm → opendataloader → pdfplumber。
+          <p>三层回退链：opendataloader → pymupdf4llm → pdfplumber。
             表格自动转 Markdown，语义检索也能定位单元格数据。</p>
           <span class="tag green">AQL=1.0</span>
         </div>
@@ -967,7 +967,7 @@ merged = self._merge_results(vector_results, bm25_results)
       <!-- ===== 模块三：redis_client.py ===== -->
       <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
         <h3 style="margin-bottom:4px">模块三：<code>core/redis_client.py</code> — 对话记忆隔离</h3>
-        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：265 行 | 核心问题：多用户对话记忆泄露 | 本次修复</p>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：262 行 | 核心问题：多用户对话记忆泄露 | 本次修复</p>
 
         <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
 <pre style="color:#e0e0e0;margin:0">
@@ -1179,7 +1179,7 @@ session_id = body.session_id <span style="color:#c792ea">or</span> str(uuid.uuid
       <!-- ===== 模块七：milvus_client.py ===== -->
       <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
         <h3 style="margin-bottom:4px">模块七：<code>core/milvus_client.py</code> — 向量数据库封装</h3>
-        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：345 行 | 核心：Schema 设计 + security_group 数组列</p>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：439 行 | 核心：Schema 设计 + security_group 数组列</p>
 
         <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
 <pre style="color:#e0e0e0;margin:0">
@@ -1410,8 +1410,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
     SELF_RAG_ENABLED: bool; FAITHFULNESS_ENABLED: bool
     GUARDRAILS_ENABLED: bool = <span style="color:#f78c6c">False</span>
 
-    <span style="color:#c792ea">class</span> <span style="color:#ffcb6b">Config</span>:
-        env_file = <span style="color:#89ddff">".env"</span>  <span style="color:#888"># ★ 自动加载 .env 文件</span>
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")  # ★ Pydantic v2
 
 <span style="color:#888"># ⚠️ API_KEY 是明文存在 .env 中 → 注意 .gitignore</span>
 <span style="color:#888"># ⚠️ Pydantic Settings 的 lru_cache 导致 .env 修改后要重启</span>
