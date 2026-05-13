@@ -1013,7 +1013,7 @@ merged = self._merge_results(vector_results, bm25_results)
       <!-- ===== 模块四：chat.py ===== -->
       <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
         <h3 style="margin-bottom:4px">模块四：<code>api/chat.py:chat_stream()</code> — SSE 流式主循环</h3>
-        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：776 行 | 核心函数：chat_stream() + event_generator() | 系统最复杂的方法</p>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：915 行 | 核心函数：chat_stream() + event_generator() | 系统最复杂的方法</p>
 
         <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
 <pre style="color:#e0e0e0;margin:0">
@@ -1070,7 +1070,7 @@ session_id = body.session_id <span style="color:#c792ea">or</span> str(uuid.uuid
         ...
 
 <span style="color:#888"># ⚠️ 潜在问题：</span>
-<span style="color:#888"># 1. 776 行的 event_generator() 是典型的 God Function</span>
+<span style="color:#888"># 1. 915 行的 event_generator() 是典型的 God Function</span>
 <span style="color:#888">#    → 面试时可说"知道应该拆，Demo阶段先验证链路正确性"</span>
 <span style="color:#888"># 2. session_id 由前端传入，无校验</span>
 <span style="color:#888"># 3. 异常处理只有 try/except 包住 astream，其他环节没兜底</span>
@@ -1458,7 +1458,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
         1. <strong>retry.py：</strong>没有 jitter（随机延迟），高并发下可能同时重试造成 thundering herd<br>
         2. <strong>rag_engine.py：</strong>embed_query() 没有 retry；BM25 用文件索引，大文档量性能退化<br>
         3. <strong>redis_client.py：</strong>未登录用户退化为共享记忆；get_session_list() 无 user 过滤<br>
-        4. <strong>chat.py：</strong>event_generator() 是 God Function（776行）；session_id 由前端传入无校验<br>
+        4. <strong>chat.py：</strong>event_generator() 是 God Function（915行）；session_id 由前端传入无校验<br>
         5. <strong>router.py：</strong>关键词匹配硬编码；残留"天气"等旧工具死代码<br>
         6. <strong>main.py：</strong>默认密码弱安全；/admin/reranker/enable 无鉴权<br>
         7. <strong>milvus_client.py：</strong>ORM API 即将废弃；ARRAY 列无索引加速<br>
