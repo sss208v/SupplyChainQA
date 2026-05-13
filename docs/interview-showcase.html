@@ -568,7 +568,7 @@
 
     <section class="section" id="rag">
       <h2>RAG 检索链路</h2>
-      <p>从 473 chunks 知识库中精确找到答案，不依赖单一检索通道。</p>
+      <p>从 92 篇供应链文档（1.2MB）中精确找到答案，不依赖单一检索通道。</p>
 
       <div class="arch-flow">
         <div class="flow-row">
@@ -1997,6 +1997,10 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
         <li><span class="num">7</span><div class="demo-desc"><strong>多模态（CLIP）</strong> — 上传一张图片，CLIP 纯本地编码入库。话术：「CLIP 图文统一向量空间，512 维，纯本地不需要外部 API」</div></li>
         <li><span class="num">8</span><div class="demo-desc"><strong>成本追踪</strong> — 任意问一个问题，指向前端显示的 token 用量和费用。话术：「TokenUsage 类记录每次 LLM 调用的 prompt/completion/cost，面试可追问定价模型」</div></li>
       </ul>
+
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:4px;">
+        📋 <strong>完整问题库：</strong> <code>plan/demo-questions.md</code> — 100 道题，10 个分类，每题标注意图+预期行为+面试话术
+      </p>
 
       <h3 style="margin-top:24px;">启动命令</h3>
       <div class="code-block"><code>cd C:\Users\sss208\Desktop\agent\supply-chain-qa<br>.\demo_start.ps1</code></div>
