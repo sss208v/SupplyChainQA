@@ -533,6 +533,24 @@ async def chat_stream(request: Request, body: ChatRequest):
                             "filtered_count": len(unique_results),
                         })
 
+                # ---- 冲突检测：多源数据矛盾标记 ----
+                all_conflicts = []
+                try:
+                    all_conflicts = rag_agent.rag._detect_conflicts(unique_results)
+                except Exception:
+                    pass
+                if all_conflicts:
+                    yield _sse_format({
+                        "type": "conflicts",
+                        "conflicts": all_conflicts,
+                        "message": f"检测到 {len(all_conflicts)} 处数据冲突，已标记供参考",
+                    })
+                    conflict_text = "\n\n[数据冲突提示]\n" + "\n".join(
+                        f"- {c['entity']}: 存在 {c['values']} 等不同数值，来源不同文档，请综合判断"
+                        for c in all_conflicts
+                    )
+                    context_str = (context_str or "") + conflict_text
+
                 context_str, sources = rag_agent._format_context(unique_results, all_chunks=all_chunks)
                 confidence = unique_results[0].get("rerank_score", 0.0) if unique_results else 0.0
 

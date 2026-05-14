@@ -498,6 +498,7 @@ class RAGEngine:
             return {
                 "results": [],
                 "confidence": 0.0,
+                "conflicts": [],
                 "query_type": "no_results",
                 "retrieval_method": "none",
             }
@@ -518,10 +519,12 @@ class RAGEngine:
 
         # 5. 计算置信度
         confidence = self._calculate_confidence(reranked)
+        conflicts = self._detect_conflicts(reranked)
 
         result = {
             "results": reranked,
             "confidence": confidence,
+            "conflicts": conflicts,
             "query_type": "rag_answer",
             "retrieval_method": retrieval_method,
         }
@@ -589,7 +592,77 @@ class RAGEngine:
         # 按 RRF 分数降序排列
         merged.sort(key=lambda x: x["rrf_score"], reverse=True)
 
+        # ---- 后处理 ----
+        merged = self._filter_low_score(merged, min_rrf=0.008)
+        merged = self._dedup_by_similarity(merged)
+
         return merged
+
+    @staticmethod
+    def _filter_low_score(results: list[dict], min_rrf: float = 0.008) -> list[dict]:
+        """过滤 RRF 分数过低的结果（两路检索都没排进前 50 名）"""
+        return [r for r in results if r.get("rrf_score", 0) >= min_rrf]
+
+    @staticmethod
+    def _dedup_by_similarity(results: list[dict], threshold: float = 0.7) -> list[dict]:
+        """相邻 chunk 语义去重：Jaccard 相似度 > 0.7 的只保留分数高的"""
+        if len(results) <= 1:
+            return results
+
+        def jaccard(text_a: str, text_b: str, n: int = 2) -> float:
+            """2-gram Jaccard 相似度"""
+            if not text_a or not text_b:
+                return 0.0
+            a_grams = {text_a[i:i+n] for i in range(len(text_a) - n + 1)}
+            b_grams = {text_b[i:i+n] for i in range(len(text_b) - n + 1)}
+            if not a_grams or not b_grams:
+                return 0.0
+            return len(a_grams & b_grams) / len(a_grams | b_grams)
+
+        kept = [results[0]]
+        for r in results[1:]:
+            content = r.get("content", "")
+            is_dup = False
+            for k in kept[-3:]:  # 只和前 3 个比较
+                if jaccard(content, k.get("content", "")) > threshold:
+                    is_dup = True
+                    break
+            if not is_dup:
+                kept.append(r)
+        return kept
+
+    @staticmethod
+    def _detect_conflicts(results: list[dict], top_n: int = 5) -> list[dict]:
+        """检测多源数据冲突：同一实体在不同 chunk 中出现不同数值时标记"""
+        import re
+        entities = {}  # entity_name -> [(value, chunk_id, rrf_score)]
+        for r in results[:top_n]:
+            text = r.get("content", "")
+            cid = r.get("chunk_id", "")
+            score = r.get("rrf_score", 0)
+            # 提取 实体名+数字 对：如 "安全库存为 100 件" / "安全库存=50"
+            pairs = re.findall(
+                r"([\u4e00-\u9fff]{2,8}(?:标准|库存|阈值|上限|下限|比例|周期|期限|天数|金额|价格|费率))[^\d]{0,5}(\d+(?:\.\d+)?)",
+                text
+            )
+            for entity, value in pairs:
+                value = float(value)
+                if entity not in entities:
+                    entities[entity] = []
+                entities[entity].append((value, cid, score))
+
+        conflicts = []
+        for entity, vals in entities.items():
+            unique_vals = set(v[0] for v in vals)
+            if len(unique_vals) > 1:
+                conflicts.append({
+                    "entity": entity,
+                    "values": sorted(unique_vals),
+                    "sources": [v[1] for v in vals],
+                    "type": "numeric_conflict",
+                })
+
+        return conflicts
 
     @staticmethod
     def _roles_from_visibility_expr(visibility_expr: str) -> Optional[list[str]]:
