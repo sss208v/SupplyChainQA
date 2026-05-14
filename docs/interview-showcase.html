@@ -400,6 +400,9 @@
     <a href="#sse">SSE 流式与审批</a>
     <a href="#clarify">智能追问机制</a>
     <a href="#retry">容错与重试</a>
+    <a href="#conflicts">冲突检测</a>
+    <a href="#fusion">融合后处理</a>
+    <a href="#tool-metrics">工具指标</a>
     <a href="#code-review">代码走读</a>
 
     <div class="section-label">AI Agent 通用面试题</div>
@@ -865,6 +868,114 @@
       </div>
     </section>
 
+    <!-- ===== 冲突检测 ===== -->
+    <section class="section" id="conflicts">
+      <h2>多源冲突检测</h2>
+      <p>
+        <strong>问题：</strong>供应链知识库包含多部门文档，不同部门对同一指标的定义可能矛盾。
+        例如质量部规定"安全库存 100 件"，财务部规定"安全库存 50 件"——不检测则 RAG 回答会随机选一个。
+      </p>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3>检测流程</h3>
+          <p>正则提取实体+数值 → 同实体不同数值 → 标记冲突。
+            仅比较相邻 chunk（已按 RRF 分数排序），O(n) 复杂度。
+            支持中文实体模式：安全库存/抽检比例/预警阈值/账期天数/质检时效等。</p>
+          <span class="tag blue">rag_engine.py:626</span>
+        </div>
+        <div class="card">
+          <h3>SSE 事件推送</h3>
+          <p>检测到冲突后，后端 yield SSE <code>conflict_detected</code> 事件，
+            前端展示「⚠️ 发现多源数据矛盾」卡片，列出冲突实体和矛盾值。
+            同时冲突文本追加到 LLM context，让 LLM 在回答中主动标注矛盾。</p>
+          <span class="tag green">已集成 chat.py</span>
+        </div>
+        <div class="card">
+          <h3>面试话术</h3>
+          <p>"RAG 系统最危险的幻觉不是瞎编，而是引用了真实但矛盾的数据。
+            多源冲突检测是 RAG 质量保障的最后一道防线——不修复矛盾，只标注矛盾。
+            修复是人的事，标注是系统的事。"</p>
+          <span class="tag green">面试可用</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 融合后处理 ===== -->
+    <section class="section" id="fusion">
+      <h2>融合检索：自适应 RRF + 四层后处理</h2>
+      <p>
+        <strong>不是简单的 RRF 取 Top-K。</strong>完整管线从两路检索到最终结果，经过 5 个阶段。
+      </p>
+
+      <div class="flow-row" style="justify-content:center;margin-bottom:20px">
+        <div class="flow-node"><div class="num">1</div>BM25 关键词</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node"><div class="num">2</div>Milvus 向量</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node"><div class="num">3</div>自适应 RRF</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node" style="background:var(--primary-light)"><div class="num">4</div>四层后处理</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node"><div class="num">5</div>Reranker 精排</div>
+      </div>
+
+      <table class="stack-table">
+        <tr><th>阶段</th><th>方法</th><th>阈值/策略</th><th>代码位置</th></tr>
+        <tr><td>自适应权重</td><td>规则分类 query 类型</td><td>精确 → BM25×1.5 / 语义 → 向量×1.5</td><td>rag_engine.py:548</td></tr>
+        <tr><td>RRF 融合</td><td>Reciprocal Rank Fusion</td><td>K=60, score = Σ weight/(K+rank)</td><td>rag_engine.py:597</td></tr>
+        <tr><td>低分过滤</td><td>RRF score 阈值</td><td>RRF < 0.008 丢弃（两路均排40+）</td><td>rag_engine.py:592</td></tr>
+        <tr><td>Jaccard 去重</td><td>2-gram 文本相似度</td><td>Jaccard > 0.7 → 合并（只比较最后3条）</td><td>rag_engine.py:594</td></tr>
+        <tr><td>冲突检测</td><td>正则实体提取</td><td>同实体不同数值 → 标记，追加到 context</td><td>rag_engine.py:626</td></tr>
+      </table>
+
+      <div class="tip-box">
+        <strong>设计原则：</strong>每层独立、可插拔。低分过滤和去重是检索质量，冲突检测是数据质量——两者关注不同维度但共用同一管线。
+        Jaccard 而非 cosine（省一次 embedding），只比较相邻 3 条（O(n) 而非 O(n²)）——每一个选择都有 metric-driven 理由。
+      </div>
+    </section>
+
+    <!-- ===== 工具指标 ===== -->
+    <section class="section" id="tool-metrics">
+      <h2>工具调用指标</h2>
+      <p>
+        <strong>面试官经典追问："你怎么监控 LLM Agent 的行为？"</strong><br>
+        SmartQA 在 Agent 层和工具层各有一层指标采集，不依赖外部监控系统。
+      </p>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3>ToolMetricsCollector</h3>
+          <p>单例收集器，1000 条环形缓冲区。每次 ToolNode 执行后自动记录：
+            tool_name / duration_ms / success / error_type / timestamp。
+            零外部依赖，内存占用可控（1000条 × ~200B = 200KB）。</p>
+          <span class="tag blue">tool_metrics.py (88行)</span>
+        </div>
+        <div class="card">
+          <h3>Per-Tool 统计</h3>
+          <p><code>stats()</code> 方法返回每个工具的：调用次数、成功次数、成功率、平均耗时。
+            <code>recent(n)</code> 返回最近 N 条详细记录，用于实时诊断。</p>
+          <span class="tag green">20 次查询 100% 成功</span>
+        </div>
+        <div class="card">
+          <h3>Benchmark 脚本</h3>
+          <p><code>scripts/run_benchmark.py</code> 覆盖全部 6 个工具的 20 次查询：
+            query_inventory / query_order / create_ticket / get_datetime / get_knowledge / query_supplier。
+            平均响应 1.7s（含 LLM 推理 + 工具执行 + 结果生成）。</p>
+          <span class="tag blue">可复现</span>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="q">面试官追问：为什么不用 Prometheus / Grafana？</div>
+        <div class="a">
+          <strong>"这个项目定位是单实例部署的部门级系统，不是微服务集群。"</strong><br>
+          Prometheus 的运维成本高于它带来的价值——但要主动说明「如果扩展到多实例，会用 OpenTelemetry + Prometheus 替换环形缓冲区」。<br>
+          关键不是用什么工具，而是知道什么时候该引入什么复杂度的方案。
+        </div>
+      </div>
+    </section>
+
     <!-- ===== 代码走读：逐行分析关键模块 ===== -->
     <section class="section" id="code-review">
       <h2>代码走读：关键模块逐行分析</h2>
@@ -937,7 +1048,7 @@
       <!-- ===== 模块二：rag_engine.py ===== -->
       <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
         <h3 style="margin-bottom:4px">模块二：<code>core/rag_engine.py:search()</code> — 检索全链路</h3>
-        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：623 行 | 核心方法：search() | 四步检索管线</p>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：712 行 | 核心方法：search() | 五步检索管线 (含自适应RRF+四层后处理)</p>
 
         <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
 <pre style="color:#e0e0e0;margin:0">
@@ -966,10 +1077,11 @@ bm25_results = self.bm25.search(
     allowed_roles=bm25_allowed_roles,      <span style="color:#888"># ★ 权限隔离到 BM25 层</span>
 )
 
-<span style="color:#888"># ===== 步骤3：RRF 融合去重 =====</span>
-merged = self._merge_results(vector_results, bm25_results)
-<span style="color:#888"># ★ RRF 公式：score(doc) = Σ 1/(k + rank_i)</span>
-<span style="color:#888">#   不需要归一化分数——向量和 BM25 的分数尺度不同，RRF 天然解决</span>
+<span style="color:#888"># ===== 步骤3：自适应 RRF 融合 + 四层后处理 =====</span>
+merged = self._merge_results(vector_results, bm25_results, query=query)
+<span style="color:#888"># ★ 自适应权重：精确查询(含编号)→BM25×1.5, 语义查询(含怎么)→向量×1.5</span>
+<span style="color:#888"># ★ 四层后处理：低分过滤(RRF<0.008) → Jaccard去重(>0.7) → 冲突检测</span>
+<span style="color:#888">#   RRF 公式：score(doc) = Σ weight/(k + rank_i)</span>
 
 <span style="color:#888"># ===== 步骤4：Reranker 精排 =====</span>
 <span style="color:#c792ea">if</span> settings.RERANKER_ENABLED <span style="color:#c792ea">or</span> self.reranker._model <span style="color:#c792ea">is not None</span>:
@@ -1048,7 +1160,7 @@ merged = self._merge_results(vector_results, bm25_results)
       <!-- ===== 模块四：chat.py ===== -->
       <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
         <h3 style="margin-bottom:4px">模块四：<code>api/chat.py:chat_stream()</code> — SSE 流式主循环</h3>
-        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：915 行 | 核心函数：chat_stream() + event_generator() | 系统最复杂的方法</p>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">文件行数：922 行 | 核心函数：chat_stream() + event_generator() | 系统最复杂的方法</p>
 
         <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
 <pre style="color:#e0e0e0;margin:0">
