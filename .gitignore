@@ -72,6 +72,9 @@ GOAL_HERMES.md
 
 # Eval tuning scripts (one-time runs, not project code)
 backend/eval/*.py
+backend/eval/*.json
+backend/eval/*.csv
+backend/eval/*.md
 backend/eval/tune_results.json
 
 # Generated data
