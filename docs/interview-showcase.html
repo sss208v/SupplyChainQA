@@ -601,9 +601,9 @@
         <div class="card">
           <h3>混合检索 (RRF)</h3>
           <p>BM25 关键词 + Milvus 向量 → RRF 融合排序，
-            单一通道 R@3=0.2，融合后 R@3=0.53，
-            说明架构有效。语料翻倍会继续涨。</p>
-          <span class="tag blue">R@3=0.53</span>
+            单一通道 R@3=0.2，融合后 R@3=0.46，
+            说明架构有效。KB 从 20 篇扩展到 92 篇，指标诚实可解释。</p>
+          <span class="tag blue">R@3=0.46</span>
         </div>
         <div class="card">
           <h3>Self-RAG</h3>
@@ -636,8 +636,7 @@
         </div>
       </div>
       <div class="tip-box">
-        <strong>💡 面试要点：</strong> 主动提 R@3=0.53「<strong>这个指标不高，但可解释——20 篇小知识库，
-        混合检索把单通道的 0.2 拉到 0.53，架构有效</strong>」——面试官对「知道自己系统为什么不够好」的人很有好感。
+        <strong>💡 面试要点：</strong> 主动提 R@3=0.46「<strong>这个指标在 1372 chunks 知识库上实测，ground truth 只覆盖了部分文档</strong>」——面试官对「知道自己系统为什么不够好」的人很有好感。
       </div>
     </section>
 
@@ -2034,7 +2033,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
       <div class="tip-box" style="margin-top:24px;">
         <strong>💡 面试要点：</strong> 每个功能点先说 <strong>「为什么这么做」</strong>，再说「怎么做的」。
         主动提局限性和 trade-off——面试官对「我也知道这里不完美」很有好感。
-        RAG 指标主动提及「R@3=0.53 是因为文档量大且领域分散，指标诚实可解释」。
+        RAG 指标主动提及「R@3=0.46 是在 1372 chunks 上实测的，ground truth 扩展后可提升」。
       </div>
     </section>
 
