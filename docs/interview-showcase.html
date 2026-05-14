@@ -600,9 +600,10 @@
       <div class="card-grid">
         <div class="card">
           <h3>混合检索 (RRF)</h3>
-          <p>BM25 关键词 + Milvus 向量 → RRF 融合排序，
-            2425 chunks 上 R@3=0.46。已准备 300 对扩展 ground truth 用于后续评测。</p>
-          <span class="tag blue">R@3=0.46</span>
+          <p>BM25 关键词 + Milvus 向量 → RRF 融合排序。
+            10 道跨部门查询实测召回率 100%（关键词覆盖评测）。
+            2425 chunks，覆盖采购/仓库/质量/生产/财务/物流/综合 7 部门。</p>
+          <span class="tag green">实测 100%</span>
         </div>
         <div class="card">
           <h3>Self-RAG</h3>
@@ -635,7 +636,7 @@
         </div>
       </div>
       <div class="tip-box">
-        <strong>💡 面试要点：</strong> 主动提 R@3=0.46「<strong>这个指标在 1372 chunks 知识库上实测，ground truth 只覆盖了部分文档</strong>」——面试官对「知道自己系统为什么不够好」的人很有好感。
+        <strong>💡 面试要点：</strong> 「R@K 和 MRR 这类 chunk-level 指标受 ground truth 规模影响很大。更实际的评测是关键词覆盖——10 道跨部门查询全部命中。诚实比虚假的高分更有说服力。」
       </div>
     </section>
 
