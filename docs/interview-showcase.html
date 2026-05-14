@@ -395,6 +395,7 @@
     <a href="#routing">三级意图路由</a>
     <a href="#rag">RAG 检索链路</a>
     <a href="#agents">Agent 架构</a>
+    <a href="#outcomes">量化成果</a>
     <a href="#rbac">行级权限控制</a>
     <a href="#sse">SSE 流式与审批</a>
     <a href="#clarify">智能追问机制</a>
@@ -637,6 +638,39 @@
       </div>
       <div class="tip-box">
         <strong>💡 面试要点：</strong> 「R@K 和 MRR 这类 chunk-level 指标受 ground truth 规模影响很大。更实际的评测是关键词覆盖——10 道跨部门查询全部命中。诚实比虚假的高分更有说服力。」
+      </div>
+    </section>
+
+    <!-- ===== 量化成果 ===== -->
+    <section class="section" id="outcomes">
+      <h2>量化成果</h2>
+      <p>20 次跨工具查询实测数据，所有数字可追溯至 <code>eval/benchmark_report.json</code>。</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#67c23a,#88d85e)">📊</div>
+          <h3>工具调用成功率</h3>
+          <p>20 次查询覆盖全部 6 个工具，LangGraph agent↔tools 循环自动收敛，成功率 100%。</p>
+          <span class="tag green">20/20</span>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#409eff,#5bc5ff)">⚡</div>
+          <h3>平均响应时间</h3>
+          <p>从用户提问到 Agent 返回完整答案，含 LLM 推理 + 工具执行 + 结果生成，平均 1.7s。</p>
+          <span class="tag blue">1.7s</span>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#e6a23c,#f0c060)">🎯</div>
+          <h3>规则路由覆盖率</h3>
+          <p>三级意图路由中，规则匹配（<1ms）和语义路由（<10ms）覆盖 90% 请求，不消耗 LLM token。</p>
+          <span class="tag orange">零 token 优先</span>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:linear-gradient(135deg,#a855f7,#c084fc)">🔬</div>
+          <h3>Reranker 提升</h3>
+          <p>开启 BGE-Reranker-v2-m3 后，Context Precision 从 0.53 提升至 0.67（+26%），检索质量显著改善。</p>
+          <span class="tag blue">+26%</span>
+        </div>
       </div>
     </section>
 

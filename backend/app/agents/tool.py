@@ -23,6 +23,7 @@ from langchain_core.tools import tool
 from app.core.llm_router import LLMFactory
 from app.core.tool_engine import get_all_tools
 from app.core.redis_client import chat_memory
+from app.core.tool_metrics import tool_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,9 @@ class ToolAgent:
         iteration = 0
 
         try:
-            # 用 astream 获取中间状态（同步执行，因为 langgraph 内部用 sync）
+            import time as _time
+            _t_start = _time.perf_counter()
+            # 用 astream 获取中间状态
             for event in self.graph.stream(
                 {"messages": messages}, config, stream_mode="values"
             ):
@@ -130,13 +133,22 @@ class ToolAgent:
                 # 记录工具调用
                 if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
                     for tc in last_msg.tool_calls:
+                        tool_name = tc.get("name", "unknown")
+                        tool_input = tc.get("args", {})
                         tool_calls_record.append({
-                            "tool": tc.get("name", "unknown"),
-                            "input": tc.get("args", {}),
+                            "tool": tool_name,
+                            "input": tool_input,
                         })
                         iteration += 1
                         if iteration >= MAX_ITERATIONS:
                             break
+
+                # 记录工具执行结果
+                if hasattr(last_msg, "content") and last_msg.content and hasattr(last_msg, "tool_call_id"):
+                    # ToolMessage: record as success
+                    tool_name = getattr(last_msg, "name", "unknown")
+                    duration = ((_time.perf_counter() - _t_start) * 1000) / max(iteration, 1)
+                    tool_metrics.record(tool_name, {}, str(last_msg.content)[:200], duration, True)
 
                 # 记录最终回答
                 if isinstance(last_msg, AIMessage) and last_msg.content and not last_msg.tool_calls:
