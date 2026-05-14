@@ -59,8 +59,37 @@ class ToolAgent:
 
     def _build_graph(self):
         """构建 LangGraph 状态图"""
+        import asyncio
+        from langchain_core.tools import StructuredTool
+
+        sync_tools = []
+        for t in self.tools:
+            func = t.func if hasattr(t, 'func') else getattr(t, '_run', None)
+            if func and asyncio.iscoroutinefunction(func):
+                async_fn = func
+                def make_sync(fn):
+                    def wrapper(*a, **kw):
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                import concurrent.futures
+                                with concurrent.futures.ThreadPoolExecutor() as pool:
+                                    return pool.submit(lambda: asyncio.run(fn(*a, **kw))).result(timeout=30)
+                            return asyncio.run(fn(*a, **kw))
+                        except RuntimeError:
+                            return asyncio.run(fn(*a, **kw))
+                    return wrapper
+                sync_tools.append(StructuredTool(
+                    name=t.name, description=t.description,
+                    func=make_sync(async_fn),
+                    args_schema=t.args_schema if hasattr(t, 'args_schema') else None,
+                    coroutine=async_fn,
+                ))
+            else:
+                sync_tools.append(t)
+
         llm = LLMFactory.get_llm(temperature=0)
-        llm_with_tools = llm.bind_tools(self.tools)
+        llm_with_tools = llm.bind_tools(sync_tools)
 
         def agent_node(state: AgentState) -> dict:
             """LLM 决策节点"""
@@ -73,7 +102,7 @@ class ToolAgent:
 
         builder = StateGraph(AgentState)
         builder.add_node("agent", agent_node)
-        builder.add_node("tools", ToolNode(self.tools))
+        builder.add_node("tools", ToolNode(sync_tools))
 
         builder.add_edge(START, "agent")
         builder.add_conditional_edges("agent", tools_condition)
