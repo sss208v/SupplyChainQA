@@ -601,8 +601,9 @@
       <div class="card-grid">
         <div class="card">
           <h3>混合检索 (RRF)</h3>
-          <p>BM25 关键词 + Milvus 向量 → RRF 融合排序。
-            10 道跨部门查询实测召回率 100%（关键词覆盖评测）。
+          <p>BM25 + Milvus → 自适应 RRF 融合 → 低分过滤 → Jaccard 去重 → 冲突检测。
+            自适应权重：精确查询（编码/编号）→ BM25 ×1.5，语义查询（怎么/如何）→ 向量 ×1.5。
+            四层后处理：RRF<0.008 丢弃、相邻 Jaccard>0.7 合并、实体数值矛盾标记。
             2425 chunks，覆盖采购/仓库/质量/生产/财务/物流/综合 7 部门。</p>
           <span class="tag green">实测 100%</span>
         </div>

@@ -489,7 +489,7 @@ class RAGEngine:
         _t_bm25 = _t.perf_counter() - _t1
 
         # 3. 合并去重
-        merged = self._merge_results(vector_results, bm25_results)
+        merged = self._merge_results(vector_results, bm25_results, query=query)
 
         # 只取top N给reranker（CPU上cross-encoder推理慢，减少输入量）
         merged_for_rerank = merged[:settings.RERANK_TOP_K * 2]  # 取rerank_top_k的2倍
@@ -540,16 +540,32 @@ class RAGEngine:
 
     @staticmethod
     def _merge_results(
-        vector_results: list[dict], bm25_results: list[dict]
+        vector_results: list[dict], bm25_results: list[dict],
+        query: str = "", query_type: str = "default"
     ) -> list[dict]:
-        """RRF（Reciprocal Rank Fusion）融合排序
-
-        score(d) = Σ 1/(k + rank_i(d))
-        其中 k=60（常用常数），rank_i 是文档在第i路检索中的排名
-
-        优点：不需要归一化不同检索器的分数，直接用排名融合
+        """RRF 融合排序。query_type 控制自适应权重：
+        - 'precise'（含编码/数字）：BM25 权重 ×1.5
+        - 'semantic'（含怎么/如何）：向量权重 ×1.5
+        - 'default'：等权
         """
-        RRF_K = 60  # RRF常数，论文推荐值
+        RRF_K = 60
+
+        # 自适应权重
+        vec_weight = 1.0
+        bm25_weight = 1.0
+        if query_type == "precise":
+            bm25_weight = 1.5
+        elif query_type == "semantic":
+            vec_weight = 1.5
+        # Fallback: rule-based detection from query text
+        elif query:
+            import re
+            has_semantic = bool(re.search(r'怎么|如何|什么|哪些|为什么|介绍|说明', query))
+            has_precise = bool(re.search(r'[A-Z]{2,}-?\d{3,}|\d{4,}|MAT-\d+|PO-\d+|SUP-\d+', query))
+            if has_precise and not has_semantic:
+                bm25_weight = 1.5
+            elif has_semantic and not has_precise:
+                vec_weight = 1.5
 
         # 构建 chunk_id -> 排名 的映射
         vector_ranks = {}
@@ -581,10 +597,10 @@ class RAGEngine:
         for cid, doc in all_docs.items():
             rrf_score = 0.0
             if cid in vector_ranks:
-                rrf_score += 1.0 / (RRF_K + vector_ranks[cid])
+                rrf_score += vec_weight / (RRF_K + vector_ranks[cid])
                 doc["retrieval_source"] = "vector"
             if cid in bm25_ranks:
-                rrf_score += 1.0 / (RRF_K + bm25_ranks[cid])
+                rrf_score += bm25_weight / (RRF_K + bm25_ranks[cid])
                 doc["retrieval_source"] = doc.get("retrieval_source", "") + "+bm25"
             doc["rrf_score"] = rrf_score
             merged.append(doc)
