@@ -31,6 +31,7 @@ from app.agents.rag import rag_agent
 from app.agents.tool import tool_agent
 from app.agents.langchain_agent import langchain_agent
 from app.agents.langgraph_agent import langgraph_agent
+from app.agents.unified_agent import unified_agent
 from app.core.llm_router import LLMFactory
 from app.core.redis_client import chat_memory
 from app.core.data_filter import PIIFilter
@@ -129,11 +130,13 @@ def _get_tool_agent(agent_type: Optional[str] = None):
     优先级：请求参数 > 配置文件默认值
     """
     effective_type = agent_type or settings.AGENT_TYPE
+    if effective_type == "react":
+        return tool_agent
     if effective_type == "langchain":
         return langchain_agent
     if effective_type == "langgraph":
         return langgraph_agent
-    return tool_agent
+    return unified_agent  # default: LangChain+LangGraph combined
 
 
 # ---- API接口 ----

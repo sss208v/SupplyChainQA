@@ -394,7 +394,7 @@
     <div class="section-label">核心竞争力</div>
     <a href="#routing">三级意图路由</a>
     <a href="#rag">RAG 检索链路</a>
-    <a href="#agents">三种 Agent 模式</a>
+    <a href="#agents">Agent 架构</a>
     <a href="#rbac">行级权限控制</a>
     <a href="#sse">SSE 流式与审批</a>
     <a href="#clarify">智能追问机制</a>
@@ -449,8 +449,8 @@
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">🤖</div>
           <h3>Multi-Agent</h3>
-          <p>三种 Agent 模式演进：手写 ReAct → LangChain → LangGraph，接口一致，一键切换</p>
-          <span class="tag blue">291行可控</span>
+          <p>LangChain 管工具 + LangGraph 管状态流转，5 节点可观测推理，审批闭环</p>
+          <span class="tag blue">可观测</span>
         </div>
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#67c23a,#88d85e)">🛡️</div>
@@ -641,48 +641,52 @@
     </section>
 
     <section class="section" id="agents">
-      <h2>三种 Agent 模式演进</h2>
+      <h2>Agent 架构：LangChain + LangGraph</h2>
       <p>
-        从「自己写 ReAct」到「LangChain 标准化」再到「LangGraph StateGraph 前沿架构」，
-        三层 Agent 模式体现技术视野和工程判断力。
+        不是简单的"三个框架都试一遍"——而是在评估后选择了组合架构：<strong>LangChain 管工具抽象</strong>（@tool 装饰器、统一 Tool 接口），
+        <strong>LangGraph 管状态流转</strong>（StateGraph + conditional edges，可观测、可中断）。
       </p>
       <div class="card-grid">
         <div class="card">
-          <div class="card-icon" style="background:linear-gradient(135deg,#409eff,#5bc5ff)">1️⃣</div>
-          <h3>手写 ReAct（默认）</h3>
+          <div class="card-icon" style="background:linear-gradient(135deg,#409eff,#5bc5ff)">1</div>
+          <h3>学习过程：手写 ReAct</h3>
           <p>
-            280 行纯 Python，Thought/Action/Observation JSON 格式循环，
-            最多 5 轮。面试可讲：状态机思想、tool_calls 结构、streaming 实现。
+            291 行纯 Python，实现 Thought/Action/Observation 循环。
+            目的：理解 Agent 的本质——不是调 API，是感知→推理→行动→反思的闭环。
           </p>
-          <span class="tag blue">完全可控</span>
+          <span class="tag blue">理解原理</span>
         </div>
         <div class="card">
-          <div class="card-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">2️⃣</div>
-          <h3>LangChain AgentExecutor</h3>
+          <div class="card-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">2</div>
+          <h3>工程选择：LangChain + LangGraph</h3>
           <p>
-            标准化生态，create_react_agent 标准实现，社区工具链（SearchAPI, SQLDatabase）即插即用。
-            适合生产环境快速迭代。
+            评估了三种方案后选择组合：LangChain 的 @tool 装饰器让新增工具只需 5 行代码；
+            LangGraph 的 StateGraph 实现了可观测的多步推理和条件路由。
           </p>
-          <span class="tag blue">生态丰富</span>
+          <span class="tag green">生产架构</span>
         </div>
         <div class="card">
-          <div class="card-icon" style="background:linear-gradient(135deg,#a855f7,#c084fc)">3️⃣</div>
-          <h3>LangGraph StateGraph</h3>
+          <div class="card-icon" style="background:linear-gradient(135deg,#a855f7,#c084fc)">3</div>
+          <h3>5 节点状态流转</h3>
           <p>
-            StateGraph + conditional edges，图式状态流转。
-            面试差异化亮点：展示对前沿架构的跟进能力，面试中少有人讲。
+            understand → decide → execute → observe → respond。
+            每个节点状态实时可见，审批流程在 execute 前挂起，迭代上限 5 轮自动收敛。
           </p>
-          <span class="tag blue">前沿架构</span>
+          <span class="tag blue">可观测</span>
         </div>
       </div>
-      <p style="font-size:13px;color:var(--text-secondary);">
-        <strong>切换方式：</strong> 接口完全一致 <code>async def run(query, tool_names, session_id) → dict</code>，
-        改一行配置就切换。体现了「松耦合 + 策略模式」的设计思想。
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:16px;">
+        <strong>接口一致：</strong> <code>async def run(query, tool_names, session_id) → dict</code>。
+        配置 <code>AGENT_TYPE=react|langchain|langgraph</code> 可回退到其他实现，但默认使用统一 Agent。
       </p>
       <p style="font-size:13px;color:var(--text-secondary);">
-        <strong>工具注册：</strong> TOOL_REGISTRY 插件化注册，新增工具只需 5 行代码。
+        <strong>工具注册：</strong> TOOL_REGISTRY 插件化，新增工具只需 @tool 装饰器。
         现支持：query_inventory / query_order / create_ticket / get_datetime / get_knowledge / query_supplier。
       </p>
+
+      <div class="tip-box" style="margin-top:12px;">
+        <strong>💡 面试金句：</strong>「我先是手写了 ReAct 来理解 Agent 的本质——Thought/Action/Observation 循环。然后评估了 LangChain 和 LangGraph，发现两者不是竞争关系——LangChain 强在工具生态，LangGraph 强在状态编排。最终我组合了两者，LangChain 管工具、LangGraph 管流转。」
+      </div>
     </section>
 
     <section class="section" id="rbac">

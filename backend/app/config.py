@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen2.5:7b"
 
     # ---- Agent ----
-    AGENT_TYPE: str = "react"  # react / langchain / langgraph
+    AGENT_TYPE: str = "unified"  # unified(default) / react / langchain / langgraph
 
     # ---- 内容过滤（已禁用）----
     GUARDRAILS_ENABLED: bool = False
