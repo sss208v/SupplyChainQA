@@ -448,9 +448,9 @@
         </div>
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">🤖</div>
-          <h3>Multi-Agent</h3>
-          <p>LangChain 管工具 + LangGraph 管状态流转，5 节点可观测推理，审批闭环</p>
-          <span class="tag blue">可观测</span>
+          <h3>Agent 工具调用</h3>
+          <p>LangChain bind_tools + LangGraph StateGraph/ToolNode，LLM 原生工具调用，自动状态流转</p>
+          <span class="tag blue">标准化</span>
         </div>
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#67c23a,#88d85e)">🛡️</div>
@@ -643,49 +643,41 @@
     <section class="section" id="agents">
       <h2>Agent 架构：LangChain + LangGraph</h2>
       <p>
-        不是简单的"三个框架都试一遍"——而是在评估后选择了组合架构：<strong>LangChain 管工具抽象</strong>（@tool 装饰器、统一 Tool 接口），
-        <strong>LangGraph 管状态流转</strong>（StateGraph + conditional edges，可观测、可中断）。
+        参考 Datawhale easy-langent 教程的工程模式：<strong>LangChain 管 LLM 调用和工具绑定</strong>（ChatOpenAI + bind_tools），
+        <strong>LangGraph 管状态流转</strong>（StateGraph + ToolNode + conditional edges）。
       </p>
       <div class="card-grid">
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#409eff,#5bc5ff)">1</div>
-          <h3>学习过程：手写 ReAct</h3>
+          <h3>LLM 绑定工具</h3>
           <p>
-            291 行纯 Python，实现 Thought/Action/Observation 循环。
-            目的：理解 Agent 的本质——不是调 API，是感知→推理→行动→反思的闭环。
+            用 LangChain 的 <code>llm.bind_tools(tools)</code> 让 LLM 原生支持工具调用。
+            不需要手写 JSON 解析——LLM 返回标准 tool_calls，ToolNode 自动执行。
           </p>
-          <span class="tag blue">理解原理</span>
+          <span class="tag blue">标准化</span>
         </div>
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">2</div>
-          <h3>工程选择：LangChain + LangGraph</h3>
+          <h3>StateGraph 流程编排</h3>
           <p>
-            评估了三种方案后选择组合：LangChain 的 @tool 装饰器让新增工具只需 5 行代码；
-            LangGraph 的 StateGraph 实现了可观测的多步推理和条件路由。
+            LangGraph StateGraph 定义 agent↔tools 循环。
+            条件路由（tools_condition）自动判断：有 tool_calls → 执行工具 → 回到 agent；
+            无 tool_calls → 结束。5 轮自动收敛。
           </p>
-          <span class="tag green">生产架构</span>
+          <span class="tag green">可观测</span>
         </div>
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#a855f7,#c084fc)">3</div>
-          <h3>5 节点状态流转</h3>
+          <h3>6 个供应链工具</h3>
           <p>
-            understand → decide → execute → observe → respond。
-            每个节点状态实时可见，审批流程在 execute 前挂起，迭代上限 5 轮自动收敛。
+            query_inventory / query_order / create_ticket / get_datetime / get_knowledge / query_supplier。
+            SQLite 存储 15+ 物料和订单数据，async 调用，权限按角色过滤。
           </p>
-          <span class="tag blue">可观测</span>
+          <span class="tag blue">即插即用</span>
         </div>
       </div>
-      <p style="font-size:13px;color:var(--text-secondary);margin-top:16px;">
-        <strong>接口一致：</strong> <code>async def run(query, tool_names, session_id) → dict</code>。
-        配置 <code>AGENT_TYPE=react|langchain|langgraph</code> 可回退到其他实现，但默认使用统一 Agent。
-      </p>
-      <p style="font-size:13px;color:var(--text-secondary);">
-        <strong>工具注册：</strong> TOOL_REGISTRY 插件化，新增工具只需 @tool 装饰器。
-        现支持：query_inventory / query_order / create_ticket / get_datetime / get_knowledge / query_supplier。
-      </p>
-
       <div class="tip-box" style="margin-top:12px;">
-        <strong>💡 面试金句：</strong>「我先是手写了 ReAct 来理解 Agent 的本质——Thought/Action/Observation 循环。然后评估了 LangChain 和 LangGraph，发现两者不是竞争关系——LangChain 强在工具生态，LangGraph 强在状态编排。最终我组合了两者，LangChain 管工具、LangGraph 管流转。」
+        <strong>💡 面试金句：</strong>「参考了 Datawhale easy-langent 教程的工程模式——LangChain 的 bind_tools 让 LLM 原生支持工具调用，LangGraph 的 StateGraph + ToolNode 自动处理工具执行和状态流转。不是简单的调 API，而是理解了 Agent 的状态机本质后用框架落地。」
       </div>
     </section>
 
