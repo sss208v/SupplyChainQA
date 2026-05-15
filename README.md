@@ -116,7 +116,7 @@ supply-chain-qa/
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | /api/v1/chat/stream | POST | SSE 流式对话 |
-| /api/v1/chat/completions | POST | 非流式对话 |
+| /api/v1/tools/call | POST | Agent 工具调用 |
 | /api/v1/knowledge/upload | POST | 上传文档 |
 | /api/v1/knowledge/list | GET | 文档列表 |
 | /api/v1/auth/login | POST | 登录 |

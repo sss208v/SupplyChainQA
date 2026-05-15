@@ -92,9 +92,8 @@ class ToolAgent:
         llm_with_tools = llm.bind_tools(sync_tools)
 
         def agent_node(state: AgentState) -> dict:
-            """LLM 决策节点"""
+            """LLM 决策节点（同步 — LangGraph sync 执行）"""
             messages = state["messages"]
-            # 注入系统提示
             if not any(isinstance(m, SystemMessage) for m in messages):
                 messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(messages)
             response = llm_with_tools.invoke(messages)
