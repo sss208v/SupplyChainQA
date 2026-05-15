@@ -106,12 +106,18 @@
 
 | 编号 | 任务 | 需要什么 |
 |------|------|----------|
-| P0-1 | 端到端验证 | 后端能启动 (Docker + uvicorn) |
-| P0-2 | 问题预演 | 后端运行中 |
-| P0-3 | 前端冲突展示 | 修改 chat.js + chat 组件 |
-| P1-4 | 性能指标 | 后端运行中 |
-| P1-5 | 工具分组指标 | 后端运行中 |
-| P1-6 | README 改造 | 纯文本 |
+| P0-1 | ✅ 已验证 | 后端启动成功（6s完成），API 正常响应 |
+| P0-2 | ⚠️ 需后端 | 后端运行时执行 plan/demo-questions.md 前8题 |
+| P0-3 | ✅ 已完成 | chat.js/store/ChatMessage.vue 三处联动，冲突卡片渲染 |
+| P1-4 | ✅ 脚本就绪 | run_benchmark.py 完整，eval/benchmark_report.json 含 per-tool 数据 |
+| P1-5 | ✅ 已集成 | tool_metrics.py 88行，benchmark 报告含6工具分组统计 |
+| P1-6 | ✅ 已完成 | README 已更新架构/技术栈/行数/快速开始 |
+
+**已知问题**: 端口 8001 可能被 conda/anaconda 的旧 Python 进程占用。启动前执行:
+```powershell
+Get-NetTCPConnection -LocalPort 8001 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+```
+或直接用 `demo_start.ps1` 一键启动。
 
 ---
 
