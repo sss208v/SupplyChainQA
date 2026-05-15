@@ -19,7 +19,9 @@
  *    - {"type":"sources", "sources":[...]}         → 参考来源
  *    - {"type":"tool_status", "status":"calling"}  → 工具调用状态
  *    - {"type":"tool_call", "tool":"weather"}      → 工具调用结果
- *    - {"type":"error", "message":"xxx"}           → 错误
+ *   - {"type":"approval_request", ...}               → 写操作审批
+ *   - {"type":"conflicts", "conflicts":[...]}         → 多源数据冲突检测
+ *   - {"type":"error", "message":"xxx"}           → 错误
  *    - [DONE]                                      → 流式结束
  */
 import request from './request'
@@ -248,6 +250,9 @@ export async function chatStream(data, callbacks = {}) {
             break
           case 'approval_request':
             callbacks.onApprovalRequest?.(parsed)
+            break
+          case 'conflicts':
+            callbacks.onConflicts?.(parsed)
             break
           case 'error':
             console.error(`[ChatStream +${eventMs}ms] 后端error事件:`, parsed.message)

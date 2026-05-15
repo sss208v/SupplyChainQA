@@ -164,6 +164,11 @@ export const useChatStore = defineStore('chat', () => {
             streaming.value = false
             debugLog('[ChatStore] onApprovalRequest:', data)
           },
+          onConflicts: (data) => {
+            // 多源数据冲突检测
+            messages.value[aiIdx].conflicts = data.conflicts || []
+            debugLog('[ChatStore] onConflicts:', data.conflicts?.length, '处冲突')
+          },
           onDagProgress: (data) => {
             currentDagProgress.value = data
             messages.value[aiIdx].dagProgress = { ...data }

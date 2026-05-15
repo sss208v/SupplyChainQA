@@ -204,6 +204,29 @@
           </el-tag>
         </div>
 
+        <!-- 多源数据冲突提示 -->
+        <div v-if="message.conflicts?.length" class="conflict-bar">
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+          >
+            <template #title>
+              ⚠️ 检测到 {{ message.conflicts.length }} 处数据矛盾，已标注供参考
+            </template>
+            <template #default>
+              <div
+                v-for="(c, idx) in message.conflicts"
+                :key="idx"
+                class="conflict-item"
+              >
+                <strong>{{ c.entity }}</strong>：
+                <span class="conflict-values">{{ c.values?.join(' vs ') }}</span>
+              </div>
+            </template>
+          </el-alert>
+        </div>
+
         <!-- 反馈按钮（仅AI消息显示） -->
         <div v-if="!message.streaming && !message.approvalRequest" class="feedback-bar">
           <el-button
@@ -688,6 +711,21 @@ const queryAnalysisTagType = computed(() => {
 /* 澄清标记 */
 .clarify-tag {
   margin-bottom: 8px;
+}
+
+/* 冲突检测标记 */
+.conflict-bar {
+  margin: 8px 0;
+}
+.conflict-item {
+  font-size: 13px;
+  padding: 2px 0;
+  color: #8a6d10;
+}
+.conflict-values {
+  color: #f56c6c;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Consolas', monospace;
 }
 
 /* Token用量标签 */
