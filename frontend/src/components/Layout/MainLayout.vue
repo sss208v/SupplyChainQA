@@ -96,8 +96,14 @@
             <el-option label="MiniMax" value="minimax" />
             <el-option label="Ollama" value="ollama" />
           </el-select>
-          <el-tag type="success" effect="plain" round size="small">
-            <el-icon><CircleCheck /></el-icon> 在线
+          <el-tag
+            :type="backendOnline ? 'success' : 'danger'"
+            effect="plain"
+            round
+            size="small"
+          >
+            <el-icon><CircleCheck v-if="backendOnline" /><WarningFilled v-else /></el-icon>
+            {{ backendOnline ? '在线' : '后端离线' }}
           </el-tag>
           <!-- 用户信息 -->
           <el-dropdown @command="handleCommand" class="user-dropdown">
@@ -140,7 +146,7 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Expand, Fold, ChatDotRound, Folder, SetUp, Monitor, CircleCheck, DataAnalysis, User, Link } from '@element-plus/icons-vue'
+import { Expand, Fold, ChatDotRound, Folder, SetUp, Monitor, CircleCheck, DataAnalysis, User, Link, WarningFilled } from '@element-plus/icons-vue'
 import { listModels, switchModel } from '@/api/chat'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
@@ -150,6 +156,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const isCollapsed = ref(false)
 const currentModel = ref('deepseek')
+const backendOnline = ref(true)
 
 // ---- 对话历史 ----
 const HISTORY_KEY = 'smartqa_chat_history'
@@ -221,6 +228,18 @@ function truncate(str, len) {
 onMounted(() => {
   loadHistory()
   window.__smartqa_addHistory = addHistoryEntry
+
+  // 健康检查轮询（每 30 秒）
+  async function checkHealth() {
+    try {
+      const res = await fetch('/health')
+      backendOnline.value = res.ok
+    } catch {
+      backendOnline.value = false
+    }
+  }
+  checkHealth()
+  setInterval(checkHealth, 30000)
 })
 
 // 初始化时获取当前模型
