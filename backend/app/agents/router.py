@@ -37,6 +37,7 @@ class IntentType(str, Enum):
     TOOL_CALL = "tool_call"     # 工具调用
     HYBRID = "hybrid"           # 混合意图
     UNCLEAR = "unclear"         # 意图不明
+    GOAL = "goal"               # 目标型（多步跨域编排）
 
 
 class RouterAgent:
@@ -122,6 +123,14 @@ class RouterAgent:
             "前端", "后端", "全栈", "移动端", "web", "app",
         ]
 
+        # 目标型关键词：需要多步跨域编排（注意：必须在 RAG 关键词之后检查，避免误判）
+        self._goal_keywords = [
+            "帮我评估", "帮我分析", "帮我看看", "帮我判断",
+            "要不要", "需不需要", "是否需要", "该不该",
+            "怎么办", "怎么处理", "怎么应对",
+            "影响评估", "风险评估", "缺口分析",
+        ]
+
     async def route(self, query: str) -> dict:
         """
         路由用户查询到对应的Agent
@@ -196,7 +205,16 @@ class RouterAgent:
                 "method": "rule",
             }
 
-        # 3. RAG 关键词匹配（工具未命中时）
+        # 3. 目标型关键词（需要多步跨域编排）
+        for keyword in self._goal_keywords:
+            if keyword in query:
+                return {
+                    "intent": IntentType.GOAL,
+                    "tool_name": None,
+                    "method": "rule",
+                }
+
+        # 4. RAG 关键词匹配（工具和目标都未命中时）
         for keyword in self._rag_keywords:
             if keyword in query:
                 return {
@@ -224,14 +242,17 @@ class RouterAgent:
 
 1. greeting - 问候、闲聊、寒暄（如"你好"、"你是谁"）
 2. rag_answer - 需要知识库检索才能回答的问题（如"什么是RAG"、"如何部署Milvus"）
-3. tool_call - 需要调用外部工具（如"深圳天气"、"计算3+5"、"今天几号"）
+3. tool_call - 需要调用单个外部工具（如"深圳天气"、"计算3+5"、"今天几号"）
 4. hybrid - 同时需要知识库和工具（如"深圳天气如何，适合户外运动吗"）
-5. unclear - 意图不明确，无法判断
+5. goal - 需要多步跨部门分析才能完成的目标（如"帮我评估库存短缺风险"、"分析供应商延迟影响"、"排查质量异常"）
+6. unclear - 意图不明确，无法判断
+
+goal 类别的特征：问题需要横跨多个部门（库存+采购+生产+质量）的信息，无法用单个工具完成，也不是简单知识问答。
 
 请严格按以下JSON格式输出，不要输出其他内容：
 {"intent": "类别", "confidence": 置信度(0-1), "tool_name": 工具名或null}
 
-可用工具: get_weather, calculator, get_datetime, get_knowledge"""
+可用工具: query_inventory, query_order, query_supplier, create_ticket, get_datetime, get_knowledge"""
 
         llm = LLMFactory.get_llm(temperature=0.1, streaming=False)
 

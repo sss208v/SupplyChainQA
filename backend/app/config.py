@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
     DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_FAST_MODEL: str = "deepseek-v4-flash"  # 快速模型（编排/分类）
 
     # MiniMax
     MINIMAX_API_KEY: str = ""

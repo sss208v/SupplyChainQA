@@ -22,6 +22,8 @@ MODEL_PRICING = {
     "deepseek-chat":       {"input": 1.0, "output": 2.0},
     "deepseek-coder":      {"input": 1.0, "output": 2.0},
     "deepseek-reasoner":   {"input": 4.0, "output": 16.0},
+    "deepseek-v4-flash":   {"input": 0.5, "output": 1.0},   # V4 Flash 最便宜
+    "deepseek-v4-pro":     {"input": 2.0, "output": 8.0},
     # MiniMax
     "MiniMax-M2.7":        {"input": 1.0, "output": 8.0},
     "abab6.5-chat":        {"input": 1.0, "output": 8.0},
@@ -82,6 +84,7 @@ class LLMFactory:
         provider: Optional[str] = None,
         temperature: float = 0.7,
         streaming: bool = True,
+        model: Optional[str] = None,  # "main" | "fast" | None(默认)
     ) -> BaseChatModel:
         """
         获取LLM实例
@@ -90,12 +93,10 @@ class LLMFactory:
             provider: 模型提供商 (deepseek / minimax / ollama)
             temperature: 温度参数
             streaming: 是否启用流式输出
-
-        Returns:
-            LangChain ChatModel实例
+            model: 模型选择 — "fast" 用快速模型, "main" 用主模型, None=provider默认
         """
         provider = provider or settings.LLM_PROVIDER
-        cache_key = f"{provider}_{temperature}_{streaming}"
+        cache_key = f"{provider}_{model or 'default'}_{temperature}_{streaming}"
 
         if cache_key in cls._instances:
             return cls._instances[cache_key]
@@ -103,17 +104,23 @@ class LLMFactory:
         model_name = None
 
         if provider == "deepseek":
+            # 选择模型
+            if model == "fast":
+                selected_model = settings.DEEPSEEK_FAST_MODEL
+            else:
+                selected_model = settings.DEEPSEEK_MODEL
+
             llm = ChatOpenAI(
                 api_key=settings.DEEPSEEK_API_KEY,
                 base_url=settings.DEEPSEEK_BASE_URL,
-                model=settings.DEEPSEEK_MODEL,
+                model=selected_model,
                 temperature=temperature,
                 streaming=streaming,
                 stream_usage=True,
                 max_tokens=1024,
                 max_retries=3,
             )
-            model_name = settings.DEEPSEEK_MODEL
+            model_name = selected_model
 
         elif provider == "minimax":
             llm = ChatOpenAI(

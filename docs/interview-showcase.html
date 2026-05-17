@@ -419,6 +419,11 @@
     <a href="#faq">高频追问预判</a>
     <a href="#demo">演示流程</a>
 
+    <div class="section-label">Agentic 升级 (v2.0)</div>
+    <a href="#agentic-arch">多 Agent 协同架构</a>
+    <a href="#agentic-scenarios">跨域场景演示</a>
+    <a href="#agentic-compare">与行业对标</a>
+
     <div class="section-label">运维</div>
     <a href="#knowledge-overview">知识库概览</a>
     <a href="#deployment">部署与运维</a>
@@ -2177,6 +2182,133 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
         <strong>💡 面试要点：</strong> 每个功能点先说 <strong>「为什么这么做」</strong>，再说「怎么做的」。
         主动提局限性和 trade-off——面试官对「我也知道这里不完美」很有好感。
         RAG 指标主动提及「R@3=0.46 是在 1372 chunks 上实测的，ground truth 扩展后可提升」。
+      </div>
+    </section>
+
+    <!-- ===== Agentic 多 Agent 协同架构 ===== -->
+    <section class="section" id="agentic-arch">
+      <h2>多 Agent 协同架构 (v2.0 Agentic 升级)</h2>
+      <p>2026年5月，SmartQA 从单一 Agent 架构升级为 <b>Orchestrator + 4 专域 Agent</b> 的多 Agent 协同架构。这次升级的核心理念来自 <b>SAP/Oracle 2026年 Agentic ERP 战略</b>：让 Agent 从"被动回答"变成"自主编排跨域任务"。</p>
+
+      <div class="img-box">
+        <img src="architecture-agentic.svg" alt="SmartQA Agentic 架构" style="max-width:100%;border:1px solid var(--border);border-radius:6px;">
+        <div class="img-caption">SmartQA Agentic 架构 — Orchestrator 编排层 + 4 专域 Agent + 工具绑定</div>
+      </div>
+
+      <h3>架构升级对比</h3>
+      <table class="stack-table">
+        <tr><th>维度</th><th>v1.0 (单 Agent)</th><th>v2.0 (多 Agent)</th></tr>
+        <tr><td>Agent 数量</td><td>1 个 ToolAgent，6 工具全量绑定</td><td>Orchestrator + 4 专域 Agent，按领域绑定工具子集</td></tr>
+        <tr><td>工具分配</td><td>所有工具对 LLM 同等可见（嘈杂）</td><td>采购→query_order/supplier，库存→query_inventory，质量→get_knowledge/create_ticket，生产→create_ticket/query_inventory</td></tr>
+        <tr><td>跨域查询</td><td>单步工具调用，无法串联跨部门推理</td><td>Orchestrator Plan→Execute→Summarize 自动编排多步调用</td></tr>
+        <tr><td>意图路由</td><td>greeting / rag / tool / hybrid / unclear 五类</td><td>新增 goal 意图 → Orchestrator 编排路径</td></tr>
+        <tr><td>LLM 决策空间</td><td>6 工具平铺，噪声大</td><td>每 Agent 最多 2 工具，决策更精准</td></tr>
+        <tr><td>扩展性</td><td>加工具→所有 Agent 可见→噪声增加</td><td>加 Agent→只影响该领域→水平扩展</td></tr>
+      </table>
+
+      <h3>专域 Agent 定义</h3>
+      <pre><code># 每个 Agent 只需 3 行代码定义
+class PurchaseAgent(DomainAgent):
+    TOOL_NAMES = ["query_order", "query_supplier"]   # 采购订单 + 供应商查询
+
+class InventoryAgent(DomainAgent):
+    TOOL_NAMES = ["query_inventory"]                 # 物料库存查询
+
+class QualityAgent(DomainAgent):
+    TOOL_NAMES = ["get_knowledge", "create_ticket"]  # 知识库 + 质量工单
+
+class ProductionAgent(DomainAgent):
+    TOOL_NAMES = ["create_ticket", "query_inventory"] # 工单 + 物料可用性</code></pre>
+      <p>所有 Agent 共享同一套 LangGraph StateGraph 框架（异步工具执行节点 → LLM 决策 → 条件路由），差异化仅在于 <code>bind_tools()</code> 的工具列表不同。</p>
+
+      <h3>面试话术</h3>
+      <div class="talk-box">
+        <p><b>问：为什么从单 Agent 升级到多 Agent？</b></p>
+        <p>「供应链问题的本质是跨部门的。用户问'MAT-001 库存不够怎么办'——传统单 Agent 只能查一次库存返回结果。多 Agent 架构下，Orchestrator 自动拆解为：InventoryAgent 查库存 → PurchaseAgent 查在途订单 → 内置逻辑计算缺口 → ProductionAgent 建议创建工单。这不是写死的 if-else，是 Agent 根据实时数据动态规划的。SAP 今年在汉诺威发布的制造+物流+资产三 Agent 协同方案，和这个思路是一样的。」</p>
+      </div>
+    </section>
+
+    <!-- ===== 跨域场景演示 ===== -->
+    <section class="section" id="agentic-scenarios">
+      <h2>跨域场景演示</h2>
+      <p>以下是 3 个最能展示多 Agent 协同价值的供应链场景。</p>
+
+      <h3>场景 1：库存短缺 → 自动采购评估</h3>
+      <div class="code-block"><pre>用户: "MAT-001 库存不够了，帮我评估是否需要紧急采购"
+
+Orchestrator Plan:
+  Step 1 [InventoryAgent]  查 MAT-001 当前库存 → 50 件
+  Step 2 [PurchaseAgent]   查 MAT-001 在途采购订单 → PO-001, 100件, ETA 5天
+  Step 3 [内置计算]        缺口 = 安全库存200 - (50+100) = 50件
+  Step 4 [ProductionAgent] 建议创建优先级 P1 加急工单
+
+输出: "MAT-001 当前库存 50 件，安全库存 200 件。
+在途 100 件（PO-001，预计 5 天后到）。合计 150 件，仍有 50 件缺口。
+建议：①创建加急采购工单，②联系供应商确认 PO-001 能否提前交付。
+是否需要我创建工单？"</pre></div>
+
+      <h3>场景 2：质量异常 → 追溯受影响范围</h3>
+      <div class="code-block"><pre>用户: "MAT-002 出现质量问题，帮我追溯受影响物料和订单"
+
+Orchestrator Plan:
+  Step 1 [QualityAgent]    查 MAT-002 质量标准和历史案例 → RAG 检索
+  Step 2 [InventoryAgent]  查 MAT-002 库存 + 关联物料 → 涉及 MAT-003/004
+  Step 3 [PurchaseAgent]   查包含 MAT-002 的在途/已完成采购单 → PO-002, PO-003
+  Step 4 [内置汇总]        列出所有受影响订单 + 建议隔离批次
+
+输出: "质量问题追溯报告：
+关联物料 MAT-003(库存80件)、MAT-004(库存200件)
+涉及订单：PO-002(500件,已完成)、PO-003(300件,在途)
+建议：①立即冻结 MAT-002/003 库存批次，②通知 PO-003 暂停发货，
+③创建质量异常工单启动8D报告流程。"</pre></div>
+
+      <h3>场景 3：供应商延迟 → 生产影响评估</h3>
+      <div class="code-block"><pre>用户: "供应商 PO-001 延迟了 3 天，帮我分析对生产的影响"
+
+Orchestrator Plan:
+  Step 1 [PurchaseAgent]   查 PO-001 订单详情 → MAT-001, 100件, 原定5天后到
+  Step 2 [InventoryAgent]  查 MAT-001 库存 → 50件, 安全库存200件
+  Step 3 [ProductionAgent] 查 MAT-001 日均消耗 → 30件/天
+  Step 4 [内置计算]        (50+100)/30=5天覆盖 → 如延迟3天，第2天即断料
+
+输出: "供应商延迟影响分析：
+MAT-001 日均消耗 30 件，当前库存 50 件 + PO-001 在途 100 件。
+如原计划 5 天后到货：可覆盖 5 天（库存2天 + 在途补货）
+如延迟至 8 天：第 3 天起断料，影响产线 3 天
+建议：①联系供应商确认延迟原因，②启动替代供应商询价，
+③考虑安全库存从 200 上调至 300。"</pre></div>
+
+      <h3>面试话术</h3>
+      <div class="talk-box">
+        <p><b>问：这 3 个场景和直接问 3 次单 Agent 有什么区别？</b></p>
+        <p>「单 Agent 需要用户自己拆问题——先查库存、再查订单、再自己算缺口。多 Agent 架构下用户只需表达目标，Orchestrator 自动串联 3-4 步。更重要的是，每步结果是注入下一步上下文的——InventoryAgent 查出库存 50 件，PurchaseAgent 就知道要查这个物料的在途订单，不需要用户重复输入参数。这是 Agentic ERP 的核心价值：信息在企业内部流动的摩擦成本趋近于零。」</p>
+      </div>
+    </section>
+
+    <!-- ===== 与行业对标 ===== -->
+    <section class="section" id="agentic-compare">
+      <h2>与行业对标</h2>
+      <p>SmartQA 的 Agentic 架构设计与 2026 年 SAP/Oracle 的 Agentic ERP 战略高度同源。</p>
+
+      <table class="stack-table">
+        <tr><th>维度</th><th>SAP Joule (2026)</th><th>Oracle Agentic Apps (2026)</th><th>SmartQA v2.0</th></tr>
+        <tr><td>Agent 架构</td><td>嵌入式 Joule Studio + S/4HANA</td><td>Agentic Apps 重构财务/采购应用</td><td>Orchestrator + 4 专域 Agent</td></tr>
+        <tr><td>多 Agent 协同</td><td>制造 / 物流 / 资产三 Agent 组合</td><td>财务 Agent + 采购 Agent 协同</td><td>采购 / 库存 / 质量 / 生产四 Agent</td></tr>
+        <tr><td>工作流</td><td>嵌入 S/4HANA 工作流引擎</td><td>动态 Agent 工作流</td><td>Plan → Execute → Summarize 循环</td></tr>
+        <tr><td>数据基础</td><td>S/4HANA 统一数据模型（数十年积累）</td><td>Oracle Fusion 数据湖</td><td>Milvus 向量库 + SQLite 本地模拟</td></tr>
+        <tr><td>人工介入</td><td>审批流 + 异常上报</td><td>审批 + 异常检测</td><td>clarify(澄清) + approval(审批) + escalate(上报)</td></tr>
+        <tr><td>部署方式</td><td>云原生 (BTP)</td><td>云原生 (OCI)</td><td>Docker Compose 一键部署</td></tr>
+        <tr><td>客户规模</td><td>全球 140 万+ 企业客户</td><td>2025年超越 SAP 成全球第一 ERP</td><td>面试演示原型系统</td></tr>
+      </table>
+
+      <h3>核心差异与诚实说明</h3>
+      <div class="talk-box">
+        <p><b>我们和他们有什么不同？</b></p>
+        <p>「SAP 和 Oracle 做 Agentic ERP 的优势是有 140 万企业客户和几十年真实数据积累，他们的 Agent 嵌入在 S/4HANA 或 Oracle Fusion 的生产环境里。SmartQA 是一个原型系统，但在架构设计上和他们是同源的——都是专域 Agent + 编排层 + 工具绑定。区别在于我们对接 SQLite 模拟库，他们对接真实 ERP 模块，但 Agent 层的设计模式通用。</p>
+        <p>从技术面试的角度，我选择这个架构方向的原因有三：</p>
+        <p>① <b>单 Agent 的 tool list 线性膨胀</b>是已知问题，多 Agent 按领域拆分是业界共识；</p>
+        <p>② <b>供应链场景天然跨部门</b>——库存不够要查采购、质量异常要追溯订单——多 Agent 协同是这个领域的自然解法；</p>
+        <p>③ <b>Orchestrator 的 Plan-Execute 模式</b>和 LangGraph 的 StateGraph 天然契合——每个 Agent 是一个子图，Orchestrator 是顶层编排。后续可以自然演进到真正的 Multi-Agent Graph。」</p>
       </div>
     </section>
 

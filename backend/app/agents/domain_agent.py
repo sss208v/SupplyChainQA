@@ -1,16 +1,12 @@
 """
-SmartQA Tool Agent — LangChain + LangGraph
+SmartQA Domain Agents — 供应链专域 Agent 基类
 
-参考 Datawhale easy-langent 教程模式：
-  - LangGraph StateGraph 做流程编排
-  - LangChain ChatOpenAI + bind_tools() 做工具绑定
-  - 自定义 async 工具执行节点（替代 ToolNode，直接调 tool.ainvoke()）
-
-流程：
-  START → agent(LLM决策) → 需要工具? → tools(ainvoke执行) → agent(继续)
-                            → 不需要?  → END
+每个专域 Agent 绑定特定的工具子集，共享同一套 LangGraph StateGraph 框架。
+修复：使用自定义 async 工具执行节点替代 ToolNode，直接调用 tool.ainvoke()。
 """
-import json, logging
+import asyncio
+import json
+import logging
 from typing import Optional, Annotated, Sequence
 from typing_extensions import TypedDict
 
@@ -19,7 +15,7 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 
 from app.core.llm_router import LLMFactory
-from app.core.tool_engine import get_all_tools
+from app.core.tool_engine import TOOL_REGISTRY
 from app.core.redis_client import chat_memory
 from app.core.tool_metrics import tool_metrics
 
@@ -42,8 +38,13 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
 
-class ToolAgent:
-    """LangChain + LangGraph 供应链工具 Agent"""
+class DomainAgent:
+    """供应链专域 Agent 基类
+
+    每个子类只需定义 TOOL_NAMES 即可获得完整的 LangGraph Agent 能力。
+    """
+
+    TOOL_NAMES: list[str] = []  # 子类覆盖
 
     def __init__(self):
         self._tools: list = []
@@ -51,12 +52,12 @@ class ToolAgent:
 
     @property
     def name(self) -> str:
-        return "ToolAgent"
+        return self.__class__.__name__
 
     @property
     def tools(self):
         if not self._tools:
-            self._tools = get_all_tools()
+            self._tools = [TOOL_REGISTRY[n] for n in self.TOOL_NAMES if n in TOOL_REGISTRY]
         return self._tools
 
     def _build_graph(self):
@@ -68,7 +69,7 @@ class ToolAgent:
         llm_with_tools = llm.bind_tools(raw_tools)
 
         def agent_node(state: AgentState) -> dict:
-            """LLM 决策节点（同步）"""
+            """LLM 决策节点"""
             messages = state["messages"]
             if not any(isinstance(m, SystemMessage) for m in messages):
                 messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(messages)
@@ -96,14 +97,16 @@ class ToolAgent:
                     try:
                         import time as _time
                         _t0 = _time.perf_counter()
+                        # 关键修复：直接调 ainvoke，不走 sync invoke
                         result_obj = await tool.ainvoke(tool_args)
                         result = result_obj if isinstance(result_obj, str) else str(result_obj)
                         _t = (_time.perf_counter() - _t0) * 1000
                         tool_metrics.record(tool_name, tool_args, result[:200], _t, True)
+                        logger.info(f"[{self.name}] {tool_name} 完成: {_t:.0f}ms")
                     except Exception as e:
                         result = f"工具执行失败: {e}"
                         tool_metrics.record(tool_name, tool_args, str(e)[:200], 0, False)
-                        logger.error(f"[ToolAgent] {tool_name} 失败: {e}")
+                        logger.error(f"[{self.name}] {tool_name} 失败: {e}")
 
                 tool_messages.append(
                     ToolMessage(content=result, tool_call_id=tool_id, name=tool_name)
@@ -112,6 +115,7 @@ class ToolAgent:
             return {"messages": tool_messages}
 
         def route_after_agent(state: AgentState) -> str:
+            """路由：需要工具 → tools_node，否则 → END"""
             messages = state["messages"]
             last_msg = messages[-1] if messages else None
             if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
@@ -134,8 +138,6 @@ class ToolAgent:
             self._graph = self._build_graph()
         return self._graph
 
-    # ---- Public API ----
-
     async def run(
         self,
         query: str,
@@ -143,10 +145,7 @@ class ToolAgent:
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> dict:
-        """
-        执行 Agent 推理。
-        返回: {"answer": str, "tool_calls": list, "iterations": int}
-        """
+        """执行 Agent 推理，返回 {answer, tool_calls, iterations}"""
         messages = [HumanMessage(content=query)]
 
         if session_id and chat_memory:
@@ -165,8 +164,8 @@ class ToolAgent:
 
         try:
             import time as _time
-            _t_start = _time.perf_counter()
 
+            # 使用 astream 获取中间状态
             async for event in self.graph.astream(
                 {"messages": messages}, config, stream_mode="values"
             ):
@@ -177,6 +176,7 @@ class ToolAgent:
                     continue
                 last_msg = msgs[-1]
 
+                # 记录工具调用
                 if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
                     for tc in last_msg.tool_calls:
                         tool_name = tc.get("name", "unknown")
@@ -189,6 +189,7 @@ class ToolAgent:
                         if iteration >= MAX_ITERATIONS:
                             break
 
+                # 记录最终回答
                 if isinstance(last_msg, AIMessage) and last_msg.content and not last_msg.tool_calls:
                     final_answer = last_msg.content
 
@@ -197,7 +198,7 @@ class ToolAgent:
                     break
 
         except Exception as e:
-            logger.error(f"[ToolAgent] graph.astream 失败: {e}")
+            logger.error(f"[{self.name}] graph.astream 失败: {e}")
             final_answer = f"Agent 执行出错: {e}"
 
         if not final_answer:
@@ -215,7 +216,3 @@ class ToolAgent:
             "tool_calls": tool_calls_record,
             "iterations": iteration,
         }
-
-
-# Module-level singleton
-tool_agent = ToolAgent()

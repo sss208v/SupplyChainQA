@@ -29,6 +29,8 @@ from fastapi import Request
 from app.agents.router import router_agent, IntentType
 from app.agents.rag import rag_agent
 from app.agents.tool import tool_agent
+from app.agents.agent_router import get_agent_for_tool
+from app.agents.orchestrator import orchestrator
 from app.core.llm_router import LLMFactory
 from app.core.redis_client import chat_memory
 from app.core.data_filter import PIIFilter
@@ -120,9 +122,9 @@ class ChatResponse(BaseModel):
 
 # ---- 辅助：Agent 类型选择 ----
 
-def _get_tool_agent(agent_type: Optional[str] = None):
-    """返回 Tool Agent（当前仅 LangChain+LangGraph 实现）"""
-    return tool_agent
+def _get_tool_agent(agent_type: Optional[str] = None, tool_name: Optional[str] = None):
+    """返回 Tool Agent — 按工具名路由到专域 Agent，无匹配时回退通用 Agent"""
+    return get_agent_for_tool(tool_name)
 
 
 # ---- API接口 ----
@@ -155,7 +157,16 @@ async def chat_completions(request: Request, body: ChatRequest):
     session_id = body.session_id or str(uuid.uuid4())
     safe_query = _pii_filter.filter_text(body.query)
 
-    # Step 1: 意图路由（使用脱敏后的查询）
+    # 获取用户身份
+    _user_id = ""
+    try:
+        _current_user = await get_current_user_full(request)
+        if _current_user:
+            _user_id = _current_user.get("username", "") or _current_user.get("sub", "")
+    except Exception:
+        pass
+
+    # Step 1: 意图路由
     route_result = await router_agent.route(safe_query)
     intent = route_result["intent"]
 
@@ -186,7 +197,7 @@ async def chat_completions(request: Request, body: ChatRequest):
         )
 
     elif intent == IntentType.TOOL_CALL:
-        agent = _get_tool_agent(body.agent_type)
+        agent = _get_tool_agent(body.agent_type, route_result.get("tool_name"))
         result = await agent.run(
             query=safe_query,
             tool_names=[route_result["tool_name"]] if route_result.get("tool_name") else None,
@@ -197,6 +208,20 @@ async def chat_completions(request: Request, body: ChatRequest):
             answer=_apply_output_guard(result["answer"]),
             intent=intent.value,
             tool_calls=result["tool_calls"],
+        )
+
+    elif intent == IntentType.GOAL:
+        # 目标型意图 → Orchestrator 多步编排
+        result = await orchestrator.run(
+            goal=safe_query,
+            session_id=session_id,
+            user_id=_user_id,
+        )
+        return ChatResponse(
+            session_id=session_id,
+            answer=_apply_output_guard(result["answer"]),
+            intent=intent.value,
+            tool_calls=result.get("execution", {}).get("step_results", []),
         )
 
     elif intent == IntentType.HYBRID:
@@ -222,7 +247,7 @@ async def chat_completions(request: Request, body: ChatRequest):
         enhanced_query = (
             f"背景信息：{rag_result['answer']}\n\n用户问题：{safe_query}"
         )
-        agent = _get_tool_agent(body.agent_type)
+        agent = _get_tool_agent(body.agent_type, tool_name)
         tool_result = await agent.run(
             query=enhanced_query,
             tool_names=[tool_name],
@@ -849,7 +874,7 @@ async def chat_stream(request: Request, body: ChatRequest):
                     yield "data: [DONE]\n\n"
                     return
 
-                agent = _get_tool_agent(body.agent_type)
+                agent = _get_tool_agent(body.agent_type, tool_name)
                 result = await agent.run(
                     query=safe_query,
                     tool_names=[tool_name] if tool_name else None,
@@ -870,6 +895,54 @@ async def chat_stream(request: Request, body: ChatRequest):
                 # 发送最终回答
                 yield _sse_format({"type": "content", "content": _apply_output_guard(result["answer"])})
                 logger.info(f"{_elapsed('TOOL_CALL处理')} 耗时={_t_gen*1000:.0f}ms")
+
+            elif intent == IntentType.GOAL:
+                _t2 = time.perf_counter()
+
+                # 发送编排开始事件
+                yield _sse_format({
+                    "type": "orchestrator_start",
+                    "message": f"正在分析目标并拆解任务...",
+                })
+
+                # 调用 Orchestrator
+                result = await orchestrator.run(
+                    goal=safe_query,
+                    session_id=session_id,
+                    user_id=_user_id,
+                )
+
+                # 发送执行计划
+                plan = result.get("plan", {})
+                if plan.get("steps"):
+                    yield _sse_format({
+                        "type": "orchestrator_plan",
+                        "goal": plan.get("goal", ""),
+                        "steps": [
+                            {"step": i+1, "agent": s.get("agent", ""), "task": s.get("task", "")}
+                            for i, s in enumerate(plan["steps"])
+                        ],
+                    })
+
+                # 发送每步执行结果
+                execution = result.get("execution", {})
+                for sr in execution.get("step_results", []):
+                    yield _sse_format({
+                        "type": "agent_step",
+                        "step": sr["step"],
+                        "agent": sr["agent"],
+                        "task": sr["task"],
+                        "status": "error" if sr.get("error") else "done",
+                        "duration_ms": sr.get("duration_ms", 0),
+                    })
+
+                # 发送最终回答
+                yield _sse_format({"type": "content", "content": _apply_output_guard(result["answer"])})
+                _t_gen = time.perf_counter() - _t2
+                logger.info(
+                    f"{_elapsed('GOAL编排处理')} 耗时={_t_gen*1000:.0f}ms "
+                    f"steps={execution.get('total_steps',0)} success={execution.get('success_steps',0)}"
+                )
 
             else:
                 yield _sse_format({

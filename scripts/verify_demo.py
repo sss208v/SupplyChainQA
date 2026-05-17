@@ -209,6 +209,43 @@ except:
     pass
 
 # ============================================================
+test("9. GOAL 编排 — 跨域目标型查询 (v2.0)")
+# ============================================================
+goal_queries = [
+    ("帮我评估 MAT-001 库存风险", "库存短缺评估"),
+    ("查一下 MAT-002 有没有质量问题需要追溯", "质量追溯"),
+]
+for gq, label in goal_queries:
+    try:
+        resp = httpx.post(f"{API}/chat/stream",
+                          json={"query": gq, "stream": True},
+                          headers={"Authorization": f"Bearer {purchase_token}"}, timeout=60)
+        check(f"GOAL '{label}' 返回 200", resp.status_code == 200, str(resp.status_code))
+        if resp.status_code == 200:
+            text = resp.text
+            has_plan = "orchestrator_plan" in text or "agent_step" in text
+            has_content = any(l.startswith("data:") and "\"content\"" in l for l in text.split("\n"))
+            check(f"GOAL '{label}' 含编排事件", has_plan, f"text_len={len(text)}")
+            check(f"GOAL '{label}' 有回答内容", has_content, f"text_len={len(text)}")
+            if has_content:
+                print(f"     [{label}] SSE 事件: plan={'yes' if has_plan else 'no'}, content={'yes' if has_content else 'no'}")
+    except Exception as e:
+        check(f"GOAL '{label}'", False, str(e))
+
+# 验证 GOAL 不影响 TOOL_CALL 路径
+try:
+    resp = httpx.post(f"{API}/chat/stream",
+                      json={"query": "查 MAT-001 库存", "stream": True},
+                      headers={"Authorization": f"Bearer {purchase_token}"}, timeout=30)
+    check("TOOL_CALL 路径仍正常（查库存）", resp.status_code == 200, str(resp.status_code))
+    if resp.status_code == 200:
+        text = resp.text
+        has_tool_call = "tool_call" in text or "tool_status" in text
+        check("TOOL_CALL 含工具事件", has_tool_call, f"text_len={len(text)}")
+except Exception as e:
+    check("TOOL_CALL 路径", False, str(e))
+
+# ============================================================
 print(f"\n{'='*50}")
 print(f"  结果: {PASS} 通过 / {FAIL} 失败 / {PASS+FAIL} 总计")
 print(f"{'='*50}")
