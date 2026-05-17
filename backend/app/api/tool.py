@@ -31,11 +31,11 @@ router = APIRouter(prefix="/tools", tags=["工具"])
 ROLE_TOOLS = {
     "admin": {
         "query_inventory", "query_order", "create_ticket",
-        "get_datetime", "get_knowledge"
+        "get_datetime", "get_knowledge", "query_supplier"
     },
     "purchase": {
         "query_inventory", "query_order", "create_ticket",
-        "get_datetime", "get_knowledge"
+        "get_datetime", "get_knowledge", "query_supplier"
     },
     "warehouse": {
         "query_inventory", "create_ticket",

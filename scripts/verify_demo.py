@@ -107,11 +107,12 @@ try:
         data = resp.json()
         tools = data.get("tools", [])
         tool_names = [t["name"] for t in tools]
-        check("admin 有 5 个工具", len(tools) >= 5, f"实际 {len(tools)}")
+        check("admin 有 6 个工具", len(tools) >= 6, f"实际 {len(tools)}")
         check("包含 query_inventory", "query_inventory" in tool_names)
         check("包含 query_order", "query_order" in tool_names)
         check("包含 create_ticket", "create_ticket" in tool_names)
         check("包含 get_knowledge", "get_knowledge" in tool_names)
+        check("包含 query_supplier", "query_supplier" in tool_names)
 except Exception as e:
     check("GET /tools/list", False, str(e))
 

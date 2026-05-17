@@ -35,7 +35,7 @@
 
 **描述:** 70 篇新文档（`knowledge/SC-*.md`）尚未入库 Milvus。面试时 RAG 检索只能命中旧的 22 篇文档。
 
-**当前状态:** ❌ 新文档仅存在于文件系统，未索引。
+**当前状态:** ✅ 已通过 /health 确认 2425 chunks，7 部门全覆盖。
 
 **验收标准:**
 - [ ] `knowledge/SC-*.md` 全部 70 篇上传到 Milvus `smartqa_docs` collection
