@@ -59,8 +59,12 @@ class Orchestrator:
         self._plan_cache = {}  # 简单内存缓存
 
     async def plan(self, goal: str) -> dict:
-        """LLM 拆解目标为执行计划（用 fast model 加速）"""
-        llm = LLMFactory.get_llm(temperature=0.1, model="fast")
+        """LLM 拆解目标为执行计划（优先 fast model，不可用时回退 main）"""
+        try:
+            llm = LLMFactory.get_llm(temperature=0.1, model="fast")
+        except Exception:
+            logger.warning("[Orchestrator] fast model 不可用，回退 main model")
+            llm = LLMFactory.get_llm(temperature=0.1, model="main")
 
         messages = [
             SystemMessage(content=PLAN_SYSTEM_PROMPT),
@@ -175,13 +179,12 @@ class Orchestrator:
         """汇总生成最终报告 — 少于 4 步直接拼接，4+ 步用 LLM 汇总"""
         # 3 步以内：模板拼接（省一次 LLM 调用，约 5s）
         if len(step_results) <= 3:
-            parts = [f"## {goal}\n"]
+            parts = []
             for sr in step_results:
                 status = "❌" if sr.get("error") else "✅"
-                result_text = sr.get("result", "")[:500]
-                parts.append(f"### {status} 步骤{sr['step']}: {sr.get('task', '')}")
-                parts.append(f"{result_text}\n")
-            return "\n".join(parts)
+                result_text = sr.get("result", "")[:600].strip()
+                parts.append(f"{status} {sr.get('task', '')}\n{result_text}")
+            return "\n\n".join(parts)
 
         # 4 步以上：LLM 汇总（用 fast model）
         results_text = ""

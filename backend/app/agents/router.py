@@ -64,10 +64,6 @@ class RouterAgent:
 
         # 工具关键词：出现这些词大概率需要调用工具
         self._tool_keywords = {
-            # 天气
-            "天气": "get_weather", "气温": "get_weather", "下雨": "get_weather",
-            "温度": "get_weather", "热不热": "get_weather", "冷不冷": "get_weather",
-            "会不会下雨": "get_weather", "台风": "get_weather",
             # 供应链工具（高优先级：含具体标识符的查询）
             "查库存": "query_inventory", "库存查询": "query_inventory",
             "查一下物料": "query_inventory", "查物料": "query_inventory",
@@ -77,17 +73,13 @@ class RouterAgent:
             "采购单": "query_order", "到货了吗": "query_order",
             "建工单": "create_ticket", "创建工单": "create_ticket",
             "提工单": "create_ticket", "申请工单": "create_ticket",
-            # 计算
-            "等于多少": "calculator", "加起来": "calculator",
-            "加减": "calculator", "乘除": "calculator", "总价": "calculator",
             # 时间日期
             "几点": "get_datetime", "日期": "get_datetime", "今天几号": "get_datetime",
             "现在几点": "get_datetime", "今天是": "get_datetime", "星期几": "get_datetime",
             "几月几号": "get_datetime", "今天日期": "get_datetime", "现在时间": "get_datetime",
             "当前时间": "get_datetime", "今天星期": "get_datetime",
-            # 搜索（预留）
-            "搜索": "web_search", "网上查": "web_search", "百度": "web_search",
-            "google": "web_search", "搜一下": "web_search",
+            # 供应商
+            "供应商信息": "query_supplier", "查供应商": "query_supplier",
         }
 
         # RAG关键词：出现这些词大概率需要知识库检索
