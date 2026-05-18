@@ -64,6 +64,7 @@ class DomainAgent:
         """构建 LangGraph 状态图，使用自定义 async 工具执行节点"""
         raw_tools = self.tools
         tools_by_name = {t.name: t for t in raw_tools}
+        agent_name = self.__class__.__name__  # 闭包引用，避免 self 作用域问题
 
         llm = LLMFactory.get_llm(temperature=0)
         llm_with_tools = llm.bind_tools(raw_tools)
@@ -102,11 +103,11 @@ class DomainAgent:
                         result = result_obj if isinstance(result_obj, str) else str(result_obj)
                         _t = (_time.perf_counter() - _t0) * 1000
                         tool_metrics.record(tool_name, tool_args, result[:200], _t, True)
-                        logger.info(f"[{self.name}] {tool_name} 完成: {_t:.0f}ms")
+                        logger.info(f"[{agent_name}] {tool_name} 完成: {_t:.0f}ms")
                     except Exception as e:
                         result = f"工具执行失败: {e}"
                         tool_metrics.record(tool_name, tool_args, str(e)[:200], 0, False)
-                        logger.error(f"[{self.name}] {tool_name} 失败: {e}")
+                        logger.error(f"[{agent_name}] {tool_name} 失败: {e}")
 
                 tool_messages.append(
                     ToolMessage(content=result, tool_call_id=tool_id, name=tool_name)

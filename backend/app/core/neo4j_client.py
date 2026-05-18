@@ -54,6 +54,14 @@ class Neo4jClient:
         self._connected = False
         logger.info("Neo4j 连接已关闭")
 
+    async def get_session(self):
+        """返回 Neo4j 异步 session 上下文管理器，封装连接健康检查"""
+        if not self._driver or not self._connected:
+            await self.connect()
+            if not self._connected:
+                raise RuntimeError("Neo4j 未连接，无法获取 session")
+        return self._driver.session()
+
     async def health(self) -> dict:
         """健康检查响应"""
         if not self._driver:

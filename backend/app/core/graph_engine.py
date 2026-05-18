@@ -96,15 +96,6 @@ RETURN
   }) AS affected_tickets
 """
 
-# 模板路由：根据提取到的实体类型选择模板
-TEMPLATE_ROUTES = [
-    # (模板, 选择条件)
-    (CQL_INVENTORY_RISK, "material_codes"),
-    (CQL_QUALITY_TRACE, "material_codes"),
-    (CQL_SUPPLIER_IMPACT, "supplier_names"),
-]
-
-
 def extract_entities(query: str) -> dict:
     """从查询文本中提取供应链实体编码"""
     entities = {}
@@ -180,7 +171,7 @@ class GraphEngine:
         results = []
         pattern = None
 
-        async with neo4j_client._driver.session() as session:
+        async with neo4j_client.get_session() as session:
             # 场景 1 & 2: 有物料编码 → 库存 + 质量追溯
             for mat_code in entities.get("material_codes", []):
                 # 1. 库存短缺评估
@@ -249,10 +240,10 @@ class GraphEngine:
             return ""
 
         parts = []
-        pattern = graph_result.get("pattern", "")
-
         for row in rows:
-            if pattern == "inventory_risk":
+            # 按行各自的 _pattern 选择模板，而非全局 pattern
+            row_pattern = row.get("_pattern", graph_result.get("pattern", ""))
+            if row_pattern == "inventory_risk":
                 parts.append(f"物料 {row.get('material_code')} ({row.get('material_name')})")
                 parts.append(f"  现货库存: {row.get('stock')}")
                 for sm in row.get("in_transit", []) or []:
@@ -265,7 +256,7 @@ class GraphEngine:
                             f"x{po.get('line_qty')} 预计{po.get('date_planned')}"
                         )
 
-            elif pattern == "quality_trace":
+            elif row_pattern == "quality_trace":
                 parts.append(f"物料 {row.get('material_code')} ({row.get('material_name')})")
                 for t in row.get("tickets", []) or []:
                     if isinstance(t, dict):
@@ -277,7 +268,7 @@ class GraphEngine:
                             f"x{sup.get('batch_qty')}"
                         )
 
-            elif pattern == "supplier_impact":
+            elif row_pattern == "supplier_impact":
                 parts.append(f"供应商 {row.get('supplier')}")
                 for mat in row.get("supplied_materials", []) or []:
                     if isinstance(mat, dict):

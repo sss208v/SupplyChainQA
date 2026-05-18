@@ -38,6 +38,7 @@ from app.core.clarify import check_needs_clarification
 from app.core.self_rag import get_self_rag
 from app.core.faithfulness import get_faithfulness_checker
 from app.core.graph_engine import graph_engine
+from app.core.neo4j_client import neo4j_client
 from app.config import get_settings
 from app.core.auth import get_current_user_optional, get_current_user_full
 from app.core.milvus_client import milvus_manager
@@ -266,16 +267,38 @@ async def chat_completions(request: Request, body: ChatRequest):
 
     elif intent == IntentType.GRAPH_QUERY:
         # 图谱检索 — 实体关系匹配
-        graph_result = await graph_engine.query(safe_query)
+        try:
+            graph_result = await graph_engine.query(safe_query)
+        except Exception as e:
+            logger.error(f"图谱查询异常: {e}")
+            return ChatResponse(
+                session_id=session_id,
+                answer=f"图谱查询暂时不可用，请稍后重试。您也可以尝试用文字描述您的问题。",
+                intent=intent.value,
+            )
+
+        # 优先检查 error 字段
+        if graph_result.get("error"):
+            logger.warning(f"图谱查询返回错误: {graph_result['error']}")
+            return ChatResponse(
+                session_id=session_id,
+                answer=f"图谱查询失败：{graph_result['error']}。请确认物料/订单/供应商编码是否正确，或尝试用文字描述。",
+                intent=intent.value,
+            )
+
         graph_context = graph_engine.format_results(graph_result)
         if graph_context:
             # 将图谱结果注入 LLM 上下文
             llm = LLMFactory.get_llm(temperature=0.3)
             prompt = f"以下是一段供应链实体关系图谱的查询结果：\n\n{graph_context}\n\n请根据这些结构化数据，用中文回答用户的原始问题：{safe_query}\n\n要求：简洁、直接、有数据支撑。"
-            response = await llm.ainvoke([HumanMessage(content=prompt)])
-            answer = _apply_output_guard(response.content.strip())
+            try:
+                response = await llm.ainvoke([HumanMessage(content=prompt)])
+                answer = _apply_output_guard(response.content.strip())
+            except Exception as e:
+                logger.error(f"图谱 LLM 生成失败: {e}")
+                answer = f"图谱查询结果如下，但 AI 生成回答时出错：\n\n{graph_context}"
         else:
-            answer = "未在供应链图谱中找到相关实体关系，请确认物料/订单/供应商编码是否正确。"
+            answer = "未在供应链图谱中找到相关实体关系，请确认物料/订单/供应商编码是否正确，或尝试用文字描述您的问题。"
         return ChatResponse(
             session_id=session_id,
             answer=answer,
@@ -663,6 +686,23 @@ async def chat_stream(request: Request, body: ChatRequest):
                                 if cid not in seen:
                                     seen.add(cid)
                                     unique_results.append(r)
+                        # 图谱融合：有实体编码时提升匹配文档的排序权重
+                        try:
+                            from app.core.graph_engine import extract_entities
+                            entities = extract_entities(safe_query)
+                            if entities and neo4j_client.is_connected:
+                                matched = set()
+                                for v in entities.values():
+                                    matched.update(v)
+                                if matched:
+                                    unique_results = rag_agent.fuse_with_graph(
+                                        unique_results, matched,
+                                        alpha=settings.GRAPH_FUSION_ALPHA,
+                                        beta=settings.GRAPH_FUSION_BETA,
+                                    )
+                        except Exception:
+                            pass  # 图谱不可用时静默降级
+
                         context_str, sources = rag_agent._format_context(unique_results, all_chunks=all_chunks)
                         # 重新计算置信度
                         if unique_results:
@@ -972,7 +1012,22 @@ async def chat_stream(request: Request, body: ChatRequest):
                     "message": "正在查询供应链实体关系图谱...",
                 })
 
-                graph_result = await graph_engine.query(safe_query)
+                try:
+                    graph_result = await graph_engine.query(safe_query)
+                except Exception as e:
+                    logger.error(f"图谱查询异常: {e}")
+                    yield _sse_format({"type": "error", "message": f"图谱查询失败: {e}"})
+                    yield "data: [DONE]\n\n"
+                    return
+
+                # 优先检查 error 字段
+                if graph_result.get("error"):
+                    yield _sse_format({
+                        "type": "content",
+                        "content": f"图谱查询失败：{graph_result['error']}",
+                    })
+                    yield "data: [DONE]\n\n"
+                    return
 
                 if graph_result.get("rows"):
                     yield _sse_format({
@@ -983,10 +1038,14 @@ async def chat_stream(request: Request, body: ChatRequest):
                     })
 
                     graph_context = graph_engine.format_results(graph_result)
-                    llm = LLMFactory.get_llm(temperature=0.3)
-                    prompt = f"以下是一段供应链实体关系图谱的查询结果：\n\n{graph_context}\n\n请根据这些结构化数据，用中文回答用户的原始问题：{safe_query}\n\n要求：简洁、直接、有数据支撑。"
-                    response = await llm.ainvoke([HumanMessage(content=prompt)])
-                    yield _sse_format({"type": "content", "content": _apply_output_guard(response.content.strip())})
+                    try:
+                        llm = LLMFactory.get_llm(temperature=0.3)
+                        prompt = f"以下是一段供应链实体关系图谱的查询结果：\n\n{graph_context}\n\n请根据这些结构化数据，用中文回答用户的原始问题：{safe_query}\n\n要求：简洁、直接、有数据支撑。"
+                        response = await llm.ainvoke([HumanMessage(content=prompt)])
+                        yield _sse_format({"type": "content", "content": _apply_output_guard(response.content.strip())})
+                    except Exception as e:
+                        logger.error(f"图谱 LLM 生成失败: {e}")
+                        yield _sse_format({"type": "content", "content": f"图谱查询结果如下：\n\n{graph_context}"})
                 else:
                     yield _sse_format({
                         "type": "content",

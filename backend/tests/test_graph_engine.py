@@ -89,7 +89,7 @@ class TestCypherTemplates:
         if not neo4j_client.is_connected:
             pytest.skip("Neo4j 未连接")
 
-        async with neo4j_client._driver.session() as session:
+        async with neo4j_client.get_session() as session:
             # EXPLAIN 验证语法，不实际执行
             r = await session.run(
                 "EXPLAIN " + CQL_INVENTORY_RISK,
@@ -107,7 +107,7 @@ class TestCypherTemplates:
         if not neo4j_client.is_connected:
             pytest.skip("Neo4j 未连接")
 
-        async with neo4j_client._driver.session() as session:
+        async with neo4j_client.get_session() as session:
             r = await session.run(
                 "EXPLAIN " + CQL_QUALITY_TRACE,
                 material_code="MAT-001",
@@ -124,7 +124,7 @@ class TestCypherTemplates:
         if not neo4j_client.is_connected:
             pytest.skip("Neo4j 未连接")
 
-        async with neo4j_client._driver.session() as session:
+        async with neo4j_client.get_session() as session:
             r = await session.run(
                 "EXPLAIN " + CQL_SUPPLIER_IMPACT,
                 supplier_name="深圳赛意法微电子有限公司",
