@@ -299,6 +299,14 @@ async def chat_completions(request: Request, body: ChatRequest):
                 answer = f"图谱查询结果如下，但 AI 生成回答时出错：\n\n{graph_context}"
         else:
             answer = "未在供应链图谱中找到相关实体关系，请确认物料/订单/供应商编码是否正确，或尝试用文字描述您的问题。"
+        # 保存对话记忆
+        if session_id and chat_memory:
+            try:
+                await chat_memory.add_message(session_id, "user", body.query, user_id=_user_id)
+                await chat_memory.add_message(session_id, "assistant", answer, user_id=_user_id)
+            except Exception:
+                pass
+
         return ChatResponse(
             session_id=session_id,
             answer=answer,
@@ -949,7 +957,7 @@ async def chat_stream(request: Request, body: ChatRequest):
                         "type": "tool_call",
                         "tool": tc["tool"],
                         "input": tc["input"],
-                        "observation": tc["observation"],
+                        "observation": tc.get("observation", tc.get("result", "")),
                     })
 
                 # 发送最终回答
@@ -1042,7 +1050,14 @@ async def chat_stream(request: Request, body: ChatRequest):
                         llm = LLMFactory.get_llm(temperature=0.3)
                         prompt = f"以下是一段供应链实体关系图谱的查询结果：\n\n{graph_context}\n\n请根据这些结构化数据，用中文回答用户的原始问题：{safe_query}\n\n要求：简洁、直接、有数据支撑。"
                         response = await llm.ainvoke([HumanMessage(content=prompt)])
-                        yield _sse_format({"type": "content", "content": _apply_output_guard(response.content.strip())})
+                        full_answer = _apply_output_guard(response.content.strip())
+                        yield _sse_format({"type": "content", "content": full_answer})
+                        if session_id and chat_memory:
+                            try:
+                                await chat_memory.add_message(session_id, "user", body.query, user_id=_user_id)
+                                await chat_memory.add_message(session_id, "assistant", full_answer, user_id=_user_id)
+                            except Exception:
+                                pass
                     except Exception as e:
                         logger.error(f"图谱 LLM 生成失败: {e}")
                         yield _sse_format({"type": "content", "content": f"图谱查询结果如下：\n\n{graph_context}"})

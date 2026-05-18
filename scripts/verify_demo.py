@@ -213,7 +213,7 @@ test("9. GOAL 编排 — 跨域目标型查询 (v2.0)")
 # ============================================================
 goal_queries = [
     ("帮我评估 MAT-001 库存风险", "库存短缺评估"),
-    ("供应商 PO-001 延迟会影响生产吗", "供应商延迟影响"),
+    ("帮我评估 MAT-002 的采购和库存状态", "采购库存评估"),
 ]
 for gq, label in goal_queries:
     try:
@@ -235,7 +235,7 @@ for gq, label in goal_queries:
 # 验证 GOAL 不影响 TOOL_CALL 路径
 try:
     resp = httpx.post(f"{API}/chat/stream",
-                      json={"query": "查 MAT-001 库存", "stream": True},
+                      json={"query": "查物料 MAT-001 的库存", "stream": True},
                       headers={"Authorization": f"Bearer {purchase_token}"}, timeout=30)
     check("TOOL_CALL 路径仍正常（查库存）", resp.status_code == 200, str(resp.status_code))
     if resp.status_code == 200:

@@ -69,12 +69,12 @@ class DomainAgent:
         llm = LLMFactory.get_llm(temperature=0)
         llm_with_tools = llm.bind_tools(raw_tools)
 
-        def agent_node(state: AgentState) -> dict:
-            """LLM 决策节点"""
+        async def agent_node(state: AgentState) -> dict:
+            """LLM 决策节点（异步，不阻塞事件循环）"""
             messages = state["messages"]
             if not any(isinstance(m, SystemMessage) for m in messages):
                 messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(messages)
-            response = llm_with_tools.invoke(messages)
+            response = await llm_with_tools.ainvoke(messages)
             return {"messages": [response]}
 
         async def async_tool_node(state: AgentState) -> dict:

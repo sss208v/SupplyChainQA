@@ -41,6 +41,14 @@ class IntentType(str, Enum):
     UNCLEAR = "unclear"         # 意图不明
 
 
+# 图谱检索关键词（模块级，与 graph_engine.py 保持同步）
+GRAPH_KEYWORDS = [
+    "哪些物料", "什么供应商", "影响的物料", "关联工单",
+    "在途", "上游供应商", "缺货影响",
+    "追溯", "延迟影响", "影响的订单",
+]
+
+
 class RouterAgent:
     """
     意图路由Agent
@@ -203,12 +211,7 @@ class RouterAgent:
         _entity_code = re.search(
             r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE
         )
-        _graph_keywords = [
-            "哪些物料", "什么供应商", "影响的物料", "关联工单",
-            "在途", "上游供应商", "缺货影响",
-            "追溯", "延迟影响", "影响的订单",
-        ]
-        if _entity_code and any(kw in query for kw in _graph_keywords):
+        if _entity_code and any(kw in query for kw in GRAPH_KEYWORDS):
             return {
                 "intent": IntentType.GRAPH_QUERY,
                 "tool_name": None,

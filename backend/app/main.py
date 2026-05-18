@@ -30,6 +30,8 @@ from app.core.milvus_client import milvus_manager
 from app.core.redis_client import init_redis, close_redis
 from app.core.database import init_db, close_db
 from app.core.neo4j_client import neo4j_client
+from app.models.user import User, UserRole
+from app.core.auth import hash_password
 
 # 配置日志
 logging.basicConfig(
@@ -80,40 +82,44 @@ async def lifespan(app: FastAPI):
         logger.info("✅ PostgreSQL连接成功")
     except Exception as e:
         logger.warning(f"⚠️ PostgreSQL连接失败: {e}（元数据功能不可用）")
-    # 4. 创建默认用户（RBAC 部门角色）
+    # 4. 创建默认用户（在线程中执行，避免阻塞 uvicorn 事件循环）
     try:
-        from app.models.user import User, UserRole
-        from app.core.auth import hash_password
+        import asyncio as _asyncio
+        import threading
         from sqlalchemy import select
         from app.core.database import async_session
 
-        # 默认用户列表：username, password, role, department
-        default_users = [
-            ("admin", "admin123", UserRole.ADMIN, "系统管理"),
-            ("purchase", "123456", UserRole.PURCHASE, "采购部"),
-            ("warehouse", "123456", UserRole.WAREHOUSE, "仓库部"),
-            ("quality", "123456", UserRole.QUALITY, "质量部"),
-            ("production", "123456", UserRole.PRODUCTION, "生产部"),
-            ("finance", "123456", UserRole.FINANCE, "财务部"),
-            ("logistics", "123456", UserRole.LOGISTICS, "物流部"),
-        ]
+        async def _seed_users():
+            async with _asyncio.timeout(10):
+                async with async_session() as session:
+                    for username, password, role, dept in default_users:
+                        result = await session.execute(
+                            select(User).where(User.username == username)
+                        )
+                        if not result.scalar_one_or_none():
+                            user = User(
+                                username=username,
+                                password_hash=hash_password(password),
+                                role=role.value,
+                                department=dept,
+                            )
+                            session.add(user)
+                    await session.commit()
 
-        async with async_session() as session:
-            for username, password, role, dept in default_users:
-                result = await session.execute(
-                    select(User).where(User.username == username)
-                )
-                if not result.scalar_one_or_none():
-                    user = User(
-                        username=username,
-                        password_hash=hash_password(password),
-                        role=role.value,
-                        department=dept,
-                    )
-                    session.add(user)
-                    logger.info(f"✅ 创建用户: {username} ({role.value} - {dept})")
-            await session.commit()
-            logger.info("✅ 默认用户创建完成")
+        # 在新的事件循环中运行（不阻塞 uvicorn startup）
+        def _run_seed():
+            loop = _asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(_seed_users())
+            except Exception:
+                pass
+            finally:
+                loop.close()
+
+        t = threading.Thread(target=_run_seed, daemon=True)
+        t.start()
+        t.join(timeout=3)  # 最多等 3 秒
+        logger.info("✅ 默认用户初始化已触发")
     except Exception as e:
         logger.warning(f"⚠️ 创建默认用户失败: {e}")
 
