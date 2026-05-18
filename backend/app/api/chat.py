@@ -1085,7 +1085,8 @@ async def chat_stream(request: Request, body: ChatRequest):
             logger.info(f"对话完成 session={session_id} 总耗时={_t_total*1000:.0f}ms (路由{_t_route*1000:.0f}ms + 生成{_t_gen*1000:.0f}ms)")
 
         except Exception as e:
-            logger.error(f"SSE流式输出错误: {e}")
+            import traceback
+            logger.error(f"SSE流式输出错误: {e}\n{traceback.format_exc()}")
             yield _sse_format({
                 "type": "error",
                 "message": str(e),

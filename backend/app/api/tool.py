@@ -135,9 +135,15 @@ async def call_tool(request: Request, body: ToolCallRequest):
     适用于前端工具管理页面的"测试工具"功能
     """
     current_user = await get_current_user_full(request)
-    allowed_tools = _get_allowed_tools(current_user.get("role", "purchase"))
+    user_role = current_user.get("role", "finance") if current_user else "finance"
+    allowed_tools = _get_allowed_tools(user_role)
 
-    if body.tool_names:
+    # Agent 自动选择工具时，检查 Agent 可能调用的所有工具
+    if not body.tool_names:
+        # Agent 自由选择——检查该角色可用工具列表是否为空
+        if not allowed_tools:
+            raise HTTPException(status_code=403, detail="当前角色无可用工具权限")
+    else:
         for tool_name in body.tool_names:
             if tool_name not in allowed_tools:
                 raise HTTPException(
