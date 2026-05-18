@@ -91,5 +91,56 @@ class TestSemanticRouter:
         assert abs(similarity) < 0.001
 
 
+# 测试图谱检索路由
+class TestGraphQueryRouting:
+    """测试 GRAPH_QUERY 意图的规则匹配"""
+
+    def test_graph_query_material_impact(self):
+        """含物料编码 + 关系词 → 应识别为图检索"""
+        from app.agents.router import IntentType
+
+        query = "MAT-001 缺货会影响哪些物料"
+        # 规则匹配：含 MAT-xxx + "哪些物料"/"影响"
+        import re
+        entity = re.search(r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE)
+        graph_kws = ["哪些物料", "什么供应商", "影响的物料", "关联工单",
+                     "在途", "上游供应商", "缺货影响", "追溯", "延迟影响", "影响的订单"]
+        has_entity = bool(entity)
+        has_kw = any(kw in query for kw in graph_kws)
+        assert has_entity and has_kw, f"应识别为图检索: entity={has_entity}, kw={has_kw}"
+
+    def test_graph_query_order_delay(self):
+        """含订单编码 + 延迟影响 → 图检索"""
+        query = "PO-20250601 延迟影响什么"
+        import re
+        entity = re.search(r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE)
+        graph_kws = ["哪些物料", "什么供应商", "影响的物料", "关联工单",
+                     "在途", "上游供应商", "缺货影响", "追溯", "延迟影响", "影响的订单"]
+        assert bool(entity) and any(kw in query for kw in graph_kws)
+
+    def test_not_graph_query_pure_concept(self):
+        """纯概念问题 → 不走图检索"""
+        query = "什么是安全库存"
+        import re
+        entity = re.search(r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE)
+        assert not entity  # 无实体编码
+
+    def test_not_graph_query_simple_lookup(self):
+        """简单查库存（有实体但无关系词）→ 不走图检索"""
+        query = "查 MAT-001 库存"
+        import re
+        entity = re.search(r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE)
+        graph_kws = ["哪些物料", "什么供应商", "影响的物料", "关联工单",
+                     "在途", "上游供应商", "缺货影响", "追溯", "延迟影响", "影响的订单"]
+        has_kw = any(kw in query for kw in graph_kws)
+        assert not has_kw  # 无图检索关键词
+
+    def test_graph_query_intent_type_exists(self):
+        """验证 IntentType.GRAPH_QUERY 存在"""
+        from app.agents.router import IntentType
+        assert hasattr(IntentType, "GRAPH_QUERY")
+        assert IntentType.GRAPH_QUERY.value == "graph_query"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

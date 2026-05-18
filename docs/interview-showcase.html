@@ -424,6 +424,9 @@
     <a href="#agentic-scenarios">跨域场景演示</a>
     <a href="#agentic-compare">与行业对标</a>
 
+    <div class="section-label">图谱增强 (v2.2)</div>
+    <a href="#neo4j-graph">Neo4j 图谱检索</a>
+
     <div class="section-label">运维</div>
     <a href="#knowledge-overview">知识库概览</a>
     <a href="#deployment">部署与运维</a>
@@ -2344,6 +2347,73 @@ MAT-001 日均消耗 30 件，当前库存 50 件 + PO-001 在途 100 件。
           <p>每篇文档 upload 时指定 security_group。FAQ 等公共文档对所有 7 部门可见，财务/采购文档仅对相关部门可见。</p>
           <span class="tag green">7 角色隔离</span>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== Neo4j 图谱检索 (v2.2) ===== -->
+    <section id="neo4j-graph">
+      <h2>Neo4j 图谱检索 (v2.2 图谱增强)</h2>
+      <p>2026年5月，SmartQA 在 RAG + Multi-Agent 基础上新增 <b>Neo4j 图数据库</b> 作为实体关系检索层。向量检索做语义匹配，图谱检索做精确关系遍历——两种互补的检索范式统一排序后喂给 LLM。</p>
+
+      <div class="img-container">
+        <img src="architecture-agentic.svg" alt="SmartQA 架构含 Neo4j" style="max-width:100%;border:1px solid var(--border);border-radius:8px">
+        <div class="img-caption">SmartQA Agentic v2.2 — Orchestrator + 4 专域 Agent + Neo4j 图谱检索 + 三路融合</div>
+      </div>
+
+      <h3>图 Schema</h3>
+      <table>
+        <tr><th>节点 (Label)</th><th>来源表</th><th>预估节点数</th></tr>
+        <tr><td>Material</td><td>product_product（15 物料）</td><td>15</td></tr>
+        <tr><td>PurchaseOrder</td><td>purchase_order（3 订单）</td><td>~3</td></tr>
+        <tr><td>OrderLine</td><td>purchase_order_line（5 行）</td><td>~5</td></tr>
+        <tr><td>Supplier</td><td>purchase_order.partner_name 去重</td><td>~5</td></tr>
+        <tr><td>StockMove</td><td>stock_move（在途库存）</td><td>~3</td></tr>
+        <tr><td>Ticket</td><td>maintenance_ticket</td><td>动态</td></tr>
+      </table>
+
+      <table style="margin-top:12px">
+        <tr><th>关系类型</th><th>方向</th><th>含义</th></tr>
+        <tr><td>[:FROM]</td><td>PurchaseOrder → Supplier</td><td>订单归属供应商</td></tr>
+        <tr><td>[:CONTAINS]</td><td>PurchaseOrder → OrderLine</td><td>订单含明细行</td></tr>
+        <tr><td>[:FOR]</td><td>OrderLine → Material</td><td>明细行对应物料</td></tr>
+        <tr><td>[:HAS_MOVE]</td><td>Material → StockMove</td><td>物料有在途库存</td></tr>
+      </table>
+      <p style="font-size:11px;color:var(--text-secondary)">数据同步：启动时 SQLite → Neo4j 全量同步（MERGE 幂等，< 1 秒），写操作时增量同步。</p>
+
+      <h3>3 个 Cypher 查询场景</h3>
+      <div class="card-grid">
+        <div class="card">
+          <h3>库存短缺评估</h3>
+          <code style="font-size:10px;background:#1e293b;color:#e2e8f0;padding:4px 8px;border-radius:4px;display:block;overflow-x:auto">MATCH (m:Material)<br/>←[:FOR]-(:OrderLine)←[:CONTAINS]-(po:PurchaseOrder)<br/>-[:FROM]->(s:Supplier)</code>
+          <p>从物料出发，沿关系链找出在途订单 + 供应商。</p>
+          <span class="tag blue">Cypher</span>
+        </div>
+        <div class="card">
+          <h3>质量追溯</h3>
+          <code style="font-size:10px;background:#1e293b;color:#e2e8f0;padding:4px 8px;border-radius:4px;display:block;overflow-x:auto">MATCH (m:Material)<br/>-[:RELATED_TO]->(t:Ticket)</code>
+          <p>从物料找关联工单 + 上游供应商。</p>
+          <span class="tag green">Cypher</span>
+        </div>
+        <div class="card">
+          <h3>供应商影响分析</h3>
+          <code style="font-size:10px;background:#1e293b;color:#e2e8f0;padding:4px 8px;border-radius:4px;display:block;overflow-x:auto">MATCH (s:Supplier)←[:FROM]-(po)<br/>-[:CONTAINS]->(:OrderLine)-[:FOR]->(m)</code>
+          <p>从供应商出发，找所有供应物料 + 受影响工单。</p>
+          <span class="tag orange">Cypher</span>
+        </div>
+      </div>
+
+      <h3>三路融合排序</h3>
+      <p>不把图结果塞进 RRF 公式（图匹配是二值的，不是连续排名），而是用加权叠加：</p>
+      <code style="display:block;padding:12px 16px;background:#1e293b;color:#e2e8f0;border-radius:4px">final_score = α × rrf_score + β × graph_score<br/>α = 0.7（向量+BM25 权重），β = 0.3（图谱权重）<br/>graph_score = 1.0（实体匹配）或 0.0（未匹配）</code>
+
+      <div class="highlight-box">
+        <h4>面试话术：Neo4j vs GraphRAG vs NetworkX</h4>
+        <p>「GraphRAG 适合没有结构化数据的大规模语料库，用 LLM 抽取实体关系。我的项目有现成的 ERP schema，实体关系是确定的，直接存 Neo4j 用 Cypher 查比 LLM 抽取可靠得多。选 Neo4j 不选 GraphRAG 是一个有意识的取舍，不是不知道。NetworkX 也够用，但 Neo4j 是图数据库的事实标准，Cypher 是独立的简历技能点。」</p>
+      </div>
+
+      <div class="highlight-box">
+        <h4>面试话术：为什么不自动生成 Cypher</h4>
+        <p>「LLM 生成 Cypher 有 3 个风险：语法错误导致查询失败、幻觉关系导致错误结论、面试官追问'这条 MATCH 是你写的还是模型编的'时无法回答。所以我的设计是 3 个场景用预定义模板 + 正则实体提取——确定性高、可验证、可解释。这不是做不到，是选择不做。」</p>
       </div>
     </section>
 

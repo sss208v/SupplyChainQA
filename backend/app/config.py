@@ -103,6 +103,15 @@ class Settings(BaseSettings):
     CLIP_TOP_K: int = 3  # 图像检索返回Top-K
     CLIP_DEVICE: str = "cpu"  # cpu / cuda
 
+    # ---- Neo4j 图数据库（实体关系图谱检索）----
+    NEO4J_URI: str = "bolt://localhost:17687"
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "smartqa123"
+
+    # ---- 图谱融合权重（α=向量+BM25, β=图谱）----
+    GRAPH_FUSION_ALPHA: float = 0.7
+    GRAPH_FUSION_BETA: float = 0.3
+
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"

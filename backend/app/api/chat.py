@@ -37,6 +37,7 @@ from app.core.data_filter import PIIFilter
 from app.core.clarify import check_needs_clarification
 from app.core.self_rag import get_self_rag
 from app.core.faithfulness import get_faithfulness_checker
+from app.core.graph_engine import graph_engine
 from app.config import get_settings
 from app.core.auth import get_current_user_optional, get_current_user_full
 from app.core.milvus_client import milvus_manager
@@ -261,6 +262,25 @@ async def chat_completions(request: Request, body: ChatRequest):
             confidence=rag_result["confidence"],
             sources=rag_result["sources"],
             tool_calls=tool_result["tool_calls"],
+        )
+
+    elif intent == IntentType.GRAPH_QUERY:
+        # 图谱检索 — 实体关系匹配
+        graph_result = await graph_engine.query(safe_query)
+        graph_context = graph_engine.format_results(graph_result)
+        if graph_context:
+            # 将图谱结果注入 LLM 上下文
+            llm = LLMFactory.get_llm(temperature=0.3)
+            prompt = f"以下是一段供应链实体关系图谱的查询结果：\n\n{graph_context}\n\n请根据这些结构化数据，用中文回答用户的原始问题：{safe_query}\n\n要求：简洁、直接、有数据支撑。"
+            response = await llm.ainvoke([HumanMessage(content=prompt)])
+            answer = _apply_output_guard(response.content.strip())
+        else:
+            answer = "未在供应链图谱中找到相关实体关系，请确认物料/订单/供应商编码是否正确。"
+        return ChatResponse(
+            session_id=session_id,
+            answer=answer,
+            intent=intent.value,
+            tool_calls=graph_result.get("rows", []),
         )
 
     else:
@@ -942,6 +962,41 @@ async def chat_stream(request: Request, body: ChatRequest):
                 logger.info(
                     f"{_elapsed('GOAL编排处理')} 耗时={_t_gen*1000:.0f}ms "
                     f"steps={execution.get('total_steps',0)} success={execution.get('success_steps',0)}"
+                )
+
+            elif intent == IntentType.GRAPH_QUERY:
+                _t2 = time.perf_counter()
+
+                yield _sse_format({
+                    "type": "graph_query_start",
+                    "message": "正在查询供应链实体关系图谱...",
+                })
+
+                graph_result = await graph_engine.query(safe_query)
+
+                if graph_result.get("rows"):
+                    yield _sse_format({
+                        "type": "graph_result",
+                        "pattern": graph_result.get("pattern"),
+                        "entities": graph_result.get("entities"),
+                        "row_count": len(graph_result["rows"]),
+                    })
+
+                    graph_context = graph_engine.format_results(graph_result)
+                    llm = LLMFactory.get_llm(temperature=0.3)
+                    prompt = f"以下是一段供应链实体关系图谱的查询结果：\n\n{graph_context}\n\n请根据这些结构化数据，用中文回答用户的原始问题：{safe_query}\n\n要求：简洁、直接、有数据支撑。"
+                    response = await llm.ainvoke([HumanMessage(content=prompt)])
+                    yield _sse_format({"type": "content", "content": _apply_output_guard(response.content.strip())})
+                else:
+                    yield _sse_format({
+                        "type": "content",
+                        "content": "未在供应链图谱中找到相关实体关系，请确认物料/订单/供应商编码是否正确。",
+                    })
+
+                _t_gen = time.perf_counter() - _t2
+                logger.info(
+                    f"{_elapsed('GRAPH检索处理')} 耗时={_t_gen*1000:.0f}ms "
+                    f"pattern={graph_result.get('pattern')} rows={len(graph_result.get('rows',[]))}"
                 )
 
             else:

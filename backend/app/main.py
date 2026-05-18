@@ -29,6 +29,7 @@ from app.api import chat, knowledge, tool, feedback, evaluate, auth
 from app.core.milvus_client import milvus_manager
 from app.core.redis_client import init_redis, close_redis
 from app.core.database import init_db, close_db
+from app.core.neo4j_client import neo4j_client
 
 # 配置日志
 logging.basicConfig(
@@ -116,6 +117,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ 创建默认用户失败: {e}")
 
+    # 5. 连接 Neo4j 并同步图谱数据
+    try:
+        if await neo4j_client.connect():
+            result = await neo4j_client.sync_from_sqlite()
+            if result.get("synced"):
+                logger.info("✅ Neo4j 连接成功，图谱同步完成")
+            else:
+                logger.warning("⚠️ 图谱同步失败: %s", result.get("reason", "未知"))
+        else:
+            logger.warning("⚠️ Neo4j 未连接（图谱检索不可用）")
+    except Exception as e:
+        logger.warning("⚠️ Neo4j 初始化失败: %s（图谱检索不可用）", e)
+
     logger.info(f"🎉 {settings.APP_NAME} 启动完成！")
     logger.info(f"📖 API文档: http://localhost:8001/docs")
 
@@ -131,6 +145,7 @@ async def lifespan(app: FastAPI):
 
     await close_db()
     await close_redis()
+    await neo4j_client.disconnect()
     milvus_manager.disconnect()
 
     logger.info("👋 服务已关闭")
@@ -211,6 +226,13 @@ async def health_check():
         health["services"]["postgres"] = {"connected": True}
     except Exception:
         health["services"]["postgres"] = {"connected": False}
+
+    # Neo4j
+    try:
+        neo4j_health = await neo4j_client.health()
+        health["services"]["neo4j"] = neo4j_health
+    except Exception:
+        health["services"]["neo4j"] = {"connected": False}
 
     # Overall status
     all_ok = all(s.get("connected") for s in health["services"].values())

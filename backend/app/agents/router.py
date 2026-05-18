@@ -35,9 +35,10 @@ class IntentType(str, Enum):
     GREETING = "greeting"       # 问候/闲聊
     RAG_ANSWER = "rag_answer"   # 知识库问答
     TOOL_CALL = "tool_call"     # 工具调用
+    GRAPH_QUERY = "graph_query" # 图谱检索（实体关系匹配）
+    GOAL = "goal"               # 目标型（多步跨域编排）
     HYBRID = "hybrid"           # 混合意图
     UNCLEAR = "unclear"         # 意图不明
-    GOAL = "goal"               # 目标型（多步跨域编排）
 
 
 class RouterAgent:
@@ -197,7 +198,24 @@ class RouterAgent:
                 "method": "rule",
             }
 
-        # 3. 目标型关键词（需要多步跨域编排）
+        # 3. 图谱检索关键词（含实体编码的结构化查询）
+        # 提取实体后判断：有 MAT-/PO-/TK- 编码 + 关联意图词
+        _entity_code = re.search(
+            r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE
+        )
+        _graph_keywords = [
+            "哪些物料", "什么供应商", "影响的物料", "关联工单",
+            "在途", "上游供应商", "缺货影响",
+            "追溯", "延迟影响", "影响的订单",
+        ]
+        if _entity_code and any(kw in query for kw in _graph_keywords):
+            return {
+                "intent": IntentType.GRAPH_QUERY,
+                "tool_name": None,
+                "method": "rule",
+            }
+
+        # 4. 目标型关键词（需要多步跨域编排）
         for keyword in self._goal_keywords:
             if keyword in query:
                 return {
@@ -237,9 +255,10 @@ class RouterAgent:
 3. tool_call - 需要调用单个外部工具（如"深圳天气"、"计算3+5"、"今天几号"）
 4. hybrid - 同时需要知识库和工具（如"深圳天气如何，适合户外运动吗"）
 5. goal - 需要多步跨部门分析才能完成的目标（如"帮我评估库存短缺风险"、"分析供应商延迟影响"、"排查质量异常"）
-6. unclear - 意图不明确，无法判断
+6. graph_query - 含物料/订单/工单编码 + 实体关系词（如"MAT-001 缺货会影响哪些物料"、"PO-001 延迟影响什么"），走 Neo4j 图检索
+7. unclear - 意图不明确，无法判断
 
-goal 类别的特征：问题需要横跨多个部门（库存+采购+生产+质量）的信息，无法用单个工具完成，也不是简单知识问答。
+graph_query 类别的特征：查询含具体物料/订单/工单编码（MAT-/PO-/TK-），同时出现了"影响""追溯""哪些""关联"等关系词。
 
 请严格按以下JSON格式输出，不要输出其他内容：
 {"intent": "类别", "confidence": 置信度(0-1), "tool_name": 工具名或null}

@@ -246,6 +246,37 @@ except Exception as e:
     check("TOOL_CALL 路径", False, str(e))
 
 # ============================================================
+test("10. 图谱检索 — Neo4j 实体关系查询 (v2.2)")
+# ============================================================
+graph_queries = [
+    ("MAT-001 缺货会影响哪些物料", "库存短缺图检索"),
+    ("MAT-002 有没有质量问题需要追溯", "质量追溯图检索"),
+]
+for gq, label in graph_queries:
+    try:
+        resp = httpx.post(f"{API}/chat/stream",
+                          json={"query": gq, "stream": True},
+                          headers={"Authorization": f"Bearer {purchase_token}"}, timeout=60)
+        check(f"GRAPH '{label}' 返回 200", resp.status_code == 200, str(resp.status_code))
+        if resp.status_code == 200:
+            text = resp.text
+            has_graph = "graph_query_start" in text or "graph_result" in text
+            has_content = any(l.startswith("data:") and "\"content\"" in l for l in text.split("\n"))
+            check(f"GRAPH '{label}' 含图谱事件", has_graph, f"text_len={len(text)}")
+            check(f"GRAPH '{label}' 有回答内容", has_content, f"text_len={len(text)}")
+    except Exception as e:
+        check(f"GRAPH '{label}'", False, str(e))
+
+# 验证图检索不影响纯 RAG 路径
+try:
+    resp = httpx.post(f"{API}/chat/stream",
+                      json={"query": "什么是安全库存", "stream": True},
+                      headers={"Authorization": f"Bearer {purchase_token}"}, timeout=30)
+    check("纯RAG路径仍正常（无实体编码不进图检索）", resp.status_code == 200, str(resp.status_code))
+except Exception as e:
+    check("纯RAG路径", False, str(e))
+
+# ============================================================
 print(f"\n{'='*50}")
 print(f"  结果: {PASS} 通过 / {FAIL} 失败 / {PASS+FAIL} 总计")
 print(f"{'='*50}")

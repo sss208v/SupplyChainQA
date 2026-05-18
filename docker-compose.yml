@@ -175,6 +175,27 @@ services:
     depends_on:
       - redis
 
+  # ==========================================
+  # Neo4j 图数据库 — 实体关系图谱检索
+  # ==========================================
+  neo4j:
+    image: neo4j:5-community
+    container_name: smartqa-neo4j
+    ports:
+      - "7474:7474"    # HTTP (Browser)
+      - "17687:7687"   # Bolt (Driver, 外部 17687 避免冲突)
+    environment:
+      NEO4J_AUTH: neo4j/smartqa123
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "smartqa123", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   etcd_data:
   minio_data:
@@ -182,3 +203,5 @@ volumes:
   redis_data:
   postgres_data:
   redisinsight_data:
+  neo4j_data:
+  neo4j_logs:

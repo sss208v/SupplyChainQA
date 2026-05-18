@@ -707,6 +707,47 @@ class RAGEngine:
 
         return round(confidence, 4)
 
+    @staticmethod
+    def fuse_with_graph(
+        rag_results: list[dict],
+        graph_matched_entities: set,
+        alpha: float = 0.7,
+        beta: float = 0.3,
+    ) -> list[dict]:
+        """
+        将图谱检索结果融合到 RAG 结果排序中。
+
+        图检索是精确命中（二值：匹配/未匹配），不是连续排名，
+        所以在 RRF 分数基础上用加权叠加而非放入 RRF 公式。
+
+        Args:
+            rag_results: RRF 融合后的结果列表（已含 rrf_score）
+            graph_matched_entities: 图谱中匹配到的实体编码集合（如 {"MAT-001","PO-001"}）
+            alpha: RRF 权重（默认 0.7）
+            beta: 图谱权重（默认 0.3）
+
+        Returns:
+            重新排序后的结果列表（新增 graph_score 字段）
+        """
+        if not graph_matched_entities:
+            return rag_results
+
+        for item in rag_results:
+            content = item.get("content", "")
+            # 检查 chunks 内容是否包含图谱匹配的实体
+            graph_hit = any(
+                entity.lower() in content.lower()
+                for entity in graph_matched_entities
+            )
+            item["graph_score"] = 1.0 if graph_hit else 0.0
+            item["final_score"] = (
+                alpha * item.get("rrf_score", 0) + beta * item["graph_score"]
+            )
+
+        # 按 final_score 降序重排
+        rag_results.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+        return rag_results
+
 
 # 全局单例
 rag_engine = RAGEngine()
