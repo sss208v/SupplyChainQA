@@ -215,6 +215,9 @@ def build_graph(available_tools: dict[str, BaseTool]):
         if iterations >= MAX_ITERATIONS:
             return Command(goto=END, update={"final_answer": "已达到最大迭代次数。"})
 
+        # 正常循环：继续路由
+        return Command(goto="router")
+
     # ---- Build graph ----
     workflow = StateGraph(AgentState)
 

@@ -105,6 +105,9 @@ class Settings(BaseSettings):
 
     # ---- Vision API（已弃用，文件保留）----
     VISION_ENABLED: bool = False
+    VISION_PROVIDER: str = "minimax"
+    VISION_MODEL: str = "MiniMax-Vision-01"
+    VISION_MAX_IMAGES: int = 5
 
     # ---- Neo4j 图数据库（实体关系图谱检索）----
     NEO4J_URI: str = "bolt://localhost:17687"
