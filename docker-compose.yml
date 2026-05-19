@@ -23,7 +23,6 @@ services:
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=smartqa123
     volumes:
-      # 保持 SQLite 数据文件持久化
       - ./backend/app/data:/app/app/data:rw
     depends_on:
       postgres:

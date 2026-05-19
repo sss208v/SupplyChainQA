@@ -487,7 +487,7 @@
       <h2>技术栈</h2>
       <table class="stack-table">
         <tr><th>层级</th><th>技术选型</th><th>说明</th></tr>
-        <tr><td>前端</td><td>Vue3 + Element Plus + Pinia + Vite</td><td>TypeScript，响应式布局</td></tr>
+        <tr><td>前端</td><td>Vue3 + Element Plus + Pinia + Vite</td><td>JavaScript，响应式布局</td></tr>
         <tr><td>后端</td><td>FastAPI + LangChain + LangGraph</td><td>异步架构，SSE 流式推送</td></tr>
         <tr><td>向量库</td><td>Milvus + BGE-small-zh-v1.5</td><td>512维，行级权限 via ARRAY</td></tr>
         <tr><td>缓存</td><td>Redis</td><td>对话记忆 + Query Cache (MD5, TTL)</td></tr>
@@ -671,8 +671,8 @@
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#409eff,#5bc5ff)">⚡</div>
           <h3>平均响应时间</h3>
-          <p>从用户提问到 Agent 返回完整答案，含 LLM 推理 + 工具执行 + 结果生成，平均 1.7s。</p>
-          <span class="tag blue">1.7s</span>
+          <p>工具调用平均延迟 1.7s（工具执行层），端到端含 LLM 推理 p50: 1.6s, p95: 3.2s。</p>
+          <span class="tag blue">p50 1.6s</span>
         </div>
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#e6a23c,#f0c060)">🎯</div>
@@ -972,7 +972,7 @@
           <h3>Benchmark 脚本</h3>
           <p><code>scripts/run_benchmark.py</code> 覆盖全部 6 个工具的 20 次查询：
             query_inventory / query_order / create_ticket / get_datetime / get_knowledge / query_supplier。
-            平均响应 1.7s（含 LLM 推理 + 工具执行 + 结果生成）。</p>
+            工具调用 p50: 1.6s（含工具执行，不含 LLM 推理）。</p>
           <span class="tag blue">可复现</span>
         </div>
       </div>
@@ -1905,7 +1905,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
       <div class="faq-item">
         <div class="q">Q4：生产环境的 Agent 怎么部署和监控？</div>
         <div class="a">
-          <strong>部署：</strong>Docker Compose 一键启动（Datawhale wow-rag 和 SmartQA 都用了这个方案），FastAPI + SSE 流式、nginx 反代<br>
+          <strong>部署：</strong>Docker Compose 一键启动（前后端 + Milvus + Redis + PostgreSQL + Neo4j），FastAPI + SSE 流式、nginx 反代<br>
           <strong>监控：</strong>Token 用量追踪（每次对话精确计费）、延迟 P50/P99、工具调用成功率、错误率<br>
           <strong>安全：</strong>PII 脱敏、Prompt 注入检测、操作审批（写操作需用户确认）<br>
           <strong>A/B 测试：</strong>新 Agent 版本先上线 10% 流量，对比旧版指标<br>
