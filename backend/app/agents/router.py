@@ -29,6 +29,24 @@ from app.core.semantic_router import get_semantic_router
 
 logger = logging.getLogger(__name__)
 
+# 语义路由是否已初始化（延迟初始化，避免启动时 embedding 未就绪）
+_semantic_ready = False
+
+
+def _ensure_semantic_router():
+    """延迟初始化语义路由（首次调用时从 RAGEngine 获取 embedding 引擎）"""
+    global _semantic_ready
+    if _semantic_ready:
+        return
+    try:
+        from app.core.rag_engine import rag_engine
+        sr = get_semantic_router()
+        sr.init(rag_engine.embedding)
+        _semantic_ready = True
+        logger.info("[Router] 语义路由初始化完成")
+    except Exception as e:
+        logger.warning(f"[Router] 语义路由初始化失败，将跳过语义层: {e}")
+
 
 class IntentType(str, Enum):
     """意图类型枚举"""
@@ -159,7 +177,26 @@ class RouterAgent:
             logger.info(f"规则匹配命中: intent={rule_result['intent']}, query={query}")
             return rule_result
 
-        # ---- Step 2: LLM意图分类 ----
+        # ---- Step 2: 语义路由（embedding 相似度，<10ms，零 token）----
+        _ensure_semantic_router()
+        if _semantic_ready:
+            try:
+                from app.core.rag_engine import rag_engine
+                query_emb = rag_engine.embedding.embed_query(query)
+                sr = get_semantic_router()
+                semantic_result = sr.route(query_emb)
+                if semantic_result:
+                    logger.info(f"语义路由命中: intent={semantic_result.intent}, score={semantic_result.confidence:.3f}")
+                    return {
+                        "intent": IntentType(semantic_result.intent),
+                        "tool_name": None,
+                        "method": "semantic",
+                        "confidence": semantic_result.confidence,
+                    }
+            except Exception as e:
+                logger.warning(f"语义路由失败，回退LLM: {e}")
+
+        # ---- Step 3: LLM 意图分类（~2.5s，兜底）----
         llm_result = await self._llm_classify(query)
         logger.info(f"LLM分类结果: intent={llm_result['intent']}, query={query}")
         return llm_result
