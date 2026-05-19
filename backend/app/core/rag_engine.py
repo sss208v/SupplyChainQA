@@ -609,8 +609,8 @@ class RAGEngine:
         merged.sort(key=lambda x: x["rrf_score"], reverse=True)
 
         # ---- 后处理 ----
-        merged = self._filter_low_score(merged, min_rrf=0.008)
-        merged = self._dedup_by_similarity(merged)
+        merged = RAGEngine._filter_low_score(merged, min_rrf=0.008)
+        merged = RAGEngine._dedup_by_similarity(merged)
 
         return merged
 

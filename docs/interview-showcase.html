@@ -427,6 +427,9 @@
     <div class="section-label">图谱增强 (v2.2)</div>
     <a href="#neo4j-graph">Neo4j 图谱检索</a>
 
+    <div class="section-label">评估体系 (v2.3)</div>
+    <a href="#rag-evaluation">RAG 评估体系</a>
+
     <div class="section-label">运维</div>
     <a href="#knowledge-overview">知识库概览</a>
     <a href="#deployment">部署与运维</a>
@@ -2414,6 +2417,78 @@ MAT-001 日均消耗 30 件，当前库存 50 件 + PO-001 在途 100 件。
       <div class="highlight-box">
         <h4>面试话术：为什么不自动生成 Cypher</h4>
         <p>「LLM 生成 Cypher 有 3 个风险：语法错误导致查询失败、幻觉关系导致错误结论、面试官追问'这条 MATCH 是你写的还是模型编的'时无法回答。所以我的设计是 3 个场景用预定义模板 + 正则实体提取——确定性高、可验证、可解释。这不是做不到，是选择不做。」</p>
+      </div>
+    </section>
+
+    <!-- ===== RAG 评估体系 (v2.3) ===== -->
+    <section id="rag-evaluation">
+      <h2>RAG 评估体系 (v2.3)</h2>
+      <p>2026年5月，SmartQA 建立了完整的 <b>RAG 两阶段分治评估框架</b>——检索和生成分开评，端到端最后看。核心理念：端到端指标无法定位问题出在哪一段，必须分阶段独立评估。</p>
+
+      <h3>测试集设计</h3>
+      <table>
+        <tr><th>类型</th><th>占比</th><th>示例</th><th>考察能力</th></tr>
+        <tr><td>事实提取</td><td>30%</td><td>安全库存公式是什么？</td><td>精确定位</td></tr>
+        <tr><td>多文档综合</td><td>25%</td><td>比较供应商管理和采购规范的异同</td><td>跨文档整合</td></tr>
+        <tr><td>推理判断</td><td>20%</td><td>某物料库存不足时应优先从哪个供应商补货</td><td>逻辑推理</td></tr>
+        <tr><td>时效性</td><td>15%</td><td>最近更新的采购流程有哪些变化</td><td>时间过滤</td></tr>
+        <tr><td>否定/拒答</td><td>10%</td><td>帮我做财务预算</td><td>意图识别</td></tr>
+      </table>
+      <p style="font-size:11px;color:var(--text-secondary)">测试集 30 条，LLM 自动生成 70% + 人工审核 + 专家补充 30% 高难题。每条标注：标准答案 + 标准证据片段（chunk_id）+ 问题类型 + 难度。</p>
+
+      <h3>评估指标 — 两阶段分治</h3>
+      
+      <h4>检索阶段（4 指标）</h4>
+      <table>
+        <tr><th>指标</th><th>公式</th><th>考察什么</th></tr>
+        <tr><td>Recall@5</td><td>|Top5 ∩ Relevant| / |Relevant|</td><td>相关文档有没有找回来</td></tr>
+        <tr><td>Precision@5</td><td>|Top5 ∩ Relevant| / |Top5|</td><td>找回来的有没有用</td></tr>
+        <tr><td>MRR</td><td>1 / rank(first_relevant)</td><td>第一个正确文档排第几</td></tr>
+        <tr><td>冗余率</td><td>重复对 / 总对</td><td>上下文窗口浪费程度</td></tr>
+      </table>
+
+      <h4>生成阶段（3 指标，LLM-as-Judge）</h4>
+      <table>
+        <tr><th>指标</th><th>方法</th><th>考察什么</th></tr>
+        <tr><td>答案准确率</td><td>LLM 对比标准答案评分 0-1</td><td>整体正确性</td></tr>
+        <tr><td>忠实度</td><td>拆分事实声明 → 逐条验证文档支持</td><td>有没有幻觉</td></tr>
+        <tr><td>完整性</td><td>覆盖关键信息点比例</td><td>有没有遗漏</td></tr>
+      </table>
+
+      <h3>自动化评估流水线</h3>
+      <code style="display:block;padding:12px 16px;background:#1e293b;color:#e2e8f0;border-radius:4px">
+# 一键运行<br/>
+cd backend/eval<br/>
+python retrieval_eval.py    # 检索+生成评估<br/>
+python run_full_eval.py     # 全流水线 → eval_report.json + eval_report.md
+      </code>
+
+      <div class="card-grid" style="margin-top:16px">
+        <div class="card">
+          <h3>评估报告</h3>
+          <p><code>eval_report.json</code> 输出：响应率、平均延迟、按类型分组指标。支持 JSON + Markdown 双格式。</p>
+          <span class="tag green">自动化</span>
+        </div>
+        <div class="card">
+          <h3>RAGAS 集成</h3>
+          <p>日常迭代用 RAGAS（Context Precision/Recall + Faithfulness + Answer Relevancy），版本发布前用自建测试集 + 人工抽检。</p>
+          <span class="tag blue">RAGAS</span>
+        </div>
+        <div class="card">
+          <h3>类型交叉分析</h3>
+          <p>按 factual/multi_doc/reasoning/temporal/reject 分组统计，发现"多文档综合准确率低"或"拒答识别差"等问题。</p>
+          <span class="tag orange">诊断</span>
+        </div>
+      </div>
+
+      <div class="highlight-box">
+        <h4>面试话术：为什么分阶段评估</h4>
+        <p>「RAG 是两阶段 pipeline。端到端指标只能告诉你结果好不好，定位不了问题出在哪一段。检索召回不好和生成有幻觉，修复方向完全不同。所以必须分阶段独立评估——检索看 R@5/P@5/MRR/冗余率，生成用 LLM-as-Judge 评准确率+忠实度+完整性。」</p>
+      </div>
+
+      <div class="highlight-box">
+        <h4>面试话术：测试集怎么建的</h4>
+        <p>「测试集 30 条，五类问题均匀分布。每条标注三样东西：标准答案、标准证据片段、问题类型。LLM 自动生成 70%，人工审核修正，专家补充 30% 高难题——特别是 10% 该拒答的问题。很多团队忽略拒答类，永远测不出系统在'不该回答时答了'的表现。」</p>
       </div>
     </section>
 

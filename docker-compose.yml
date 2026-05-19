@@ -19,6 +19,9 @@ services:
       - REDIS_PORT=6379
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=smartqa123
     volumes:
       # 保持 SQLite 数据文件持久化
       - ./backend/app/data:/app/app/data:rw
@@ -28,6 +31,8 @@ services:
       redis:
         condition: service_healthy
       milvus:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/auth/health"]
