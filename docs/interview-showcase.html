@@ -530,10 +530,16 @@
           <div class="flow-node success">📚 RAG Agent</div>
           <span class="flow-arrow">→</span>
           <div class="flow-node success">🛠️ Tool Agent</div>
-          <span class="flow-arrow">→</span>
-          <div class="flow-node success">💬 手写 ReAct / LangChain / LangGraph</div>
         </div>
-        <div style="text-align:center;font-size:11px;color:var(--text-meta);margin:4px 0 12px">接口一致: <code>async def run(query, tool_names, session_id) → dict</code></div>
+        <div style="text-align:center;font-size:11px;color:var(--text-meta);margin:2px 0 6px">共用底座：LangChain（LLM + bind_tools）</div>
+        <div class="flow-row">
+          <div class="flow-node" style="background:#f5f0ff;border-color:#a855f7;color:#7c3aed">🔁 ToolAgent<br><small>LangGraph StateGraph<br>（默认 ReAct 模式）</small></div>
+          <span class="flow-arrow">|</span>
+          <div class="flow-node" style="background:#f5f0ff;border-color:#a855f7;color:#7c3aed">🔄 LangGraphAgent<br><small>Router→Tool→Observe<br>→Decide 循环</small></div>
+          <span class="flow-arrow">|</span>
+          <div class="flow-node" style="background:#f5f0ff;border-color:#a855f7;color:#7c3aed">📐 LangChainAgent<br><small>AgentExecutor<br>（备选方案）</small></div>
+        </div>
+        <div style="text-align:center;font-size:11px;color:var(--text-meta);margin:4px 0 12px">AGENT_TYPE 三选一（env 配置），统一接口 <code>async def run(query, tool_names, session_id) → dict</code></div>
 
         <!-- 数据层 -->
         <div class="flow-row">
@@ -1588,7 +1594,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
 <span style="color:#c792ea">def</span> _get_tool_agent(agent_type):
     <span style="color:#c792ea">if</span> agent_type == <span style="color:#89ddff">"langchain"</span>: <span style="color:#c792ea">return</span> langchain_agent
     <span style="color:#c792ea">elif</span> agent_type == <span style="color:#89ddff">"langgraph"</span>: <span style="color:#c792ea">return</span> langgraph_agent
-    <span style="color:#c792ea">else</span>: <span style="color:#c792ea">return</span> tool_agent  <span style="color:#888"># 手写 ReAct（默认）</span>
+    <span style="color:#c792ea">else</span>: <span style="color:#c792ea">return</span> tool_agent  <span style="color:#888"># LangGraph ReAct（默认）</span>
 
 <span style="color:#888"># langgraph_agent.py：LangGraph StateGraph</span>
 <span style="color:#888"># ★ 面试价值：展示了 DAG 流程编排能力</span>
@@ -1715,16 +1721,16 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
       </div>
 
       <div class="faq-item">
-        <div class="q">Q4：手写 ReAct vs 用 LangChain Agent，怎么选？</div>
+        <div class="q">Q4：ToolAgent（LangGraph ReAct）vs LangChain AgentExecutor，怎么选？</div>
         <div class="a">
-          <strong>手写 ReAct 的优势：</strong><br>
-          • 完全可控 — 每一步都能 log，出问题直接定位<br>
-          • 面试加分 — 能逐行解释 Thought/Action/Observation 的解析逻辑<br>
+          <strong>ToolAgent（LangGraph ReAct）的优势：</strong><br>
+          • 完全可控 — 用 LangGraph StateGraph 实现 ReAct，状态流转完全可控<br>
+          • 面试加分 — 能逐行解释 StateGraph 的节点和条件边<br>
           • 依赖少 — Datawhale wow-agent 的教程就展示了「最简易方式在本地搭建 Agent，尽量减少依赖库」<br><br>
           <strong>LangChain Agent 的优势：</strong><br>
           • 生态丰富 — SearchAPI、SQLDatabase 等即插即用<br>
           • 标准化 — AgentExecutor 有完善的错误处理和重试机制<br>
-          面试话术：「我默认用手写 ReAct，因为要完全可控。LangChain 做备选方案，改一行配置就能切过去。」
+          面试话术：「我默认用 LangGraph StateGraph 实现 ReAct，因为要完全可控。LangChain 做备选方案，改一行配置就能切过去。」
         </div>
       </div>
     </section>
@@ -2048,7 +2054,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
 
       <div class="talk-item">
         <div class="q">🗣️ 三种 Agent 模式</div>
-        <div class="a">「280 行手写 ReAct 作为默认，因为<strong class="hl">完全可控</strong>；
+        <div class="a">「280 行 LangGraph ReAct 作为默认，因为<strong class="hl">完全可控</strong>；
         LangChain 备选——面试官问『了解 LangChain 吗』时展示。
         LangGraph 是差异化的亮点，面试中极少有人能讲清楚 StateGraph。」</div>
       </div>

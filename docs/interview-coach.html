@@ -152,7 +152,7 @@ SmartQA Pro — 面向制造业供应链的企业级智能问答系统。技术�
 
 【核心功能】
 1. RAG 混合检索：BM25关键词 + Milvus向量 → RRF融合(K=60) → Self-RAG过滤 → BGE-Reranker-v2-m3精排 → 冲突检测。覆盖2425个chunk，7部门文档。CP=0.67（16条RAGAS评估平均）。
-2. Agent 架构：Orchestrator + 4个专域Agent(采购/库存/质量/生产)。支持3种Agent模式：手写ReAct(280行,默认)/LangChain Agent/LangGraph Agent。6个工具：query_inventory/query_order/create_ticket/get_datetime/get_knowledge/query_supplier。
+2. Agent 架构：Orchestrator + 4个专域Agent(采购/库存/质量/生产)。AGENT_TYPE三选一：ToolAgent(LangGraph ReAct,默认)/LangGraphAgent(Router→Tool→Observe→Decide循环)/LangChainAgent(AgentExecutor)。6个工具：query_inventory/query_order/create_ticket/get_datetime/get_knowledge/query_supplier。LangChain作公共底座(LLM+bind_tools)，LangGraph作编排层。
 3. 三级意图路由：规则匹配(<1ms,零token) → 语义路由(<10ms,零token) → LLM分类(~2.5s,兜底)。90%请求零token覆盖。
 4. RBAC行级权限：7角色(admin/purchase/warehouse/quality/production/finance/logistics)。Milvus ARRAY security_group实现数据库层过滤。
 5. SSE流式输出：三事件流(tool_status→text→done)。操作审批(create_ticket需前端确认)。Token成本实时追踪。
