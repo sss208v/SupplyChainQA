@@ -75,9 +75,10 @@ class Neo4jClient:
     async def sync_from_sqlite(self) -> dict:
         """
         从 SQLite supply_chain.db 全量同步到 Neo4j。
+        SQLite 读取在独立线程执行（不阻塞事件循环），Neo4j 写入保持异步。
         启动时执行，使用 MERGE 保证幂等（重复执行不重复创建）。
         """
-        import sqlite3
+        import asyncio
         import os
 
         if not self._driver:
@@ -90,19 +91,61 @@ class Neo4jClient:
             logger.warning("SQLite 数据文件不存在: %s", db_path)
             return {"synced": False, "reason": "SQLite 数据文件不存在"}
 
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        def _read_sqlite() -> dict:
+            """在独立线程中读取 SQLite，避免阻塞事件循环"""
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+
+            data = {}
+
+            cur.execute(
+                "SELECT default_code, name, qty_available, standard_price "
+                "FROM product_product"
+            )
+            data["materials"] = [dict(r) for r in cur.fetchall()]
+
+            cur.execute("SELECT DISTINCT partner_name FROM purchase_order")
+            data["suppliers"] = [r["partner_name"] for r in cur.fetchall() if r["partner_name"]]
+
+            cur.execute(
+                "SELECT id, name, state, amount_total, partner_name "
+                "FROM purchase_order"
+            )
+            data["orders"] = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                "SELECT id, order_name, product_code, product_qty, "
+                "       price_unit, price_subtotal, date_planned "
+                "FROM purchase_order_line"
+            )
+            data["lines"] = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                "SELECT sm.origin, sm.product_uom_qty, sm.state, "
+                "       sm.date_expected, pp.default_code "
+                "FROM stock_move sm "
+                "JOIN product_product pp ON sm.product_id = pp.id"
+            )
+            data["moves"] = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                "SELECT name, priority, description FROM maintenance_ticket"
+            )
+            data["tickets"] = [dict(r) for r in cur.fetchall()]
+
+            conn.close()
+            return data
+
+        # 在线程池中执行 SQLite 读取
+        data = await asyncio.get_running_loop().run_in_executor(None, _read_sqlite)
 
         stats = {"nodes": 0, "relations": 0}
 
         async with self._driver.session() as session:
             # 1. Material 物料节点
-            cur.execute(
-                "SELECT default_code, name, qty_available, standard_price "
-                "FROM product_product"
-            )
-            for row in cur.fetchall():
+            for row in data["materials"]:
                 await session.run(
                     """
                     MERGE (m:Material {code: $code})
@@ -117,26 +160,20 @@ class Neo4jClient:
                 )
                 stats["nodes"] += 1
 
-            # 2. Supplier 供应商节点（从 purchase_order 去重）
-            cur.execute("SELECT DISTINCT partner_name FROM purchase_order")
-            for row in cur.fetchall():
-                if row["partner_name"]:
-                    await session.run(
-                        """
-                        MERGE (s:Supplier {name: $name})
-                        SET s.code = coalesce(s.code, $code)
-                        """,
-                        name=row["partner_name"],
-                        code=f"SUP-{row['partner_name'][:4].upper()}",
-                    )
-                    stats["nodes"] += 1
+            # 2. Supplier 供应商节点
+            for name in data["suppliers"]:
+                await session.run(
+                    """
+                    MERGE (s:Supplier {name: $name})
+                    SET s.code = coalesce(s.code, $code)
+                    """,
+                    name=name,
+                    code=f"SUP-{name[:4].upper()}",
+                )
+                stats["nodes"] += 1
 
-            # 3. PurchaseOrder 采购订单节点
-            cur.execute(
-                "SELECT id, name, state, amount_total, partner_name "
-                "FROM purchase_order"
-            )
-            for row in cur.fetchall():
+            # 3. PurchaseOrder 采购订单节点 + FROM 关系
+            for row in data["orders"]:
                 await session.run(
                     """
                     MERGE (po:PurchaseOrder {code: $code})
@@ -148,7 +185,6 @@ class Neo4jClient:
                     amount=row["amount_total"],
                 )
                 stats["nodes"] += 1
-                # 关系：PurchaseOrder -[:FROM]-> Supplier
                 if row["partner_name"]:
                     await session.run(
                         """
@@ -161,13 +197,8 @@ class Neo4jClient:
                     )
                     stats["relations"] += 1
 
-            # 4. OrderLine 订单行节点 + :CONTAINS/:FOR 关系
-            cur.execute(
-                "SELECT id, order_name, product_code, product_qty, "
-                "       price_unit, price_subtotal, date_planned "
-                "FROM purchase_order_line"
-            )
-            for row in cur.fetchall():
+            # 4. OrderLine 订单行节点 + CONTAINS/FOR 关系
+            for row in data["lines"]:
                 line_code = f"{row['order_name']}-L{row['id']}"
                 await session.run(
                     """
@@ -184,7 +215,6 @@ class Neo4jClient:
                     planned=row["date_planned"],
                 )
                 stats["nodes"] += 1
-                # 关系：PurchaseOrder -[:CONTAINS]-> OrderLine
                 if row["order_name"]:
                     await session.run(
                         """
@@ -196,7 +226,6 @@ class Neo4jClient:
                         line_code=line_code,
                     )
                     stats["relations"] += 1
-                # 关系：OrderLine -[:FOR]-> Material
                 if row["product_code"]:
                     await session.run(
                         """
@@ -209,14 +238,8 @@ class Neo4jClient:
                     )
                     stats["relations"] += 1
 
-            # 5. StockMove 在途节点 + :HAS_MOVE 关系
-            cur.execute(
-                "SELECT sm.origin, sm.product_uom_qty, sm.state, "
-                "       sm.date_expected, pp.default_code "
-                "FROM stock_move sm "
-                "JOIN product_product pp ON sm.product_id = pp.id"
-            )
-            for row in cur.fetchall():
+            # 5. StockMove 在途节点 + HAS_MOVE 关系
+            for row in data["moves"]:
                 move_code = f"MOVE-{row['origin']}-{row['default_code']}"
                 await session.run(
                     """
@@ -231,7 +254,6 @@ class Neo4jClient:
                     expected=row["date_expected"],
                 )
                 stats["nodes"] += 1
-                # 关系：Material -[:HAS_MOVE]-> StockMove
                 if row["default_code"]:
                     await session.run(
                         """
@@ -244,11 +266,8 @@ class Neo4jClient:
                     )
                     stats["relations"] += 1
 
-            # 6. Ticket 工单节点 + :RELATED_TO 关系
-            cur.execute(
-                "SELECT name, priority, description FROM maintenance_ticket"
-            )
-            for row in cur.fetchall():
+            # 6. Ticket 工单节点
+            for row in data["tickets"]:
                 await session.run(
                     """
                     MERGE (t:Ticket {code: $code})
@@ -258,9 +277,7 @@ class Neo4jClient:
                     priority=row["priority"],
                 )
                 stats["nodes"] += 1
-                # 关系无法自动推断（工单描述中没有物料编码），跳过
 
-        conn.close()
         logger.info(
             "📊 图谱同步完成: %d 节点, %d 关系", stats["nodes"], stats["relations"]
         )
