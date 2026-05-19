@@ -41,7 +41,7 @@ for i, item in enumerate(test_set):
                 try:
                     j = json.loads(d)
                     if j.get('type') == 'content':
-                        answer = j.get('content', '')
+                        answer += j.get('content', '')
                 except: pass
     except Exception as e:
         answer = ""
@@ -141,18 +141,14 @@ if eval_items:
                         try:
                             j = json.loads(d)
                             if j.get('type') == 'content':
-                                pred = j.get('content', '')
+                                pred += j.get('content', '')
                         except: pass
             except: pred = ""
-            score = await judge(pred, gt, llm)
+            score = await judge(pred, gt)
             scores.append(score)
             bar = "#" * int(score * 10) + "-" * (10 - int(score * 10))
             print(f"  [{i+1:2d}] [{bar}] {score:.2f} | {question[:50]}")
 
-        gen_report = {
-            "sampled": len(scores),
-            "avg_score": round(sum(scores) / len(scores), 4) if scores else 0,
-        }
         scores = asyncio.run(run_gen())
         gen_report = {"sampled": len(scores), "avg_score": round(sum(scores)/len(scores),4) if scores else 0}
         print(f"\n  抽样准确率: {gen_report['avg_score']:.4f} ({len(scores)} 条)")
