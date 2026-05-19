@@ -63,7 +63,7 @@ PostgreSQL 做用户认证和工单写入（ACID 事务场景），SQLite 存工
 ### LangGraph 测试说明
 
 LangGraph 的 `graph.astream()` 内部执行引擎是 Python 闭包，`unittest.mock.patch` 无法穿透。
-当前策略：单元测试覆盖非 LangGraph 模块（81 passed），LangGraph 集成测试通过手动演示验证。
+当前策略：单元测试覆盖非集成模块（84 passed），4 个集成测试跳过（3 个 Neo4j 图查询集成测试 + 1 个 LangGraph 集成测试，需真实后端服务）。
 面试时说：**"LangGraph 的 mock 测试在框架层面有限制，我用手动演示替代，效果更真实。"**
 
 ---
@@ -160,5 +160,5 @@ supply-chain-qa/
 │   ├── interview-showcase.html  ← 面试展示页（HTML 手册）
 │   └── interview-coach.html     ← AI 面试陪练
 ├── backend/eval/                ← 评估数据（benchmark_report.json 等）
-└── tests/                       ← 81 个单元测试
+└── tests/                       ← 88 个测试函数（84 通过 + 4 集成跳过）
 ```

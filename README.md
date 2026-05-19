@@ -78,7 +78,10 @@ cd frontend && npm install && npm run dev
 
 ```bash
 cd backend && pytest tests/ -q -k "not integration"
-# 81 passed, 1 skipped（LangGraph 集成测试需真实 LLM）
+# 84 passed, 4 skipped（3 个 Neo4j 集成测试 + 1 个 LangGraph 集成测试需真实服务/LLM）
+#
+# 运行条件：pytest-asyncio >= 0.23, asyncio_mode = auto（已配置在 pytest.ini）
+# 完整测试需：Docker 服务运行（Milvus/Redis/PostgreSQL/Neo4j）
 ```
 
 ## 项目结构

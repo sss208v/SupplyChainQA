@@ -78,12 +78,8 @@ const rules = {
 
 const demoAccounts = [
   { label: '管理员', username: 'admin', password: 'admin123' },
-  { label: '采购部', username: 'purchase', password: '123456' },
-  { label: '仓库部', username: 'warehouse', password: '123456' },
-  { label: '质量部', username: 'quality', password: '123456' },
-  { label: '生产部', username: 'production', password: '123456' },
-  { label: '财务部', username: 'finance', password: '123456' },
-  { label: '物流部', username: 'logistics', password: '123456' },
+  { label: '采购部', username: 'purchase', password: 'purchase123' },
+  { label: '仓库部', username: 'warehouse', password: 'warehouse123' },
 ]
 
 async function handleLogin() {
