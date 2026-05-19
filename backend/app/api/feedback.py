@@ -18,7 +18,7 @@ SmartQA Pro - 用户反馈API路由
 ============================================================
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, Integer
@@ -45,7 +45,7 @@ class FeedbackCreate(BaseModel):
     query: str = Field(..., min_length=1, description="用户问题")
     answer: str = Field(..., min_length=1, description="系统回答")
     sources: list[dict] = Field(default_factory=list, description="参考来源")
-    rating: int = Field(..., description="反馈评分: 1=正面, -1=负面")
+    rating: int = Field(..., ge=-1, le=1, description="反馈评分: 1=正面, -1=负面")
     comment: str = Field(None, max_length=500, description="用户留言（可选）")
     confidence: float = Field(None, ge=0, le=1, description="回答置信度（可选）")
     intent: str = Field(None, max_length=32, description="意图类型（可选）")
@@ -166,7 +166,7 @@ async def get_feedback_stats(
     - recent_negative限制5条，避免响应体过大
     - 满意度保留3位小数，避免浮点精度问题
     """
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
     # ============================================================
     # 1. 聚合查询：总数和正面反馈数

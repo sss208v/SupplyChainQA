@@ -7,7 +7,7 @@ SmartQA Pro - RAG 评估 API
 ============================================================
 """
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 from app.core.rag_evaluator import rag_evaluator
@@ -46,7 +46,7 @@ class JudgeRequest(BaseModel):
 # ---- API 接口 ----
 
 @router.post("/offline")
-async def evaluate_offline(req: OfflineEvalRequest):
+async def evaluate_offline(req: OfflineEvalRequest, request: Request):
     """
     离线评估：基于 ground truth 计算检索指标
 
@@ -57,11 +57,10 @@ async def evaluate_offline(req: OfflineEvalRequest):
 
     请求示例：
     {
-        "query": "RAG系统的核心组件有哪些？",
-        "retrieved_chunk_ids": ["doc1_chunk_0", "doc2_chunk_3", "doc3_chunk_1"],
-        "relevant_chunk_ids": ["doc1_chunk_0", "doc2_chunk_3"]
-    }
     """
+    from app.core.auth import get_current_user_required
+    await get_current_user_required(request)
+
     try:
         result = rag_evaluator.evaluate_retrieval(
             query=req.query,
@@ -78,7 +77,7 @@ async def evaluate_offline(req: OfflineEvalRequest):
 
 
 @router.post("/online")
-async def evaluate_online(req: OnlineEvalRequest):
+async def evaluate_online(req: OnlineEvalRequest, request: Request):
     """
     在线评估：无需 ground truth，基于 rerank_score 分布评估检索质量
 
@@ -93,6 +92,9 @@ async def evaluate_online(req: OnlineEvalRequest):
     - bm25_ratio: BM25检索结果占比
     - quality_label: 质量等级（excellent/good/fair/poor/no_signal）
     """
+    from app.core.auth import get_current_user_required
+    await get_current_user_required(request)
+
     try:
         result = rag_evaluator.evaluate_online(
             query=req.query,
@@ -108,7 +110,7 @@ async def evaluate_online(req: OnlineEvalRequest):
 
 
 @router.post("/judge")
-async def evaluate_judge(req: JudgeRequest):
+async def evaluate_judge(req: JudgeRequest, request: Request):
     """
     LLM-as-Judge：使用大模型评判生成答案的质量
 
@@ -120,6 +122,8 @@ async def evaluate_judge(req: JudgeRequest):
 
     注意：需要配置 LLM provider（deepseek/minimax/ollama）
     """
+    from app.core.auth import get_current_user_required
+    await get_current_user_required(request)
     try:
         from app.config import get_settings
         settings = get_settings()
@@ -155,50 +159,24 @@ async def evaluate_judge(req: JudgeRequest):
 }}
 """
 
-        # 调用 LLM
-        try:
-            if settings.LLM_PROVIDER == "deepseek":
-                import openai
-                client = openai.OpenAI(
-                    api_key=settings.DEEPSEEK_API_KEY,
-                    base_url=settings.DEEPSEEK_BASE_URL,
-                )
-                response = client.chat.completions.create(
-                    model=settings.DEEPSEEK_MODEL,
-                    messages=[{"role": "user", "content": judge_prompt}],
-                    temperature=0.1,
-                )
-                content = response.choices[0].message.content
-            elif settings.LLM_PROVIDER == "minimax":
-                import openai
-                client = openai.OpenAI(
-                    api_key=settings.MINIMAX_API_KEY,
-                    base_url=settings.MINIMAX_BASE_URL,
-                )
-                response = client.chat.completions.create(
-                    model=settings.MINIMAX_MODEL,
-                    messages=[{"role": "user", "content": judge_prompt}],
-                    temperature=0.1,
-                )
-                content = response.choices[0].message.content
-            else:
-                raise HTTPException(status_code=400, detail="仅支持 deepseek / minimax 作为 judge")
+        # 调用 LLM（异步，不阻塞事件循环）
+        llm = LLMFactory.get_llm(temperature=0.1, streaming=False)
+        from langchain_core.messages import HumanMessage
+        response = await llm.ainvoke([HumanMessage(content=judge_prompt)])
+        content = response.content
 
-            import json, re
-            # 提取JSON
-            match = re.search(r'\{.*\}', content, re.DOTALL)
-            if match:
-                scores = json.loads(match.group())
-            else:
-                scores = {"raw_output": content}
+        import json, re
+        # 提取JSON
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            scores = json.loads(match.group())
+        else:
+            scores = {"raw_output": content}
 
-            return {
-                "success": True,
-                "judge_result": scores,
-            }
-
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"LLM 调用失败: {e}")
+        return {
+            "success": True,
+            "judge_result": scores,
+        }
 
     except HTTPException:
         raise
@@ -208,19 +186,22 @@ async def evaluate_judge(req: JudgeRequest):
 
 
 @router.get("/full")
-async def run_full_evaluation():
+async def run_full_evaluation(request: Request):
     """
     运行全量 RAGAS 评估套件
+    """
+    from app.core.auth import get_current_user_required
+    await get_current_user_required(request)
 
-    对黄金测试集中的每条 query 执行：
-    1. 混合检索（向量 + BM25）
-    2. LLM 生成回答
-    3. 计算三大 RAGAS 指标：
-       - Context Precision（检索准确率）
-       - Faithfulness（忠实度/防幻觉）
-       - Answer Relevance（回答相关性）
+    # 对黄金测试集中的每条 query 执行：
+    # 1. 混合检索（向量 + BM25）
+    # 2. LLM 生成回答
+    # 3. 计算三大 RAGAS 指标：
+    #    - Context Precision（检索准确率）
+    #    - Faithfulness（忠实度/防幻觉）
+    #    - Answer Relevance（回答相关性）
 
-    返回逐条评分和汇总统计。
+    # 返回逐条评分和汇总统计。
     """
     try:
         ground_truth = load_ground_truth()
@@ -242,7 +223,7 @@ async def run_full_evaluation():
         for item in ground_truth:
             query = item.get("query", "")
             qid = item.get("id", "unknown")
-            t0 = asyncio.get_event_loop().time()
+            t0 = asyncio.get_running_loop().time()
 
             try:
                 # 检索
@@ -257,7 +238,7 @@ async def run_full_evaluation():
                     reference_answer=item.get("reference_answer", ""),
                 )
 
-                elapsed = (asyncio.get_event_loop().time() - t0) * 1000
+                elapsed = (asyncio.get_running_loop().time() - t0) * 1000
                 total_time += elapsed
 
                 results.append({
@@ -301,9 +282,12 @@ async def run_full_evaluation():
 
 
 @router.get("/summary")
-async def get_evaluation_summary():
+async def get_evaluation_summary(request: Request):
     """
-    获取评估历史汇总
+    获取评估汇总
+    """
+    from app.core.auth import get_current_user_required
+    await get_current_user_required(request)
 
     返回所有离线评估指标的平均值，包括：
     - avg_recall_at_5: 平均召回率

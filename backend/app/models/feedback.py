@@ -13,7 +13,7 @@ SmartQA Pro - 用户反馈数据模型
 - intent: 意图分类标签，用于按意图维度分析满意度
 ============================================================
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, Text, Integer, Float, DateTime, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
@@ -58,7 +58,7 @@ class Feedback(Base):
 
     # 元数据
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False
     )
     client_info: Mapped[dict] = mapped_column(JSON, default=dict)  # 浏览器UA、IP等
 

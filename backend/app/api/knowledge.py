@@ -364,9 +364,10 @@ def _read_docx(file_path: str) -> str:
         for element in doc.element.body:
             tag = element.tag.split('}')[-1] if '}' in element.tag else element.tag
             if tag == 'p':
-                # 段落
-                text = element.text
-                if text and text.strip():
+                # 段落 — 遍历所有 w:t 元素提取文本（lxml element.text 不穿透子元素）
+                ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+                text = ''.join(t.text or '' for t in element.iter(f'{ns}t'))
+                if text.strip():
                     parts.append(text.strip())
             elif tag == 'tbl':
                 # 表格 → 转为文本格式
@@ -620,7 +621,7 @@ async def ingest_real_pdfs():
         from scripts.download_real_pdfs import download_all
 
         # 1. 下载 PDF
-        await asyncio.get_event_loop().run_in_executor(None, download_all)
+        await asyncio.get_running_loop().run_in_executor(None, download_all)
 
         # 统计下载的文件
         if os.path.exists(PDF_DIR):
@@ -631,7 +632,7 @@ async def ingest_real_pdfs():
             downloaded = 0
 
         # 2. 入库
-        total_chunks = await asyncio.get_event_loop().run_in_executor(None, ingest_all)
+        total_chunks = await asyncio.get_running_loop().run_in_executor(None, ingest_all)
 
         return IngestResponse(
             success=True,

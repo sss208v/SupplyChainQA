@@ -21,7 +21,7 @@ SmartQA Pro - 企业级智能问答助手系统
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
@@ -83,6 +83,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ PostgreSQL连接失败: {e}（元数据功能不可用）")
     # 4. 创建默认用户（在线程中执行，避免阻塞 uvicorn 事件循环）
+    # 默认用户列表 — 格式: (用户名, 密码, 角色, 部门)
+    default_users = [
+        ("admin", "admin123", UserRole.ADMIN, "管理部"),
+        ("purchase", "purchase123", UserRole.PURCHASE, "采购部"),
+        ("warehouse", "warehouse123", UserRole.WAREHOUSE, "仓库部"),
+    ]
+
     try:
         import asyncio as _asyncio
         import threading
@@ -265,11 +272,15 @@ async def get_config():
 
 
 @app.post("/admin/reranker/enable")
-async def enable_reranker():
+async def enable_reranker(request: Request):
     """Runtime 启用重排序模型（避免启动时加载导致 Windows 崩溃）
 
     首次调用需 20-40 秒加载 2.1GB 模型，后续调用秒回。
+    需要 admin 角色权限。
     """
+    from app.core.auth import get_current_user_full, check_role
+    current_user = await get_current_user_full(request)
+    check_role(current_user, ["admin"])
     from app.core.rag_engine import rag_engine
     import time
 

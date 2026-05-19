@@ -8,7 +8,7 @@ RBAC (Role-Based Access Control) 权限模型：
 - employee: 普通员工，仅查看公开知识库
 ============================================================
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from sqlalchemy import String, Boolean, DateTime, Integer
 from sqlalchemy.orm import Mapped, mapped_column
@@ -62,7 +62,7 @@ class User(Base):
 
     # 创建时间
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False
     )
 
     def __repr__(self):

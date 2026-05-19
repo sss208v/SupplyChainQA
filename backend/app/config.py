@@ -86,6 +86,7 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen2.5:7b"
 
     # ---- Agent ----
+    AGENT_TYPE: str = "react"  # react | langgraph
 
     # ---- 内容过滤（已禁用）----
     GUARDRAILS_ENABLED: bool = False
