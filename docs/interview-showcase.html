@@ -901,7 +901,7 @@
           <p>正则提取实体+数值 → 同实体不同数值 → 标记冲突。
             仅比较相邻 chunk（已按 RRF 分数排序），O(n) 复杂度。
             支持中文实体模式：安全库存/抽检比例/预警阈值/账期天数/质检时效等。</p>
-          <span class="tag blue">rag_engine.py:626</span>
+          <span class="tag blue">rag_engine.py:651</span>
         </div>
         <div class="card">
           <h3>SSE 事件推送</h3>
@@ -1386,7 +1386,7 @@ expr = <span style="color:#89ddff">'id >= 0'</span>  <span style="color:#888"># 
       <!-- ===== 模块八：llm_router.py ===== -->
       <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
         <h3 style="margin-bottom:4px">模块八：<code>core/llm_router.py</code> — LLM 工厂 + Token 计费</h3>
-        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">237 行 | 支持 DeepSeek/MiniMax/Ollama 三种 provider | 工厂模式</p>
+        <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">244 行 | 支持 DeepSeek/MiniMax/Ollama 三种 provider | 工厂模式</p>
         <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
 <pre style="color:#e0e0e0;margin:0">
 <span style="color:#888"># ===== 工厂模式：单例缓存 =====</span>
@@ -1590,7 +1590,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
         <p style="font-size:12px;color:var(--text-meta);margin-bottom:12px">langchain_agent.py + langgraph_agent.py + api/* | ~1500 行</p>
         <div style="background:#1a1a2e;border-radius:8px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.7;overflow-x:auto;margin-bottom:12px">
 <pre style="color:#e0e0e0;margin:0">
-<span style="color:#888"># ===== 双模式 Agent 设计 (chat.py:106-117) =====</span>
+<span style="color:#888"># ===== 双模式 Agent 设计 (chat.py:127-137) =====</span>
 <span style="color:#c792ea">def</span> _get_tool_agent(agent_type):
     <span style="color:#c792ea">if</span> agent_type == <span style="color:#89ddff">"langchain"</span>: <span style="color:#c792ea">return</span> langchain_agent
     <span style="color:#c792ea">elif</span> agent_type == <span style="color:#89ddff">"langgraph"</span>: <span style="color:#c792ea">return</span> langgraph_agent
@@ -2054,7 +2054,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
 
       <div class="talk-item">
         <div class="q">🗣️ 三种 Agent 模式</div>
-        <div class="a">「280 行 LangGraph ReAct 作为默认，因为<strong class="hl">完全可控</strong>；
+        <div class="a">「221 行 LangGraph ReAct 作为默认，因为<strong class="hl">完全可控</strong>；
         LangChain 备选——面试官问『了解 LangChain 吗』时展示。
         LangGraph 是差异化的亮点，面试中极少有人能讲清楚 StateGraph。」</div>
       </div>

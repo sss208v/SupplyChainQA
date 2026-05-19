@@ -105,7 +105,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="会话ID（为空则新建）")
     stream: bool = Field(True, description="是否流式输出")
     doc_ids: Optional[list[str]] = Field(None, description="限定检索的文档ID")
-    agent_type: Optional[str] = Field(None, description="Agent类型: react（手写ReAct）/ langchain（LangChain Agent），为空则使用配置默认值")
+    agent_type: Optional[str] = Field(None, description="Agent类型: react（LangGraph ReAct,默认）/ langgraph（多节点循环）/ langchain（AgentExecutor备选），为空则使用配置默认值")
     approved: bool = Field(False, description="是否已确认执行写操作")
     approved_tool: Optional[str] = Field(None, description="已确认执行的工具名")
     images: Optional[list[str]] = Field(None, description="图片列表（base64编码，不含data:前缀）")
