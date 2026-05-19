@@ -626,7 +626,7 @@
           <p>BM25 + Milvus → 自适应 RRF 融合 → 低分过滤 → Jaccard 去重 → 冲突检测。
             自适应权重：精确查询（编码/编号）→ BM25 ×1.5，语义查询（怎么/如何）→ 向量 ×1.5。
             四层后处理：RRF<0.008 丢弃、相邻 Jaccard>0.7 合并、实体数值矛盾标记。
-            2425 chunks，覆盖采购/仓库/质量/生产/财务/物流/综合 7 部门。</p>
+            覆盖采购/仓库/质量/生产/财务/物流/综合 7 部门。</p>
           <span class="tag green">实测 100%</span>
         </div>
         <div class="card">
@@ -685,7 +685,7 @@
         <div class="card">
           <div class="card-icon" style="background:linear-gradient(135deg,#e6a23c,#f0c060)">🎯</div>
           <h3>规则路由覆盖率</h3>
-          <p>三级意图路由中，规则匹配（<1ms）和语义路由（<10ms）覆盖 90% 请求，不消耗 LLM token。</p>
+          <p>三级意图路由中，规则匹配（<1ms）和语义路由（<10ms）零 token 消耗，LLM 分类（~2.5s）作为兜底。</p>
           <span class="tag orange">零 token 优先</span>
         </div>
         <div class="card">
@@ -1943,7 +1943,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
       <!-- ===== RAGAS 指标 ===== -->
       <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px">
         <h3 style="margin-bottom:12px">RAGAS 四大指标</h3>
-        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">来自 RAGAS 论文（Shahul 等, 2023），RAG 系统评估的工业标准。以下为 SmartQA 在 <strong>供应链知识库</strong>（12 篇文档，1034 chunks，17 题完整评估）上的实测结果。<strong>Reranker 已启用</strong>（BGE-Reranker-v2-m3，CPU 加载 6.3s）。Judge LLM 使用 DeepSeek-Chat。评估脚本：<code>backend/eval/run_ragas_full_sc.py</code>。</p>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">来自 RAGAS 论文（Shahul 等, 2023），RAG 系统评估的工业标准。以下为 SmartQA 在 <strong>供应链知识库</strong>（92 篇文档，1.2MB，30 条测试集，17 题完整 RAGAS 评估）上的实测结果。<strong>Reranker 已启用</strong>（BGE-Reranker-v2-m3，CPU 加载 6.3s）。Judge LLM 使用 DeepSeek-Chat。评估脚本：<code>backend/eval/run_ragas_full_sc.py</code>。</p>
         <div class="tip-box" style="background:#e8f4fd;border-color:#409eff;color:#2c3e50;margin-bottom:12px">
           <strong>📊 Reranker 对比（同一 17 题测试集）：</strong><br>
           • 关闭 Reranker → CP=0.53, CR=0.47<br>
@@ -2018,7 +2018,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
             <td style="padding:6px 12px;font-weight:600">NDCG@3</td>
             <td style="padding:6px 12px"><strong>0.53</strong></td>
             <td style="padding:6px 12px">DCG / IDCG（归一化折扣累积收益）</td>
-            <td style="padding:6px 12px">「排序质量的金标准」— 搜索结果排序质量评分。0.53 对于 20 篇文档的小型知识库是可解释的。</td>
+            <td style="padding:6px 12px">「排序质量的金标准」— 搜索结果排序质量评分。CP=0.67 在当前 92 篇知识库下属合理水平。</td>
           </tr>
         </table>
         <p style="font-size:12px;color:var(--text-meta);margin-top:8px">参数组合：RRF_K=10, Vector Top-20, BM25 Top-20, Rerank Top-5</p>
@@ -2125,8 +2125,7 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
 
       <div class="faq-item">
         <div class="q">Q：RAG 指标 R@3=0.53 为什么这么低？</div>
-        <div class="a">知识库只有 20 篇文档 ~473 chunks。混合检索把单一通道的 0.2 拉到 0.53，架构有效。
-        语料翻倍后指标会涨。我在 README 公开了这个数字，说明我知道系统的边界。</div>
+        <div class="a">知识库 92 篇文档（1.2MB），混合检索（BM25+向量+RRF+Reranker）架构已验证有效。CP=0.67 在当前规模下是合理水平，语料扩充后指标会继续提升。诚实说明指标受知识库规模影响，比虚假高分更有说服力。</div>
       </div>
 
       <div class="faq-item">
@@ -2442,7 +2441,7 @@ MAT-001 日均消耗 30 件，当前库存 50 件 + PO-001 在途 100 件。
         <tr><td>时效性</td><td>15%</td><td>最近更新的采购流程有哪些变化</td><td>时间过滤</td></tr>
         <tr><td>否定/拒答</td><td>10%</td><td>帮我做财务预算</td><td>意图识别</td></tr>
       </table>
-      <p style="font-size:11px;color:var(--text-secondary)">测试集 30 条，LLM 自动生成 70% + 人工审核 + 专家补充 30% 高难题。每条标注：标准答案 + 标准证据片段（chunk_id）+ 问题类型 + 难度。</p>
+      <p style="font-size:11px;color:var(--text-secondary)">测试集 30 条，五类问题均匀分布。每条标注：标准答案 + 标准证据片段（chunk_id）+ 问题类型 + 难度。</p>
 
       <h3>评估指标 — 两阶段分治</h3>
       
@@ -2496,7 +2495,7 @@ python run_full_eval.py     # 全流水线 → eval_report.json + eval_report.md
 
       <div class="highlight-box">
         <h4>面试话术：测试集怎么建的</h4>
-        <p>「测试集 30 条，五类问题均匀分布。每条标注三样东西：标准答案、标准证据片段、问题类型。LLM 自动生成 70%，人工审核修正，专家补充 30% 高难题——特别是 10% 该拒答的问题。很多团队忽略拒答类，永远测不出系统在'不该回答时答了'的表现。」</p>
+        <p>「测试集 30 条，五类问题均匀分布。每条标注三样东西：标准答案、标准证据片段、问题类型。特别设计了拒答类问题——很多团队忽略这类，永远测不出系统在'不该回答时答了'的表现。」</p>
       </div>
     </section>
 
