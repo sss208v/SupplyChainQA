@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
     DEEPSEEK_MODEL: str = "deepseek-chat"
-    DEEPSEEK_FAST_MODEL: str = "deepseek-v4-flash"  # 快速模型（编排/分类）
+    DEEPSEEK_FAST_MODEL: str = "deepseek-chat"  # 快速模型（与主模型相同，DeepSeek 无独立 fast 型号时回退）
 
     # MiniMax
     MINIMAX_API_KEY: str = ""
@@ -97,11 +97,14 @@ class Settings(BaseSettings):
     SELF_RAG_ENABLED: bool = True
 
     # ---- CLIP 多模态嵌入（图文混合检索）----
-    CLIP_ENABLED: bool = True
+    CLIP_ENABLED: bool = False  # 默认关闭，避免 HuggingFace 下载阻塞演示
     CLIP_MODEL: str = "openai/clip-vit-base-patch32"
     CLIP_IMAGE_COLLECTION: str = "smartqa_images"
-    CLIP_TOP_K: int = 3  # 图像检索返回Top-K
-    CLIP_DEVICE: str = "cpu"  # cpu / cuda
+    CLIP_TOP_K: int = 3
+    CLIP_DEVICE: str = "cpu"
+
+    # ---- Vision API（已弃用，文件保留）----
+    VISION_ENABLED: bool = False
 
     # ---- Neo4j 图数据库（实体关系图谱检索）----
     NEO4J_URI: str = "bolt://localhost:17687"

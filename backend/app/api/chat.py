@@ -125,7 +125,15 @@ class ChatResponse(BaseModel):
 # ---- 辅助：Agent 类型选择 ----
 
 def _get_tool_agent(agent_type: Optional[str] = None, tool_name: Optional[str] = None):
-    """返回 Tool Agent — 按工具名路由到专域 Agent，无匹配时回退通用 Agent"""
+    """返回 Tool Agent — 支持 agent_type 显式切换，默认按工具名路由"""
+    # agent_type 显式指定时使用对应 Agent
+    if agent_type == "langgraph":
+        from app.agents.langgraph_agent import langgraph_agent
+        return langgraph_agent
+    elif agent_type == "langchain":
+        from app.agents.langchain_agent import LangChainAgent
+        return LangChainAgent()
+    # 默认：按工具名路由到专域 Agent
     return get_agent_for_tool(tool_name)
 
 
