@@ -17,7 +17,7 @@ def login(username, password):
         return data["token"]
 
 def test(query):
-    token = login("finance", "123456")
+    token = login("warehouse", "warehouse123")
     req = urllib.request.Request(
         f"{BASE_URL}/chat/stream",
         data=json.dumps({"query": query, "stream": True}).encode(),

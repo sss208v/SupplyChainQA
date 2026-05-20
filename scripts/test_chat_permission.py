@@ -46,7 +46,7 @@ print("测试 Finance 用户 - '查一下物料 MAT-001 的库存'")
 print("Finance 可用工具: get_datetime, get_knowledge")
 print("预期: 权限拦截")
 print("=" * 60)
-token = login("finance", "123456")
+token = login("warehouse", "warehouse123")
 test_chat_stream(token, "查一下物料 MAT-001 的库存")
 
 print()

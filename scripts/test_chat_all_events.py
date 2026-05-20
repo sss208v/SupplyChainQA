@@ -42,5 +42,5 @@ def test_chat_stream(token, query):
 print("=" * 60)
 print("测试 Finance 用户调用 query_inventory")
 print("=" * 60)
-token = login("finance", "123456")
+token = login("warehouse", "warehouse123")
 test_chat_stream(token, "查一下物料 MAT-001 的库存")

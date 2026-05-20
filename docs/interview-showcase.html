@@ -1314,7 +1314,7 @@ session_id = body.session_id <span style="color:#c792ea">or</span> str(uuid.uuid
     await init_redis()              <span style="color:#888"># 第 71 行</span>
     await init_db()                 <span style="color:#888"># 第 78 行</span>
     <span style="color:#888"># 创建 7 个默认部门用户 (第 90-98 行)</span>
-    <span style="color:#888"># admin/admin123, purchase/123456, ...</span>
+    <span style="color:#888"># admin/admin123, purchase/purchase123, ...</span>
 
     <span style="color:#888"># 预热 (第 122 行)</span>
     <span style="color:#c792ea">if</span> settings.RERANKER_ENABLED:
@@ -2153,13 +2153,13 @@ RAG_SYSTEM_PROMPT = <span style="color:#89ddff">"""...严格基于参考资料�
       <p>精选核心场景，按顺序操作。每个场景都有对应的面试话术。</p>
 
       <ul class="demo-steps">
-        <li><span class="num">1</span><div class="demo-desc"><strong>登录 & RBAC</strong> — 点击「purchase / 123456」快速登录，header 显示「采购部」标签。说明 7 部门 Odoo 风格角色设计。</div></li>
+        <li><span class="num">1</span><div class="demo-desc"><strong>登录 & RBAC</strong> — 点击「purchase / purchase123」快速登录，header 显示「采购部」标签。说明 7 部门 Odoo 风格角色设计。</div></li>
         <li><span class="num">2</span><div class="demo-desc"><strong>知识库问答</strong> — 输入「新供应商准入需要什么资质？」，展示 DAG 流水线（7 节点实时状态）、引用来源、置信度。话术：「混合检索——向量 + BM25 + RRF 融合，Reranker 精排」</div></li>
         <li><span class="num">3</span><div class="demo-desc"><strong>Query Cache</strong> — 重复发同一问题，消息头部出现「⚡ 缓存命中」标签，零 token 返回。话术：「Redis MD5 缓存，跨进程共享，TTL 1 小时」</div></li>
         <li><span class="num">4</span><div class="demo-desc"><strong>工具调用 & ReAct</strong> — 输入「查一下物料 MAT-001 的库存」，展示路由标签 + ReAct 循环 + 库存数据。话术：「意图路由三级串联——规则匹配 <1ms → 语义路由 <10ms → LLM 兜底」</div></li>
         <li><span class="num">5</span><div class="demo-desc"><strong>行级权限</strong> — 退出换「warehouse / warehouse123」登录，再问同样库存问题 → 对比 admin 看到的结果不同。话术：「Milvus ARRAY 字段 + array_contains 过滤，数据库层实时隔离」</div></li>
         <li><span class="num">6</span><div class="demo-desc"><strong>操作审批</strong> — 输入「创建工单，物料 MAT-002 缺货，紧急」，展示审批弹窗 → 确认 → 执行。话术：「写操作前发 approval_request SSE 事件，防止 Agent 误执行不可逆操作」</div></li>
-        <li><span class="num">7</span><div class="demo-desc"><strong>多模态（CLIP）</strong> — 上传一张图片，CLIP 纯本地编码入库。话术：「CLIP 图文统一向量空间，512 维，纯本地不需要外部 API」</div></li>
+        <li><span class="num">7</span><div class="demo-desc"><strong>多模态（CLIP）</strong> — 需先在 <code>.env</code> 设 <code>CLIP_ENABLED=true</code>，上传图片后 CLIP 纯本地编码入库。话术：「CLIP 图文统一向量空间，512 维，纯本地不需要外部 API」（如未启用可跳过此步）</div></li>
         <li><span class="num">8</span><div class="demo-desc"><strong>成本追踪</strong> — 任意问一个问题，指向前端显示的 token 用量和费用。话术：「TokenUsage 类记录每次 LLM 调用的 prompt/completion/cost，面试可追问定价模型」</div></li>
       </ul>
 
@@ -2532,7 +2532,7 @@ python run_full_eval.py     # 全流水线 → eval_report.json + eval_report.md
         <tr><td style="padding:4px 12px;font-weight:600">LLM_PROVIDER</td><td style="padding:4px 12px">deepseek</td><td style="padding:4px 12px">可切换 minimax / ollama</td></tr>
         <tr><td style="padding:4px 12px;font-weight:600">SELF_RAG_ENABLED</td><td style="padding:4px 12px">true</td><td style="padding:4px 12px">LLM自评检索相关性，过滤噪音chunk</td></tr>
         <tr><td style="padding:4px 12px;font-weight:600">FAITHFULNESS_ENABLED</td><td style="padding:4px 12px">true</td><td style="padding:4px 12px">关键词覆盖率检测幻觉</td></tr>
-        <tr><td style="padding:4px 12px;font-weight:600">CLIP_ENABLED</td><td style="padding:4px 12px">true</td><td style="padding:4px 12px">纯本地图文嵌入，不依赖外部 API</td></tr>
+        <tr><td style="padding:4px 12px;font-weight:600">CLIP_ENABLED</td><td style="padding:4px 12px">false（默认）</td><td style="padding:4px 12px">需手动启用；纯本地图文嵌入</td></tr>
       </table>
     </section>
 

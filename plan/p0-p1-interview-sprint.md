@@ -28,8 +28,8 @@
 **步骤**:
 1. `demo_start.ps1` 一键启动 (Docker + backend + frontend)
 2. `scripts/verify_demo.py` 跑 8 步验证
-3. 用 purchase/123456 登录, 问 5 个 RAG 问题
-4. 用 finance/123456 登录, 验证工具权限拒绝
+3. 用 purchase/purchase123 登录, 问 5 个 RAG 问题
+4. 用 purchase/purchase123 或 warehouse/warehouse123 登录, 验证工具权限与数据隔离
 5. 验证冲突 SSE 事件实际发出
 
 **验收**: 8 步验证全部 PASS, RAG 回答有内容, 权限正确拒绝。

@@ -267,7 +267,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001
 [ ] 等待 "启动完成" 三行 URL
 [ ] 浏览器打开 localhost:3000 确认页面加载
 [ ] 浏览器打开 docs/interview-showcase.html 确认渲染
-[ ] 用 purchase/123456 登录测试
+[ ] 用 purchase/purchase123 登录测试
 [ ] 问一个 RAG 问题确认响应
 
 10 分钟前:

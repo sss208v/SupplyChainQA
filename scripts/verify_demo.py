@@ -62,8 +62,8 @@ test("2. 认证系统")
 for user, pwd, dept in [
     ("admin", "admin123", "admin"),
     ("purchase", "123456", "purchase"),
-    ("finance", "123456", "finance"),
-    ("quality", "123456", "quality"),
+    ("purchase", "purchase123", "purchase"),
+    ("warehouse", "warehouse123", "warehouse"),
 ]:
     resp = login(user, pwd)
     if resp and resp.status_code == 200:
