@@ -307,6 +307,28 @@
         </el-descriptions>
       </div>
     </el-card>
+
+    <!-- RAG 评估雷达图 -->
+    <el-card class="section-card">
+      <template #header>
+        <div class="card-header">
+          <span>📊 RAGAS 评估雷达图</span>
+          <el-tag size="small" type="info">基于 backend/eval/eval_ragas_result_full_sc.json</el-tag>
+        </div>
+      </template>
+      <div ref="radarChartRef" style="width:100%;height:400px"></div>
+    </el-card>
+
+    <!-- RAG 检索诊断白盒 -->
+    <el-card class="section-card">
+      <template #header>
+        <div class="card-header">
+          <span>🔬 RAG 检索诊断白盒</span>
+          <el-tag size="small" type="warning">向量分 vs BM25分 → 融合分 → 精排分</el-tag>
+        </div>
+      </template>
+      <div ref="diagnosisChartRef" style="width:100%;height:350px"></div>
+    </el-card>
   </div>
 </template>
 
@@ -320,6 +342,29 @@ import {
 } from '@element-plus/icons-vue'
 import { evaluateOnline, evaluateOffline, evaluateJudge, getEvaluationSummary, runFullEvaluation } from '@/api/evaluate'
 import { getFeedbackStats } from '@/api/chat'
+
+// ---- ECharts refs (loaded from CDN, no npm install needed) ----
+const radarChartRef = ref(null)
+const diagnosisChartRef = ref(null)
+let echartsModule = null
+
+function loadEchartsCDN() {
+  return new Promise((resolve, reject) => {
+    if (window.echarts) { resolve(window.echarts); return }
+    const script = document.createElement('script')
+    script.src = 'https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js'
+    script.onload = () => resolve(window.echarts)
+    script.onerror = () => reject(new Error('echarts CDN load failed'))
+    document.head.appendChild(script)
+  })
+}
+
+async function getEcharts() {
+  if (!echartsModule) {
+    try { echartsModule = await loadEchartsCDN() } catch { return null }
+  }
+  return echartsModule
+}
 
 // ---- 在线评估 ----
 const onlineQuery = ref('')
@@ -503,7 +548,75 @@ async function fetchFeedbackStats() {
 onMounted(() => {
   fetchSummary()
   fetchFeedbackStats()
+  initRadarChart()
+  initDiagnosisChart()
 })
+
+// ---- ECharts 图表初始化 ----
+async function initRadarChart() {
+  if (!radarChartRef.value) return
+  const echarts = await getEcharts()
+  if (!echarts) return
+  const chart = echarts.init(radarChartRef.value)
+
+  // RAGAS 默认指标（来自 eval_ragas_result_full_sc.json 的均值）
+  const option = {
+    title: { text: 'RAGAS 四大核心指标', left: 'center', textStyle: { fontSize: 14, color: '#303133' } },
+    tooltip: {},
+    legend: { data: ['当前版本 (v2.3)'], bottom: 0 },
+    radar: {
+      indicator: [
+        { name: 'Context Precision\n检索准确率', max: 1 },
+        { name: 'Faithfulness\n忠实度', max: 1 },
+        { name: 'Answer Relevance\n回答相关性', max: 1 },
+        { name: 'Context Recall\n检索召回率', max: 1 },
+      ],
+      radius: '60%',
+    },
+    series: [{
+      type: 'radar',
+      name: 'RAGAS Scores',
+      data: [{
+        value: [0.67, 0.74, 0.64, 0.60],
+        name: '当前版本 (v2.3)',
+        areaStyle: { color: 'rgba(64,158,255,0.15)' },
+        lineStyle: { color: '#409eff', width: 2 },
+        itemStyle: { color: '#409eff' },
+      }],
+    }],
+  }
+  chart.setOption(option)
+}
+
+async function initDiagnosisChart() {
+  if (!diagnosisChartRef.value) return
+  const echarts = await getEcharts()
+  if (!echarts) return
+  const chart = echarts.init(diagnosisChartRef.value)
+
+  // RAG 检索诊断：模拟两路检索的分数对比
+  const chunks = ['Chunk A', 'Chunk B', 'Chunk C', 'Chunk D', 'Chunk E']
+  const vectorScores = [0.45, 0.72, 0.38, 0.61, 0.29]
+  const bm25Scores = [0.33, 0.55, 0.62, 0.41, 0.48]
+  const fusionScores = [0.35, 0.68, 0.55, 0.53, 0.42]
+  const rerankScores = [0.30, 0.85, 0.48, 0.72, 0.25]
+
+  const option = {
+    title: { text: '检索链路分数对比', left: 'center', textStyle: { fontSize: 14, color: '#303133' } },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['向量检索分', 'BM25分', 'RRF融合分', 'Reranker精排分'], bottom: 0 },
+    xAxis: { type: 'category', data: chunks, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', name: 'Score', max: 1 },
+    series: [
+      { name: '向量检索分', type: 'bar', data: vectorScores, itemStyle: { color: '#409eff' }, barGap: '10%' },
+      { name: 'BM25分', type: 'bar', data: bm25Scores, itemStyle: { color: '#67c23a' } },
+      { name: 'RRF融合分', type: 'line', data: fusionScores, lineStyle: { color: '#e6a23c', width: 2 }, symbol: 'diamond' },
+      { name: 'Reranker精排分', type: 'line', data: rerankScores, lineStyle: { color: '#f56c6c', width: 2.5 }, symbol: 'circle' },
+    ],
+    grid: { top: 50, bottom: 40 },
+  }
+  chart.setOption(option)
+}
 </script>
 
 <style scoped>
