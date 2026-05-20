@@ -488,8 +488,43 @@ class RAGEngine:
         )
         _t_bm25 = _t.perf_counter() - _t1
 
+        # 2.5 Graph RAG：实体提取 + Neo4j 2-hop 子图检索
+        graph_context = None
+        try:
+            from app.core.neo4j_client import neo4j_client as _graph_client
+            if _graph_client.is_connected:
+                import re as _re
+                entities = _re.findall(r'(MAT-\d+|PO-\d+|SUP-[A-Z]+)', query, _re.IGNORECASE)
+                if entities:
+                    graph_statements = []
+                    for entity in entities[:3]:  # 最多 3 个实体
+                        ctx_coro = _graph_client.get_2hop_subgraph_context(entity)
+                        try:
+                            import asyncio as _asyncio2
+                            ctx = _asyncio2.run(ctx_coro)
+                        except RuntimeError:
+                            ctx = ""  # 在已有事件循环中运行，跳过 Graph RAG
+                        if ctx:
+                            graph_statements.append(ctx)
+                    if graph_statements:
+                        graph_context = " ".join(graph_statements)
+                        logger.info(f"[GraphRAG] 实体={entities[:3]} 图谱上下文={len(graph_context)}chars")
+        except Exception as _e:
+            logger.debug(f"[GraphRAG] 图检索跳过: {_e}")
+
         # 3. 合并去重
         merged = self._merge_results(vector_results, bm25_results, query=query)
+
+        # 注入 Graph RAG 上下文（作为伪 Chunk 参与 Reranker 精排）
+        if graph_context:
+            graph_chunk = {
+                "chunk_id": f"neo4j_graph_{hashlib.md5(graph_context.encode()).hexdigest()[:8]}",
+                "content": graph_context,
+                "source": "neo4j_graph",
+                "score": max((d.get("score", 0) for d in merged), default=0.5),
+                "retrieval_source": "neo4j_graph",
+            }
+            merged.insert(0, graph_chunk)  # 插入首位，确保参与精排
 
         # 只取top N给reranker（CPU上cross-encoder推理慢，减少输入量）
         merged_for_rerank = merged[:settings.RERANK_TOP_K * 2]  # 取rerank_top_k的2倍

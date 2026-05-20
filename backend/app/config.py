@@ -107,6 +107,12 @@ class Settings(BaseSettings):
     # ---- Demo 模式（面试安全路径）----
     DEMO_MODE: bool = False          # 无LLM时返回本地fallback，不报Connection error
     DEMO_SEED_USERS: bool = True     # 启动时自动创建演示账号
+
+    # ---- Langfuse 可观测性 ----
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+
     VISION_ENABLED: bool = False
     VISION_PROVIDER: str = "minimax"
     VISION_MODEL: str = "MiniMax-Vision-01"

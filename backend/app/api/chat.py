@@ -386,10 +386,21 @@ async def chat_stream(request: Request, body: ChatRequest):
             })
 
         try:
+            # 0. 生成全局 trace_id（Langfuse 可观测性）
+            from app.core.observability import get_trace_id, get_langfuse_url, is_enabled
+            trace_id = get_trace_id()
+            if is_enabled():
+                yield _sse_format({
+                    "type": "trace",
+                    "trace_id": trace_id,
+                    "langfuse_url": get_langfuse_url(trace_id),
+                })
+
             # 1. 发送会话ID
             yield _sse_format({
                 "type": "session",
                 "session_id": session_id,
+                "trace_id": trace_id,
             })
 
             # ---- 多模态：图片通过 CLIP 入库（纯本地嵌入 + 跨模态检索）----

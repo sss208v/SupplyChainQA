@@ -319,6 +319,58 @@
 
   <div class="must-know"><strong>📌 只需记住 3 个点：</strong><br>1. chat_stream() 用 async generator + StreamingResponse 实现 token 级流式输出<br>2. 7 种 SSE 事件类型，前端按 type 分发渲染<br>3. 写操作（create_ticket）需要前端 approved=true 确认后才执行</div>
   <div class="skip">⏭️ 可以跳过：PII 脱敏细节、模型切换接口、非流式 chat_completions()</div>
+
+  <details style="margin-top:14px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--primary);padding:8px 12px;background:var(--primary-light);border-radius:6px;">📄 展开查看 chat_stream() 核心结构</summary>
+    <div class="script-box" style="margin-top:8px;max-height:480px;overflow-y:auto;"><span class="label">chat.py:335-394</span>async def chat_stream(request: Request, body: ChatRequest):
+    """对话接口（流式SSE）"""
+    session_id = body.session_id or str(uuid.uuid4())
+    safe_query = _pii_filter.filter_text(body.query)
+    _user_role = "finance"  # 默认最小权限
+
+    # 获取用户角色 → 用于后续权限过滤
+    _current_user = await get_current_user_full(request)
+    if _current_user:
+        _user_role = _current_user.get("role", "finance")
+
+    async def event_generator():
+        """SSE 事件生成器 — 核心流程"""
+        # 0. DEMO_MODE 通知
+        if settings.DEMO_MODE:
+            yield _sse_format({"type":"demo_mode",...})
+
+        # 1. 发送 session_id
+        yield _sse_format({"type":"session","session_id":session_id})
+
+        # 2. Query Cache 检查（MD5 匹配，零 token 重放）
+        cached = await redis.get(f"query_cache:{md5(query)}")
+        if cached: yield cached_answer; return
+
+        # 3. 意图路由（三级级联）
+        route_result = await router_agent.route(safe_query)
+        intent = route_result["intent"]
+        yield _sse_format({"type":"route","intent":intent.value,...})
+
+        # 4. 按意图分发 ↓
+        if   intent == GREETING:  直接回复问候
+        elif intent == RAG_ANSWER: 混合检索→Reranker→LLM生成→SSE推送
+        elif intent == TOOL_CALL:  澄清检查→权限检查→ReAct循环→SSE推送
+        elif intent == GOAL:       Orchestrator Plan→Execute→Summarize
+        elif intent == HYBRID:     RAG增强→Tool调用
+        elif intent == GRAPH_QUERY: Neo4j 图检索
+        elif intent == UNCLEAR:    RAG检索兜底
+
+        # 5. 保存对话记忆到 Redis
+        await chat_memory.add_message(session_id, "user", query)
+        await chat_memory.add_message(session_id, "assistant", answer)
+
+    # 返回 StreamingResponse
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"}
+    )</div>
+  </details>
 </div>
 
 <!-- Hotspot 2: router.py -->
@@ -339,6 +391,56 @@
 
   <div class="must-know"><strong>📌 只需记住 3 个点：</strong><br>1. 规则匹配 &lt;1ms 零 Token，覆盖大部分高频明确意图<br>2. 语义路由用 embedding 相似度，&lt;10ms 零 Token<br>3. LLM 分类 ~2.5s，只处理前两层 miss 的模糊意图</div>
   <div class="skip">⏭️ 可以跳过：_tool_keywords 词典的完整内容、_llm_classify 的 prompt 细节</div>
+
+  <details style="margin-top:14px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--primary);padding:8px 12px;background:var(--primary-light);border-radius:6px;">📄 展开查看 route() 三级级联核心代码</summary>
+    <div class="script-box" style="margin-top:8px;max-height:480px;overflow-y:auto;"><span class="label">router.py:153-202</span>async def route(self, query: str) -> dict:
+    """路由用户查询到对应的Agent"""
+
+    # ---- Step 1: 规则匹配 (&lt;1ms, 零 Token) ----
+    rule_result = self._rule_match(query)
+    if rule_result:
+        return rule_result  # 直接返回，不往下走
+
+    # ---- Step 2: 语义路由 (&lt;10ms, 零 Token) ----
+    _ensure_semantic_router()  # 延迟初始化 embedding
+    if _semantic_ready:
+        query_emb = rag_engine.embedding.embed_query(query)
+        semantic_result = semantic_router.route(query_emb)
+        if semantic_result:
+            return { "intent": ..., "method": "semantic" }
+
+    # ---- Step 3: LLM 分类 (~2.5s, 兜底) ----
+    llm_result = await self._llm_classify(query)
+    return llm_result  # method="llm"
+
+def _rule_match(self, query: str):
+    """关键词/正则快速匹配"""
+    # 1. 问候匹配（仅短 query 且无业务关键词）
+    for pattern in self._greeting_patterns:
+        if re.match(pattern, query):
+            if len(query) &lt;= 10 and not has_business:
+                return {"intent": GREETING, "method": "rule"}
+
+    # 2. 工具关键词优先（精确匹配 &gt; 模糊匹配）
+    for keyword, tool_name in self._tool_keywords.items():
+        if keyword in query:
+            return {"intent": TOOL_CALL, "tool_name": tool_name}
+
+    # 3. 图谱检索关键词（有实体编码 + 关联意图词）
+    if re.search(r"MAT-\d+|PO-\d+", query) and graph_kw:
+        return {"intent": GRAPH_QUERY}
+
+    # 4. 目标型关键词（多步跨域编排）
+    for kw in self._goal_keywords:
+        if kw in query: return {"intent": GOAL}
+
+    # 5. RAG 关键词匹配（最后兜底）
+    for kw in self._rag_keywords:
+        if kw in query: return {"intent": RAG_ANSWER}
+
+    return None  # 规则未命中 → 走语义路由 → LLM</div>
+  </details>
 </div>
 
 <!-- Hotspot 3: rag_engine.py -->
@@ -364,6 +466,54 @@
 
   <div class="must-know"><strong>📌 只需记住 3 个点：</strong><br>1. 向量(Milvus, top20) + BM25(rank_bm25, top20) → RRF(K=60) 自适应权重融合 → Reranker(CrossEncoder, top3) 精排<br>2. 自适应 RRF：精确查询（含编码）BM25×1.5，语义查询（含怎么/如何）向量×1.5<br>3. 后处理链：低分过滤 → Jaccard 去重(>0.7) → 冲突检测(同实体不同数值标记)</div>
   <div class="skip">⏭️ 可以跳过：EmbeddingEngine 的缓存细节、BM25Engine 的 jieba 分词实现、_tokenize 的 bigram 回退</div>
+
+  <details style="margin-top:14px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--primary);padding:8px 12px;background:var(--primary-light);border-radius:6px;">📄 展开查看 search() 混合检索链核心代码</summary>
+    <div class="script-box" style="margin-top:8px;max-height:480px;overflow-y:auto;"><span class="label">rag_engine.py:419-520</span>def search(self, query, top_k=3, visibility_expr=""):
+    """混合检索：向量 + BM25 + Reranker 精排"""
+
+    # 0. Query Cache（相同 query 直接返回）
+    if cache_key in self._query_cache:
+        return cached_result
+
+    # 1. 向量检索（Milvus, top_k=20）
+    query_embedding = self.embedding.embed_query(query)
+    vector_results = milvus_manager.search(
+        query_embedding, top_k=20, expr=visibility_expr
+    )  # gRPC 失败自动重试 3 次
+
+    # 2. BM25 关键词检索（rank_bm25, top_k=20）
+    bm25_results = self.bm25.search(
+        query, top_k=20, allowed_roles=roles_from_expr
+    )
+
+    # 3. RRF 融合（K=60, 自适应权重）
+    merged = self._merge_results(
+        vector_results, bm25_results, query=query
+    )
+    # _merge_results 内部：
+    #   - 精确查询(含编码) → BM25 权重 ×1.5
+    #   - 语义查询(含怎么/如何) → 向量权重 ×1.5
+    #   - 低分过滤(min_rrf=0.008) + Jaccard去重(&gt;0.7)
+
+    # 4. Reranker 精排（CrossEncoder, top_k=3）
+    if RERANKER_ENABLED:
+        reranked = self.reranker.rerank(
+            query, merged[:top_k*2], top_k=3
+        )
+    else:
+        # 降级：按原始检索分数排序
+        reranked = sorted(merged, key=score)[:top_k]
+
+    # 5. 冲突检测 + 置信度计算
+    conflicts = self._detect_conflicts(reranked)
+    confidence = self._calculate_confidence(reranked)
+
+    # 6. 存入 Query Cache（TTL=300s）
+    self._query_cache[cache_key] = (now, result)
+    return {"results":reranked, "confidence":confidence,
+            "conflicts":conflicts, "retrieval_method":...}</div>
+  </details>
 </div>
 
 <!-- Hotspot 4: orchestrator.py & tool.py -->
@@ -395,6 +545,74 @@
 
   <div class="must-know"><strong>📌 只需记住 3 个点（ToolAgent）：</strong><br>1. 约 220 行 LangGraph StateGraph，自定义 async 工具执行节点替代 ToolNode<br>2. agent → tools 循环，最多 5 轮收敛<br>3. 每次工具调用记录 tool_metrics（耗时/成功率），异常有降级处理<br><strong>📌 只需记住 3 个点（Orchestrator）：</strong><br>1. Plan → Execute → Summarize 三阶段<br>2. 步骤间上下文传递：每一步结果注入下一步 prompt<br>3. DEMO_MODE 降级：LLM 不可用时返回本地模板</div>
   <div class="skip">⏭️ 可以跳过：_demo_plan 的具体模板、SUMMARY_PROMPT 的完整文本</div>
+
+  <details style="margin-top:14px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--primary);padding:8px 12px;background:var(--primary-light);border-radius:6px;">📄 展开查看 _build_graph() 自定义工具节点 + Orchestrator.run()</summary>
+    <div class="script-box" style="margin-top:8px;max-height:480px;overflow-y:auto;"><span class="label">tool.py:62-129</span>def _build_graph(self):
+    """LangGraph StateGraph — 自定义 async 工具执行节点"""
+    raw_tools = self.tools  # 6 个 BaseTool
+    tools_by_name = {t.name: t for t in raw_tools}
+    llm_with_tools = LLMFactory.get_llm(t=0).bind_tools(raw_tools)
+
+    async def agent_node(state):
+        """LLM 决策节点 → 输出 AIMessage(可能含 tool_calls)"""
+        messages = state["messages"]
+        if not any SystemMessage in messages:
+            messages = [SystemMessage(SYSTEM_PROMPT)] + messages
+        response = await llm_with_tools.ainvoke(messages)
+        return {"messages": [response]}
+
+    async def async_tool_node(state):
+        """自定义工具执行 — 直接调 tool.ainvoke()"""
+        last_msg = state["messages"][-1]
+        if not last_msg.tool_calls:
+            return {"messages": []}
+        for tc in last_msg.tool_calls:
+            tool = tools_by_name.get(tc["name"])
+            try:
+                result = await tool.ainvoke(tc["args"])
+                tool_metrics.record(name, args, result, t, ok)
+            except Exception:
+                result = f"工具执行失败: {e}"
+                tool_metrics.record(name, args, err, 0, False)
+            tool_messages.append(ToolMessage(result, ...))
+        return {"messages": tool_messages}
+
+    def route_after_agent(state):
+        """条件边：有 tool_calls → tools 节点，否则 → END"""
+        last_msg = state["messages"][-1]
+        return "tools" if last_msg.tool_calls else END
+
+    # 构建图：START → agent ⇄ tools → END
+    builder = StateGraph(AgentState)
+    builder.add_node("agent", agent_node)
+    builder.add_node("tools", async_tool_node)
+    builder.add_edge(START, "agent")
+    builder.add_conditional_edges("agent", route_after_agent)
+    builder.add_edge("tools", "agent")  # 循环回 agent
+    return builder.compile()
+
+# ---- Orchestrator ----
+<span style="color:#888;"># orchestrator.py:220-265</span>
+async def run(self, goal, session_id, user_id):
+    """Plan → Execute → Summarize 三阶段"""
+    # 1. Plan: LLM 拆解用户目标为执行步骤
+    plan = await self.plan(goal)
+    steps = plan.get("steps", [])
+    # DEMO_MODE 降级: LLM 不可用时返回本地模板
+
+    # 2. Execute: 顺序调专域 Agent，传递上下文
+    execution = await self.execute(goal=goal,
+        steps=steps, session_id=session_id)
+    # 每一步结果注入下一步 prompt
+
+    # 3. Summarize: ≤3步模板拼接, ≥4步 LLM 汇总
+    summary = await self.summarize(goal=goal,
+        step_results=execution["step_results"])
+
+    return {"answer": summary, "plan": plan,
+            "execution": execution}</div>
+  </details>
 </div>
 
 

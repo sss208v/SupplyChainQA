@@ -283,6 +283,90 @@ class Neo4jClient:
         )
         return {"synced": True, **stats}
 
+    # ---- Graph RAG：2-hop 子图上下文检索 ----
+
+    async def get_2hop_subgraph_context(self, entity: str) -> str:
+        """检索实体的 2-hop 关联子图，返回声明式自然语言描述
+
+        用于 Graph RAG：将图谱三元组注入 RAG 检索的上下文 Chunk 中，
+        弥补向量检索在“多跳实体关联”场景下的长尾召回不足。
+
+        Args:
+            entity: 实体标识符，如 MAT-001、PO-20250101、SUP-001
+
+        Returns:
+            声明式文本段落，如 "物料 MAT-001 由供应商 SUP-ABC 供应，
+            关联采购订单 PO-001（状态: 待交付）"，未找到时返回空字符串
+        """
+        if not self._driver:
+            return ""
+
+        # 实体类型推断
+        entity_type = "Material"
+        if entity.upper().startswith("PO-") or entity.upper().startswith("PO"):
+            entity_type = "PurchaseOrder"
+        elif entity.upper().startswith("SUP-"):
+            entity_type = "Supplier"
+
+        statements = []
+        try:
+            async with self._driver.session() as session:
+                if entity_type == "Material":
+                    # (Material)-[:HAS_MOVE]->(StockMove)  +  (OrderLine)-[:FOR]->(Material)<-[:CONTAINS]-(PurchaseOrder)-[:FROM]->(Supplier)
+                    result = await session.run("""
+                        MATCH (m:Material {code: $entity})
+                        OPTIONAL MATCH (m)-[:HAS_MOVE]->(sm:StockMove)
+                        OPTIONAL MATCH (ol:OrderLine)-[:FOR]->(m)
+                        OPTIONAL MATCH (po:PurchaseOrder)-[:CONTAINS]->(ol)
+                        OPTIONAL MATCH (po)-[:FROM]->(s:Supplier)
+                        RETURN m, sm, ol, po, s
+                        LIMIT 5
+                    """, entity=entity)
+                    async for record in result:
+                        if record["s"]:
+                            statements.append(f"物料 {entity} 由供应商 {record['s'].get('name', '未知')} 供应")
+                        if record["po"]:
+                            po_state = record["po"].get("state", "未知")
+                            statements.append(f"关联采购订单 {record['po'].get('code', '')}（状态: {po_state}）")
+                        if record["sm"]:
+                            sm_state = record["sm"].get("state", "未知")
+                            statements.append(f"在途库存移库 {record['sm'].get('code', '')}（状态: {sm_state}，预期: {record['sm'].get('expected_date', '')}）")
+
+                elif entity_type == "PurchaseOrder":
+                    result = await session.run("""
+                        MATCH (po:PurchaseOrder {code: $entity})
+                        OPTIONAL MATCH (po)-[:FROM]->(s:Supplier)
+                        OPTIONAL MATCH (po)-[:CONTAINS]->(ol:OrderLine)-[:FOR]->(m:Material)
+                        RETURN po, s, ol, m
+                        LIMIT 5
+                    """, entity=entity)
+                    async for record in result:
+                        if record["s"]:
+                            statements.append(f"采购订单 {entity} 来自供应商 {record['s'].get('name', '未知')}")
+                        if record["m"]:
+                            statements.append(f"包含物料 {record['m'].get('code', '')}（{record['m'].get('name', '')}），数量 {record['ol'].get('qty', '?')}")
+
+                elif entity_type == "Supplier":
+                    result = await session.run("""
+                        MATCH (s:Supplier {name: $entity})
+                        OPTIONAL MATCH (po:PurchaseOrder)-[:FROM]->(s)
+                        OPTIONAL MATCH (po)-[:CONTAINS]->(ol:OrderLine)-[:FOR]->(m:Material)
+                        RETURN s, po, m
+                        LIMIT 5
+                    """, entity=entity)
+                    async for record in result:
+                        if record["po"]:
+                            statements.append(f"供应商 {entity} 有采购订单 {record['po'].get('code', '')}（状态: {record['po'].get('state', '未知')}）")
+        except Exception as e:
+            logger.warning(f"[GraphRAG] 2-hop 子图检索失败: {e}")
+            return ""
+
+        if statements:
+            context = "；".join(statements) + "。"
+            logger.info(f"[GraphRAG] entity={entity} type={entity_type} 召回 {len(statements)} 条关系")
+            return context
+        return ""
+
 
 # 全局单例
 neo4j_client = Neo4jClient()

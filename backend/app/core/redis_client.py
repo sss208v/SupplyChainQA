@@ -47,6 +47,51 @@ class RedisManager:
             raise RuntimeError("Redis未连接，请先调用connect()")
         return self._pool
 
+    # ---- 分布式锁 ----
+
+    async def acquire_lock(
+        self, key: str, expire: int = 10, retry_times: int = 1
+    ) -> bool:
+        """获取 Redis 分布式锁（简化版 Redlock）
+
+        使用 SET NX EX 实现原子抢占，用于敏感写操作的并发控制。
+
+        Args:
+            key: 锁键名，建议格式 lock:tool:{tool_name}:{session_id}:{idempotency_key}
+            expire: 锁过期时间（秒），默认 10 秒
+            retry_times: 抢占失败后重试次数，默认不重试
+
+        Returns:
+            True 表示获取锁成功
+        """
+        for attempt in range(retry_times + 1):
+            acquired = await self.client.set(key, "locked", nx=True, ex=expire)
+            if acquired:
+                logger.debug(f"[RedisLock] 获取锁成功: {key}")
+                return True
+            if attempt < retry_times:
+                import asyncio
+                await asyncio.sleep(0.1)
+        logger.warning(f"[RedisLock] 获取锁失败: {key}")
+        return False
+
+    async def release_lock(self, key: str):
+        """释放锁"""
+        await self.client.delete(key)
+        logger.debug(f"[RedisLock] 释放锁: {key}")
+
+    async def check_idempotent(self, key: str) -> bool:
+        """检查幂等键是否已执行
+
+        用于防止重复提交：写操作执行前检查，执行后标记 completed。
+        """
+        val = await self.client.get(key)
+        return val == "completed"
+
+    async def mark_idempotent(self, key: str, ttl: int = 300):
+        """标记幂等键为已执行（保留 5 分钟）"""
+        await self.client.set(key, "completed", ex=ttl)
+
 
 class ChatMemory:
     """对话记忆管理"""
