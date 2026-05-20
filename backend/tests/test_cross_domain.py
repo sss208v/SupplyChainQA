@@ -3,6 +3,7 @@ SmartQA 跨域 Orchestrator 测试
 
 测试 Orchestrator 的步骤执行、结果聚合、汇总能力。
 LLM 依赖的 plan() 标记为 integration 测试，CI 中可跳过。
+设置 RUN_LIVE_LLM_TESTS=true 可启用需要真实 LLM API 的测试。
 """
 import pytest
 import sys
@@ -10,6 +11,13 @@ import os
 import asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# 条件跳过：未设置 RUN_LIVE_LLM_TESTS 时跳过所有 integration 测试
+LIVE_LLM = os.environ.get("RUN_LIVE_LLM_TESTS", "").lower() in ("1", "true", "yes")
+skip_no_llm = pytest.mark.skipif(
+    not LIVE_LLM,
+    reason="需要 RUN_LIVE_LLM_TESTS=true 环境变量 + 有效 DeepSeek API key"
+)
 
 
 class TestOrchestratorStructure:

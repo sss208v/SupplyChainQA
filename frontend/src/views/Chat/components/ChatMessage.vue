@@ -104,6 +104,16 @@
           >
             🌐 Web搜索补充
           </el-tag>
+          <!-- 演示模式标签 -->
+          <el-tag
+            v-if="message.demoMode"
+            type="warning"
+            size="small"
+            effect="dark"
+            round
+          >
+            🎯 演示模式
+          </el-tag>
           <!-- Query复杂度分析标签 -->
           <el-tag
             v-if="message.queryAnalysis"

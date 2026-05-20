@@ -254,6 +254,12 @@ export async function chatStream(data, callbacks = {}) {
           case 'conflicts':
             callbacks.onConflicts?.(parsed)
             break
+          case 'demo_mode':
+            callbacks.onDemoMode?.(parsed)
+            break
+          case 'orchestrator_plan':
+            callbacks.onOrchestratorPlan?.(parsed)
+            break
           case 'error':
             console.error(`[ChatStream +${eventMs}ms] 后端error事件:`, parsed.message)
             callbacks.onError?.(parsed.message)

@@ -264,24 +264,59 @@ class Orchestrator:
         }
 
     def _demo_plan(self, goal: str) -> dict:
-        """DEMO_MODE 下本地生成确定性执行计划（不依赖 LLM）"""
+        """DEMO_MODE 下根据 query 关键词生成 2-4 步动态执行计划（不依赖 LLM）"""
+        goal_lower = goal.lower()
+
+        # 关键词 → Agent 映射
+        keyword_agents = [
+            (["采购", "供应商", "准入", "资质", "比价", "purchase", "supplier"], "purchase"),
+            (["库存", "物料", "缺货", "补货", "inventory", "stock", "material"], "inventory"),
+            (["质检", "来料", "不合格", "缺陷", "quality", "inspection", "iqc"], "quality"),
+            (["生产", "工单", "排产", "bom", "production", "ticket"], "production"),
+        ]
+
+        # 匹配 Agent
+        matched_agents = []
+        for keywords, agent in keyword_agents:
+            if any(kw in goal_lower for kw in keywords):
+                matched_agents.append(agent)
+
+        if not matched_agents:
+            matched_agents = ["purchase", "inventory"]
+
+        steps = []
+        for i, agent in enumerate(matched_agents[:4]):
+            agent_labels = {"purchase": "采购部", "inventory": "仓库部", "quality": "质量部", "production": "生产部"}
+            task_templates = {
+                "purchase": f"检索「{goal}」相关的供应商管理与采购流程文档",
+                "inventory": f"查询「{goal}」关联的库存数据与物料信息",
+                "quality": f"检索「{goal}」相关的质量检验标准与处理流程",
+                "production": f"检索「{goal}」相关的生产计划与工单信息",
+            }
+            steps.append({
+                "step": i + 1,
+                "agent": agent,
+                "task": task_templates.get(agent, f"检索与「{goal}」相关的{agent_labels.get(agent, agent)}文档"),
+                "depends_on": [i] if i > 0 else [],
+            })
+
+        if len(steps) < 2:
+            steps.append({
+                "step": len(steps) + 1,
+                "agent": "inventory",
+                "task": f"补充检索「{goal}」的库存与物料信息",
+                "depends_on": [len(steps)],
+            })
+
         return {
             "goal": goal,
-            "steps": [
-                {
-                    "step": 1,
-                    "agent": "purchase",
-                    "task": f"从采购知识库检索与「{goal}」相关的文档",
-                    "depends_on": [],
-                },
-                {
-                    "step": 2,
-                    "agent": "inventory",
-                    "task": f"检查与「{goal}」相关的库存数据",
-                    "depends_on": [1],
-                },
-            ],
-            "note": "[演示模式] 此为本地模板计划，LLM 未连接。正式环境由 DeepSeek 动态生成。",
+            "steps": steps,
+            "note": "[演示模式] 此为本地关键词匹配生成的模板计划，LLM 未连接。正式环境由 DeepSeek 动态生成。",
+            "demo_info": {
+                "mode": "demo",
+                "reason": "LLM 不可用，使用本地模板计划",
+                "matched_keywords": [kw for kw in goal_lower.split() if any(kw in g for g in [ks[0] for ks in keyword_agents])][:3],
+            }
         }
 
 

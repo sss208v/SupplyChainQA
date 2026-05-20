@@ -203,16 +203,28 @@ class DomainAgent:
             logger.error(f"[{self.name}] graph.astream 失败: {e}")
             settings = get_settings()
             if settings.DEMO_MODE:
-                final_answer = (
-                    f"[演示模式] {self.name} 收到问题：「{query}」\n"
-                    f"（LLM 未连接，这是本地降级响应。Agent 架构完整，"
-                    f"工具调用链路可正常演示。正式环境接入 DeepSeek API 后即可获得真实推理结果。）"
-                )
+                final_answer = _build_demo_fallback(self.name, query, str(e))
+                demo_info = {
+                    "mode": "demo",
+                    "reason": f"LLM 不可用: {str(e)[:120]}",
+                    "suggested_next_step": "接入 DeepSeek API 后即可获得真实推理结果。当前可演示：工具调用链路、RAG检索、权限过滤。",
+                    "summary": f"{self.name} 已接收问题，当前为离线演示模式"
+                }
             else:
                 final_answer = f"Agent 执行出错: {e}"
+                demo_info = None
 
         if not final_answer:
             final_answer = "未能生成回答，请重试。"
+
+        # Build return dict
+        result = {
+            "answer": final_answer,
+            "tool_calls": tool_calls_record,
+            "iterations": iteration,
+        }
+        if demo_info:
+            result["demo_info"] = demo_info
 
         if session_id and chat_memory:
             try:
@@ -221,8 +233,18 @@ class DomainAgent:
             except Exception:
                 pass
 
-        return {
-            "answer": final_answer,
-            "tool_calls": tool_calls_record,
-            "iterations": iteration,
-        }
+        return result
+
+
+def _build_demo_fallback(agent_name: str, query: str, error: str) -> str:
+    """构建 DEMO_MODE 下的结构化降级响应"""
+    return (
+        f"[演示模式] {agent_name} 收到问题：「{query}」\n\n"
+        f"当前状态：LLM 未连接（{error[:80]}）\n"
+        f"可演示能力：\n"
+        f"  • 工具调用链路（query_inventory / query_order / create_ticket 等 6 个工具）\n"
+        f"  • RAG 混合检索（Milvus 向量 + BM25 关键词 → RRF 融合 → Reranker 精排）\n"
+        f"  • 行级权限过滤（Milvus ARRAY 字段 + array_contains 实时过滤）\n"
+        f"  • SSE 流式输出（tool_status → text → done 三事件流）\n\n"
+        f"接入 DeepSeek API 后即可获得真实 Agent 推理结果。"
+    )

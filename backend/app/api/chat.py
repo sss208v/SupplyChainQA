@@ -375,6 +375,16 @@ async def chat_stream(request: Request, body: ChatRequest):
     async def event_generator():
         """SSE事件生成器"""
         nonlocal _t_route, _t_gen, _user_id
+
+        # 检查 DEMO_MODE，提前通知前端
+        settings = get_settings()
+        if settings.DEMO_MODE:
+            yield _sse_format({
+                "type": "demo_mode",
+                "mode": "demo",
+                "message": "当前为离线演示模式，LLM 推理结果由本地降级链路生成",
+            })
+
         try:
             # 1. 发送会话ID
             yield _sse_format({
@@ -968,7 +978,17 @@ async def chat_stream(request: Request, body: ChatRequest):
                         "observation": tc.get("observation", tc.get("result", "")),
                     })
 
-                # 发送最终回答
+                # 检查 DEMO_MODE 降级信息
+                demo_info = result.get("demo_info")
+                if demo_info:
+                    yield _sse_format({
+                        "type": "demo_mode",
+                        "mode": demo_info.get("mode", "demo"),
+                        "reason": demo_info.get("reason", ""),
+                        "summary": demo_info.get("summary", ""),
+                    })
+
+                # 发送最终回答（工具调用）
                 yield _sse_format({"type": "content", "content": _apply_output_guard(result["answer"])})
                 logger.info(f"{_elapsed('TOOL_CALL处理')} 耗时={_t_gen*1000:.0f}ms")
 
@@ -991,14 +1011,18 @@ async def chat_stream(request: Request, body: ChatRequest):
                 # 发送执行计划
                 plan = result.get("plan", {})
                 if plan.get("steps"):
-                    yield _sse_format({
+                    plan_event = {
                         "type": "orchestrator_plan",
                         "goal": plan.get("goal", ""),
                         "steps": [
                             {"step": i+1, "agent": s.get("agent", ""), "task": s.get("task", "")}
                             for i, s in enumerate(plan["steps"])
                         ],
-                    })
+                    }
+                    demo_info = plan.get("demo_info")
+                    if demo_info:
+                        plan_event["demo_info"] = demo_info
+                    yield _sse_format(plan_event)
 
                 # 发送每步执行结果
                 execution = result.get("execution", {})

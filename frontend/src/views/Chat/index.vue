@@ -19,6 +19,16 @@
           <el-icon :size="48" color="#409eff"><ChatDotRound /></el-icon>
           <h2>供应链智能助手</h2>
           <p>我可以帮你查询制度规范、库存订单、创建工单</p>
+          <!-- 演示模式横幅 -->
+          <el-alert
+            v-if="chatStore.demoMode.active"
+            title="演示模式"
+            type="warning"
+            :description="chatStore.demoMode.message || 'LLM 未连接，当前为离线降级链路'"
+            show-icon
+            :closable="false"
+            style="margin-bottom: 12px"
+          />
           <div class="quick-actions">
             <el-button
               v-for="item in quickActions"

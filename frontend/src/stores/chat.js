@@ -34,6 +34,7 @@ export const useChatStore = defineStore('chat', () => {
   const currentDagProgress = ref(null) // 当前RAG DAG进度
   const currentRouteInfo = ref(null) // 当前路由信息（method + 耗时）
   const uploadingImages = ref([])      // 待上传图片（base64列表）
+  const demoMode = ref({ active: false }) // 演示模式状态
 
   // ---- 计算属性 ----
   const messageCount = computed(() => messages.value.length)
@@ -168,6 +169,20 @@ export const useChatStore = defineStore('chat', () => {
             // 多源数据冲突检测
             messages.value[aiIdx].conflicts = data.conflicts || []
             debugLog('[ChatStore] onConflicts:', data.conflicts?.length, '处冲突')
+          },
+          onDemoMode: (data) => {
+            // 演示模式降级提示
+            demoMode.value = { active: true, ...data }
+            messages.value[aiIdx].demoMode = data
+            debugLog('[ChatStore] onDemoMode:', data.mode, data.reason)
+          },
+          onOrchestratorPlan: (data) => {
+            // 编排计划（含 demo_info）
+            messages.value[aiIdx].orchestratorPlan = data
+            if (data.demo_info) {
+              demoMode.value = { active: true, ...data.demo_info }
+            }
+            debugLog('[ChatStore] onOrchestratorPlan:', data.steps?.length, 'steps')
           },
           onDagProgress: (data) => {
             currentDagProgress.value = data
@@ -338,6 +353,7 @@ export const useChatStore = defineStore('chat', () => {
     clearChat,
     // 图片管理
     uploadingImages,
+    demoMode,
     addImages,
     removeImage,
     clearImages,
