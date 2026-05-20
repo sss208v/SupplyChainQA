@@ -78,7 +78,7 @@ cd frontend && npm install && npm run dev
 
 **默认测试命令：**
 ```bash
-cd backend && pytest tests/ -q -k "not integration"
+cd backend && venv\Scripts\python.exe -m pytest tests -q -k "not integration"
 ```
 
 **当前环境运行结果**（依赖已安装：`pip install -r requirements.txt`）：

@@ -65,8 +65,8 @@ PostgreSQL 做用户认证和工单写入（ACID 事务场景），SQLite 存工
 LangGraph 的 `graph.astream()` 内部执行引擎是 Python 闭包，`unittest.mock.patch` 无法穿透。
 
 **当前环境可运行测试**（需先 `pip install -r requirements.txt`）：
-- `pytest tests/ -q -k "not integration"` → 81 passed, 1 skipped（~26s）
-- `pytest tests/ -q` → 84 passed, 4 skipped（~66s，4 个集成测试因缺 Docker 服务跳过）
+- `venv\Scripts\python.exe -m pytest tests -q -k "not integration"` → 81 passed, 1 skipped（~26s）
+- `venv\Scripts\python.exe -m pytest tests -q` → 84 passed, 4 skipped（~66s，4 个集成测试因缺 Docker 服务跳过）
 
 **未安装依赖时**：pytest 可正常启动（`pytest.ini` 不含导入依赖），但测试收集阶段会因缺少 `langchain-core` 等包而失败。
 

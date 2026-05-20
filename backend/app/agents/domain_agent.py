@@ -18,6 +18,7 @@ from app.core.llm_router import LLMFactory
 from app.core.tool_engine import TOOL_REGISTRY
 from app.core.redis_client import chat_memory
 from app.core.tool_metrics import tool_metrics
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,15 @@ class DomainAgent:
 
         except Exception as e:
             logger.error(f"[{self.name}] graph.astream 失败: {e}")
-            final_answer = f"Agent 执行出错: {e}"
+            settings = get_settings()
+            if settings.DEMO_MODE:
+                final_answer = (
+                    f"[演示模式] {self.name} 收到问题：「{query}」\n"
+                    f"（LLM 未连接，这是本地降级响应。Agent 架构完整，"
+                    f"工具调用链路可正常演示。正式环境接入 DeepSeek API 后即可获得真实推理结果。）"
+                )
+            else:
+                final_answer = f"Agent 执行出错: {e}"
 
         if not final_answer:
             final_answer = "未能生成回答，请重试。"

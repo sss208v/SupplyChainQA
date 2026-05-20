@@ -104,7 +104,9 @@ class Settings(BaseSettings):
     CLIP_TOP_K: int = 3
     CLIP_DEVICE: str = "cpu"
 
-    # ---- Vision API（已弃用，文件保留）----
+    # ---- Demo 模式（面试安全路径）----
+    DEMO_MODE: bool = False          # 无LLM时返回本地fallback，不报Connection error
+    DEMO_SEED_USERS: bool = True     # 启动时自动创建演示账号
     VISION_ENABLED: bool = False
     VISION_PROVIDER: str = "minimax"
     VISION_MODEL: str = "MiniMax-Vision-01"

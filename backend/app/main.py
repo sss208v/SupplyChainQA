@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
         logger.info("✅ PostgreSQL连接成功")
     except Exception as e:
         logger.warning(f"⚠️ PostgreSQL连接失败: {e}（元数据功能不可用）")
-    # 4. 创建默认用户（在线程中执行，避免阻塞 uvicorn 事件循环）
+    # 4. 创建默认用户（受 DEMO_SEED_USERS 控制，仅用于演示环境）
     # 默认用户列表 — 格式: (用户名, 密码, 角色, 部门)
     default_users = [
         ("admin", "admin123", UserRole.ADMIN, "管理部"),
@@ -90,45 +90,48 @@ async def lifespan(app: FastAPI):
         ("warehouse", "warehouse123", UserRole.WAREHOUSE, "仓库部"),
     ]
 
-    try:
-        import asyncio as _asyncio
-        import threading
-        from sqlalchemy import select
-        from app.core.database import async_session
+    if settings.DEMO_SEED_USERS:
+        try:
+            import asyncio as _asyncio
+            import threading
+            from sqlalchemy import select
+            from app.core.database import async_session
 
-        async def _seed_users():
-            async with _asyncio.timeout(10):
-                async with async_session() as session:
-                    for username, password, role, dept in default_users:
-                        result = await session.execute(
-                            select(User).where(User.username == username)
-                        )
-                        if not result.scalar_one_or_none():
-                            user = User(
-                                username=username,
-                                password_hash=hash_password(password),
-                                role=role.value,
-                                department=dept,
+            async def _seed_users():
+                async with _asyncio.timeout(10):
+                    async with async_session() as session:
+                        for username, password, role, dept in default_users:
+                            result = await session.execute(
+                                select(User).where(User.username == username)
                             )
-                            session.add(user)
-                    await session.commit()
+                            if not result.scalar_one_or_none():
+                                user = User(
+                                    username=username,
+                                    password_hash=hash_password(password),
+                                    role=role.value,
+                                    department=dept,
+                                )
+                                session.add(user)
+                        await session.commit()
 
-        # 在新的事件循环中运行（不阻塞 uvicorn startup）
-        def _run_seed():
-            loop = _asyncio.new_event_loop()
-            try:
-                loop.run_until_complete(_seed_users())
-            except Exception:
-                pass
-            finally:
-                loop.close()
+            # 在新的事件循环中运行（不阻塞 uvicorn startup）
+            def _run_seed():
+                loop = _asyncio.new_event_loop()
+                try:
+                    loop.run_until_complete(_seed_users())
+                except Exception:
+                    pass
+                finally:
+                    loop.close()
 
-        t = threading.Thread(target=_run_seed, daemon=True)
-        t.start()
-        t.join(timeout=3)  # 最多等 3 秒
-        logger.info("✅ 默认用户初始化已触发")
-    except Exception as e:
-        logger.warning(f"⚠️ 创建默认用户失败: {e}")
+            t = threading.Thread(target=_run_seed, daemon=True)
+            t.start()
+            t.join(timeout=3)  # 最多等 3 秒
+            logger.info("✅ 默认用户初始化已触发")
+        except Exception as e:
+            logger.warning(f"⚠️ 创建默认用户失败: {e}")
+    else:
+        logger.info("ℹ️ DEMO_SEED_USERS=false，跳过默认账号创建")
 
     # 5. 连接 Neo4j 并同步图谱数据
     try:

@@ -104,8 +104,8 @@ async def register(body: RegisterRequest):
     """
     用户注册
 
-    新用户默认角色为employee（普通员工）
-    注册后自动登录返回Token
+    新用户默认角色为 purchase（采购部），与演示种子数据一致。
+    注册后自动登录返回Token。
     """
     async with async_session() as session:
         # 检查用户名是否已存在

@@ -59,12 +59,20 @@ class Orchestrator:
         self._plan_cache = {}  # 简单内存缓存
 
     async def plan(self, goal: str) -> dict:
-        """LLM 拆解目标为执行计划（优先 fast model，不可用时回退 main）"""
+        """LLM 拆解目标为执行计划（优先 fast model，不可用时回退 main，DEMO_MODE 下本地生成）"""
+        from app.config import get_settings
+        settings = get_settings()
+
         try:
             llm = LLMFactory.get_llm(temperature=0.1, model="fast")
         except Exception:
             logger.warning("[Orchestrator] fast model 不可用，回退 main model")
-            llm = LLMFactory.get_llm(temperature=0.1, model="main")
+            try:
+                llm = LLMFactory.get_llm(temperature=0.1, model="main")
+            except Exception:
+                if settings.DEMO_MODE:
+                    return self._demo_plan(goal)
+                raise
 
         messages = [
             SystemMessage(content=PLAN_SYSTEM_PROMPT),
@@ -253,6 +261,27 @@ class Orchestrator:
             "plan": plan,
             "execution": execution,
             "duration_ms": int(_t_total * 1000),
+        }
+
+    def _demo_plan(self, goal: str) -> dict:
+        """DEMO_MODE 下本地生成确定性执行计划（不依赖 LLM）"""
+        return {
+            "goal": goal,
+            "steps": [
+                {
+                    "step": 1,
+                    "agent": "purchase",
+                    "task": f"从采购知识库检索与「{goal}」相关的文档",
+                    "depends_on": [],
+                },
+                {
+                    "step": 2,
+                    "agent": "inventory",
+                    "task": f"检查与「{goal}」相关的库存数据",
+                    "depends_on": [1],
+                },
+            ],
+            "note": "[演示模式] 此为本地模板计划，LLM 未连接。正式环境由 DeepSeek 动态生成。",
         }
 
 
