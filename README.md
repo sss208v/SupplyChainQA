@@ -76,13 +76,22 @@ cd frontend && npm install && npm run dev
 
 ## 测试状态
 
+仓库包含 87 个测试函数，分布在 8 个测试文件中。
+
+**默认可运行测试**（不需要外部服务）：
 ```bash
 cd backend && pytest tests/ -q -k "not integration"
-# 84 passed, 4 skipped（3 个 Neo4j 集成测试 + 1 个 LangGraph 集成测试需真实服务/LLM）
-#
-# 运行条件：pytest-asyncio >= 0.23, asyncio_mode = auto（已配置在 pytest.ini）
-# 完整测试需：Docker 服务运行（Milvus/Redis/PostgreSQL/Neo4j）
+# 结果：81 passed, 1 skipped
 ```
+> 跳过的 1 个为 LangGraph 集成测试，需真实 LLM API。
+
+**集成测试**（需 Docker 服务 + LLM API key）：
+```bash
+cd backend && pytest tests/ -q
+# 结果：84 passed, 4 skipped（3 个 Neo4j 图查询 + 1 个 LangGraph 需真实后端服务）
+```
+
+> **运行条件**：`pytest-asyncio>=0.23.0`（已在 `requirements.txt` 中声明），`asyncio_mode=auto`（已在 `pytest.ini` 中配置）。
 
 ## 项目结构
 
