@@ -4,6 +4,17 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [vue()],
+  build: {
+    chunkSizeWarningLimit: 1200, // element-plus 单体包 ~1MB，为已知大库，不触发 warning
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/element-plus')) return 'element-plus'
+          if (id.includes('node_modules')) return 'vendor'
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
