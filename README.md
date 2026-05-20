@@ -76,22 +76,27 @@ cd frontend && npm install && npm run dev
 
 ## 测试状态
 
-仓库包含 87 个测试函数，分布在 8 个测试文件中。
-
-**默认可运行测试**（不需要外部服务）：
+**默认测试命令：**
 ```bash
 cd backend && pytest tests/ -q -k "not integration"
-# 结果：81 passed, 1 skipped
-```
-> 跳过的 1 个为 LangGraph 集成测试，需真实 LLM API。
-
-**集成测试**（需 Docker 服务 + LLM API key）：
-```bash
-cd backend && pytest tests/ -q
-# 结果：84 passed, 4 skipped（3 个 Neo4j 图查询 + 1 个 LangGraph 需真实后端服务）
 ```
 
-> **运行条件**：`pytest-asyncio>=0.23.0`（已在 `requirements.txt` 中声明），`asyncio_mode=auto`（已在 `pytest.ini` 中配置）。
+**当前环境运行结果**（依赖已安装：`pip install -r requirements.txt`）：
+
+| 命令 | 结果 | 耗时 |
+|------|------|------|
+| `pytest -q -k "not integration"` | 81 passed, 1 skipped, 6 deselected | ~26s |
+| `pytest -q`（含集成测试） | 84 passed, 4 skipped | ~66s |
+
+**测试分类**：87 个测试函数，分布在 8 个文件。
+
+| 类别 | 数量 | 说明 |
+|------|------|------|
+| 默认可跑 | 81 | 不需要外部服务，纯 Python 单元测试 |
+| 集成测试 | 6 | 标记 `@pytest.mark.integration`，需 Docker（Neo4j/Milvus/Redis）或 LLM API key |
+| 默认跳过 | 1 | LangGraph 集成测试，需真实 LLM |
+
+> **注意**：在未执行 `pip install -r requirements.txt` 的环境中，pytest 可正常启动（ini 无导入依赖），但测试收集阶段会因缺少 `langchain-core` 等包而失败。完整运行需确保 venv 中安装了全部依赖。
 
 ## 项目结构
 
