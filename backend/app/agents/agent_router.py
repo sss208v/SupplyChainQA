@@ -50,8 +50,23 @@ def get_agent_for_tool(tool_name: Optional[str] = None):
 
 
 def get_agent_by_name(name: str):
-    """按 Agent 类名获取实例"""
+    """按 Agent 类名或短名获取实例
+
+    支持完整类名（如 PurchaseAgent）和短名（如 purchase/inventory），
+    确保 Orchestrator demo plan 能路由到正确领域 Agent。
+    """
     name_lower = name.lower()
+
+    # 短名映射表
+    short_name_map = {
+        "purchase": "purchaseagent",
+        "inventory": "inventoryagent",
+        "quality": "qualityagent",
+        "production": "productionagent",
+    }
+    if name_lower in short_name_map:
+        name_lower = short_name_map[name_lower]
+
     for agent in ALL_DOMAIN_AGENTS:
         if agent.name.lower() == name_lower:
             return agent

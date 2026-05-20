@@ -14,9 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 条件跳过：未设置 RUN_LIVE_LLM_TESTS 时跳过所有 integration 测试
 LIVE_LLM = os.environ.get("RUN_LIVE_LLM_TESTS", "").lower() in ("1", "true", "yes")
+HAS_API_KEY = bool(os.environ.get("DEEPSEEK_API_KEY", "") or os.environ.get("MINIMAX_API_KEY", ""))
 skip_no_llm = pytest.mark.skipif(
-    not LIVE_LLM,
-    reason="需要 RUN_LIVE_LLM_TESTS=true 环境变量 + 有效 DeepSeek API key"
+    not (LIVE_LLM and HAS_API_KEY),
+    reason="需要 RUN_LIVE_LLM_TESTS=true 环境变量 + 有效 API key (DEEPSEEK_API_KEY 或 MINIMAX_API_KEY)"
 )
 
 

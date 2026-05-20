@@ -95,6 +95,9 @@ class Orchestrator:
                 return {"goal": goal, "steps": [], "error": "无法生成执行计划"}
         except Exception as e:
             logger.error(f"[Orchestrator] 计划生成失败: {e}")
+            if settings.DEMO_MODE:
+                logger.info("[Orchestrator] ainvoke 失败，回退 demo plan")
+                return self._demo_plan(goal)
             return {"goal": goal, "steps": [], "error": str(e)}
 
     async def execute(

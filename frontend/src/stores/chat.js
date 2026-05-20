@@ -297,6 +297,7 @@ export const useChatStore = defineStore('chat', () => {
     currentTokenUsage.value = null
     currentDagProgress.value = null
     streaming.value = false
+    demoMode.value = { active: false }
   }
 
   async function approveAction() {
