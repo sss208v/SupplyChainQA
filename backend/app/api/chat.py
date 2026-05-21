@@ -387,8 +387,10 @@ async def chat_stream(request: Request, body: ChatRequest):
 
         try:
             # 0. 生成全局 trace_id（Langfuse 可观测性）
-            from app.core.observability import get_trace_id, get_langfuse_url, is_enabled
+            from app.core.observability import get_trace_id, get_langfuse_url, is_enabled, get_langfuse_callback
             trace_id = get_trace_id()
+            langfuse_handler = get_langfuse_callback(trace_id=trace_id)
+            langfuse_callbacks = [langfuse_handler] if langfuse_handler else None
             if is_enabled():
                 yield _sse_format({
                     "type": "trace",
@@ -523,7 +525,7 @@ async def chat_stream(request: Request, body: ChatRequest):
                         ]
                         llm = LLMFactory.get_llm(temperature=0.3)
                         full_content = ""
-                        async for chunk in LLMFactory.astream(llm, messages):
+                        async for chunk in LLMFactory.astream(messages, callbacks=langfuse_callbacks):
                             content = chunk.content if hasattr(chunk, 'content') else str(chunk)
                             full_content += content
                             yield _sse_format({"type": "content", "content": content})
@@ -800,7 +802,7 @@ async def chat_stream(request: Request, body: ChatRequest):
 
                 full_content = ""
                 try:
-                    async for chunk in LLMFactory.astream(messages):
+                    async for chunk in LLMFactory.astream(messages, callbacks=langfuse_callbacks):
                         if chunk.content:
                             full_content += chunk.content
                             yield _sse_format({"type": "content", "content": chunk.content})
@@ -971,13 +973,64 @@ async def chat_stream(request: Request, body: ChatRequest):
                     yield "data: [DONE]\n\n"
                     return
 
-                agent = _get_tool_agent(body.agent_type, tool_name)
-                result = await agent.run(
-                    query=safe_query,
-                    tool_names=[tool_name] if tool_name else None,
-                    session_id=session_id,
-                    user_id=_user_id,
-                )
+                # ---- Redis 并发锁与幂等校验 (FIX-2) ----
+                lock_key = None
+                idempotent_key = None
+                from app.core.redis_client import redis_manager
+                if redis_manager.is_connected:
+                    import hashlib
+                    query_hash = hashlib.md5(safe_query.encode("utf-8")).hexdigest()[:8]
+                    lock_key = f"lock:tool:{tool_name}:{session_id}:{query_hash}"
+                    idempotent_key = f"idempotent:tool:{tool_name}:{session_id}:{query_hash}"
+
+                    # 1. 幂等校验
+                    if await redis_manager.check_idempotent(idempotent_key):
+                        logger.warning(f"[Idempotency] 检测到重复请求并成功拦截: {idempotent_key}")
+                        yield _sse_format({
+                            "type": "error",
+                            "message": "该操作已成功执行，请勿重复提交！",
+                        })
+                        yield _sse_format({
+                            "type": "content",
+                            "content": f"⚠️ **高并发幂等拦截**：系统检测到您已成功执行 **{tool_name}** 操作（该工单已创建），已自动拦截重复请求，防止脏数据写入数据库。",
+                        })
+                        yield "data: [DONE]\n\n"
+                        return
+
+                    # 2. 分布式锁竞争
+                    lock_acquired = await redis_manager.acquire_lock(lock_key, expire=15)
+                    if not lock_acquired:
+                        logger.warning(f"[RedisLock] 抢占分布式锁失败: {lock_key}")
+                        yield _sse_format({
+                            "type": "error",
+                            "message": "系统正在处理中，请稍候...",
+                        })
+                        yield _sse_format({
+                            "type": "content",
+                            "content": f"⚠️ **并发安全拦截**：检测到 **{tool_name}** 操作正在后台处理中，请勿频繁双击或并发重试。",
+                        })
+                        yield "data: [DONE]\n\n"
+                        return
+
+                try:
+                    agent = _get_tool_agent(body.agent_type, tool_name)
+                    run_kwargs = {
+                        "query": safe_query,
+                        "tool_names": [tool_name] if tool_name else None,
+                        "session_id": session_id,
+                        "user_id": _user_id,
+                    }
+                    if langfuse_callbacks:
+                        run_kwargs["callbacks"] = langfuse_callbacks
+                    result = await agent.run(**run_kwargs)
+
+                    # 3. 标记幂等成功
+                    if idempotent_key and redis_manager.is_connected:
+                        await redis_manager.mark_idempotent(idempotent_key, ttl=300)
+                finally:
+                    # 4. 确保释放锁
+                    if lock_key and redis_manager.is_connected:
+                        await redis_manager.release_lock(lock_key)
                 _t_gen = time.perf_counter() - _t2
 
                 # 发送工具调用结果

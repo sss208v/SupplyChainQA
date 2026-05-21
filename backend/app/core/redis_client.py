@@ -47,6 +47,11 @@ class RedisManager:
             raise RuntimeError("Redis未连接，请先调用connect()")
         return self._pool
 
+    @property
+    def is_connected(self) -> bool:
+        """检查 Redis 是否已连接"""
+        return self._pool is not None
+
     # ---- 分布式锁 ----
 
     async def acquire_lock(

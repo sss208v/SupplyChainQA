@@ -88,3 +88,39 @@ def get_langfuse_url(trace_id: str) -> str:
 def is_enabled() -> bool:
     """检查 Langfuse 是否已配置并可用"""
     return _get_langfuse() is not None and _get_langfuse() is not False
+
+
+def get_langfuse_callback(trace_id: str = None):
+    """获取 LangChain 专用的 Langfuse CallbackHandler
+
+    将 Langfuse Callback 注入 LangChain/LangGraph 的执行 config 中，
+    实现全链路 Trace 采集：Token 消耗、每步耗时、输入输出。
+
+    Args:
+        trace_id: 关联的 Trace ID，用于将多个 span 归入同一 Trace
+
+    Returns:
+        CallbackHandler 或 None（Langfuse 未配置/未安装时）
+    """
+    lf = _get_langfuse()
+    if not lf:
+        return None
+    try:
+        from langfuse.callback import CallbackHandler
+        from app.config import get_settings
+        settings = get_settings()
+        pk = getattr(settings, "LANGFUSE_PUBLIC_KEY", "") or ""
+        sk = getattr(settings, "LANGFUSE_SECRET_KEY", "") or ""
+        host = getattr(settings, "LANGFUSE_HOST", "https://cloud.langfuse.com")
+        return CallbackHandler(
+            public_key=pk,
+            secret_key=sk,
+            host=host,
+            trace_id=trace_id,
+        )
+    except ImportError:
+        logger.warning("[Langfuse] langfuse.callback 不可用，需 pip install langfuse")
+        return None
+    except Exception as e:
+        logger.warning("[Langfuse] 无法创建 CallbackHandler: %s", e)
+        return None

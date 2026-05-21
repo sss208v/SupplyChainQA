@@ -84,6 +84,7 @@ class LangChainAgent:
         query: str,
         tool_names: Optional[list[str]] = None,
         session_id: Optional[str] = None,
+        callbacks: Optional[list] = None,
     ) -> dict:
         """
         执行 LangChain Agent
@@ -155,9 +156,10 @@ class LangChainAgent:
             )
 
             # ---- 执行 Agent ----
-            result = await agent_executor.ainvoke({
-                "input": enhanced_query,
-            })
+            result = await agent_executor.ainvoke(
+                {"input": enhanced_query},
+                config={"callbacks": callbacks} if callbacks else None,
+            )
 
             # ---- 解析结果 ----
             answer = result.get("output", "")

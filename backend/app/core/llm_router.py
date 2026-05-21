@@ -157,10 +157,12 @@ class LLMFactory:
         messages: list[BaseMessage],
         provider: Optional[str] = None,
         temperature: float = 0.7,
+        callbacks: Optional[list] = None,
     ) -> tuple[BaseMessage, TokenUsage]:
         """异步调用LLM，返回(response, token_usage)，失败时指数退避重试"""
         llm = cls.get_llm(provider, temperature, streaming=False)
-        response = await llm.ainvoke(messages)
+        config = {"callbacks": callbacks} if callbacks else None
+        response = await llm.ainvoke(messages, config=config)
         provider_name = provider or settings.LLM_PROVIDER
         model_name = cls._get_model_name(provider_name)
         usage = cls._extract_token_usage(response, model_name, provider_name)
@@ -172,13 +174,15 @@ class LLMFactory:
         messages: list[BaseMessage],
         provider: Optional[str] = None,
         temperature: float = 0.7,
+        callbacks: Optional[list] = None,
     ) -> AsyncIterator:
         """[内部] 异步流式调用LLM（无 retry，由 astream 包装）"""
         llm = cls.get_llm(provider, temperature, streaming=True)
         provider_name = provider or settings.LLM_PROVIDER
         model_name = cls._get_model_name(provider_name)
         last_chunk = None
-        async for chunk in llm.astream(messages):
+        config = {"callbacks": callbacks} if callbacks else None
+        async for chunk in llm.astream(messages, config=config):
             last_chunk = chunk
             yield chunk
         # 流结束后，从最后一个chunk提取token用量
@@ -192,6 +196,7 @@ class LLMFactory:
         messages: list[BaseMessage],
         provider: Optional[str] = None,
         temperature: float = 0.7,
+        callbacks: Optional[list] = None,
     ) -> AsyncIterator:
         """异步流式调用LLM，pre-first-chunk 指数退避重试
 
@@ -199,7 +204,7 @@ class LLMFactory:
         如果第一个 token 已发出，后续异常不重试——避免前端收到重复内容。
         """
         async for chunk in retry_astream(
-            lambda: cls._raw_astream(messages, provider, temperature),
+            lambda: cls._raw_astream(messages, provider, temperature, callbacks=callbacks),
             max_attempts=3,
             base_delay=2.0,
             context_name="LLM astream",
