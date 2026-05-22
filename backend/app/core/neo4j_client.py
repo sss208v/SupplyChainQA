@@ -285,6 +285,52 @@ class Neo4jClient:
 
     # ---- Graph RAG：2-hop 子图上下文检索 ----
 
+    @staticmethod
+    def _normalize_entity(entity: str) -> str:
+        """实体拼写自愈归一化 (SuperPower-2)
+
+        将模糊输入归一化为标准实体编码，支持：
+        - MAT-OO1 / mat001 / MATOO1 → MAT-001（字母 O 纠正为数字 0）
+        - po20250101 → PO-20250101（补充缺失的连字符）
+        - MAT OO1（含空格）→ MAT-001
+
+        设计原则：防御性编程，无论上游正则提取质量如何，
+        此处做最后一层兜底归一化，保证 Neo4j Cypher 查询命中。
+        """
+        import re as _re
+        normalized = entity.strip().upper()
+
+        # 1. 去除中间空白（如 "MAT 001" → "MAT001"）
+        normalized = _re.sub(r'\s+', '', normalized)
+
+        # 2. 替换编码中字母 O/o 为数字 0（OCR/手误常见错误）
+        #    匹配：前缀字母 + 可选连字符 + 含 O 的"数字"部分
+        #    MAT-OO1 → MAT-001, MATOO1 → MAT001, SUP-OO1 → SUP-001
+        def _fix_letter_o(m: _re.Match) -> str:
+            prefix = m.group(1)  # 如 "MAT-" 或 "MAT"
+            suffix = m.group(2)  # 如 "OO1"
+            # 将后缀中的 O/o 替换为 0
+            fixed_suffix = ''.join('0' if c in ('O',) else c for c in suffix)
+            return prefix + fixed_suffix
+
+        normalized = _re.sub(
+            r'^(MAT|PO|SUP)(-?)([O0\d]+)$',
+            lambda m: m.group(1) + m.group(2) + ''.join(
+                '0' if c in ('O',) else c for c in m.group(3)
+            ),
+            normalized,
+        )
+
+        # 3. 补充缺失的连字符：MAT001 → MAT-001, PO20250101 → PO-20250101
+        normalized = _re.sub(r'^(MAT|PO|SUP)(\d)', r'\1-\2', normalized)
+
+        if normalized != entity.strip().upper():
+            logger.info(
+                f"[SelfHeal] 实体自愈归一化: '{entity.strip()}' → '{normalized}'"
+            )
+
+        return normalized
+
     async def get_2hop_subgraph_context(self, entity: str) -> str:
         """检索实体的 2-hop 关联子图，返回声明式自然语言描述
 
@@ -300,6 +346,9 @@ class Neo4jClient:
         """
         if not self._driver:
             return ""
+
+        # SuperPower-2: 实体拼写自愈归一化（O→0, 补连字符, 去空白）
+        entity = self._normalize_entity(entity)
 
         # 实体类型推断
         entity_type = "Material"

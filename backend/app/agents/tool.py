@@ -48,6 +48,7 @@ class ToolAgent:
     def __init__(self):
         self._tools: list = []
         self._graph = None
+        self._loop_call_history: list = []  # SuperPower-1: 死循环检测器，每次 run() 重置
 
     @property
     def name(self) -> str:
@@ -76,7 +77,7 @@ class ToolAgent:
             return {"messages": [response]}
 
         async def async_tool_node(state: AgentState) -> dict:
-            """异步工具执行节点 — 直接调 tool.ainvoke()"""
+            """异步工具执行节点 — 直接调 tool.ainvoke()，含自愈死循环检测 (SuperPower-1)"""
             messages = state["messages"]
             last_msg = messages[-1]
 
@@ -88,6 +89,36 @@ class ToolAgent:
                 tool_name = tc.get("name", "")
                 tool_args = tc.get("args", {})
                 tool_id = tc.get("id", "")
+
+                # ---- SuperPower-1: 死循环检测 ----
+                args_sig = json.dumps(tool_args, sort_keys=True, ensure_ascii=True)
+                current_sig = (tool_name, args_sig)
+                is_loop = any(
+                    prev[0] == tool_name and prev[1] == args_sig
+                    for prev in self._loop_call_history
+                )
+
+                if is_loop:
+                    logger.warning(
+                        f"[LoopBreaker] 检测到 Agent 陷入死循环: {tool_name}({tool_args})"
+                    )
+                    tool_messages.append(ToolMessage(
+                        content=(
+                            f"⚠️ [System Alert: Loop Detected] 系统检测到你正在重复调用 {tool_name} "
+                            f"并传入相同参数。这说明该数据源无法提供更多新数据。"
+                            f"请立刻终止调用此工具！请结合已有信息进行合理推论，"
+                            f"或调用 get_knowledge 获取背景文档，或者直接输出 Final Answer 给用户。"
+                        ),
+                        tool_call_id=tool_id, name=tool_name
+                    ))
+                    # 注入强烈的 System 提示，强制收敛
+                    tool_messages.append(SystemMessage(
+                        content="[System Lock] 必须在下一步输出 Final Answer，结束循环。"
+                    ))
+                    continue
+
+                self._loop_call_history.append(current_sig)
+                # ---- 死循环检测结束 ----
 
                 tool = tools_by_name.get(tool_name)
                 if not tool:
@@ -148,6 +179,9 @@ class ToolAgent:
         返回: {"answer": str, "tool_calls": list, "iterations": int}
         """
         messages = [HumanMessage(content=query)]
+
+        # SuperPower-1: 重置死循环检测器（每次推理独立）
+        self._loop_call_history = []
 
         if session_id and chat_memory:
             try:

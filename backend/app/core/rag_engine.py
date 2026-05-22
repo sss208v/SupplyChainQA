@@ -494,7 +494,8 @@ class RAGEngine:
             from app.core.neo4j_client import neo4j_client as _graph_client
             if _graph_client.is_connected:
                 import re as _re
-                entities = _re.findall(r'(MAT-\d+|PO-\d+|SUP-[A-Z]+)', query, _re.IGNORECASE)
+                # SuperPower-2: 扩展正则以捕获模糊实体编码（mat001, MAT-OO1, PO20250101 等）
+                entities = _re.findall(r'(MAT[-\s]?[O0\d]+|PO[-\s]?\d+|SUP[-\s]?[A-Z0-9]+)', query, _re.IGNORECASE)
                 if entities:
                     graph_statements = []
                     for entity in entities[:3]:  # 最多 3 个实体
