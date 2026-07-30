@@ -1,24 +1,44 @@
+# Supply Chain QA - ??????
+# ??: docker build -t supply-chain-qa-backend .
+# ??????????????????? Docker ????
+
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装系统依赖（embedding 模型需要）
+# ????
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖文件并安装
+# ??? requirements ?????????????????????
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制应用代码
+# ?? embedding ???????????????
+# ?? HuggingFace ???????????
+ARG HF_ENDPOINT=https://huggingface.co
+ENV HF_ENDPOINT=${HF_ENDPOINT}
+
+# ??? embedding ??
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-zh-v1.5')" 2>/dev/null || \
+    echo "Embedding model will be downloaded at first run"
+
+# ??????
 COPY app/ ./app/
+# 不将 .env 打入镜像（敏感信息通过 docker-compose environment 注入）
 
-# 数据目录（SQLite 模拟库）
-RUN mkdir -p /app/app/data
+# ??????
+RUN mkdir -p /app/app/data /app/uploads
 
-# 暴露端口
+# ? root ????????????
+RUN useradd -m -u 1000 supply-chain-qa && chown -R supply-chain-qa:supply-chain-qa /app
+USER supply-chain-qa
+
 EXPOSE 8001
 
-# 启动命令
+# ????
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
