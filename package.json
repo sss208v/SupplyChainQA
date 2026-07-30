@@ -1,0 +1,32 @@
+{
+  "name": "supply-chain-qa",
+  "version": "1.0.0",
+  "description": "面向制造业供应链场景的 RAG + Multi-Agent 智能问答系统。员工用自然语言提问，系统从知识库检索答案或调用业务系统查询实时数据——双链路驱动，无需切换多个后台。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "test:backend": "cd backend && python -m pytest tests -q -k \"not integration\" --no-cov",
+    "test:frontend": "cd frontend && npx vitest run",
+    "test": "npm run test:backend && npm run test:frontend"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JDKmark/supply-chain-qa.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/JDKmark/supply-chain-qa/issues"
+  },
+  "homepage": "https://github.com/JDKmark/supply-chain-qa#readme",
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.2.0",
+    "prettier": "^3.9.6"
+  }
+}

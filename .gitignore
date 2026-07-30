@@ -1,4 +1,8 @@
-# Python
+# ============================
+# Supply Chain QA - .gitignore
+# ============================
+
+# ---- Python ----
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,118 +12,121 @@ dist/
 build/
 *.egg
 venv/
+venv_wsl/
 .venv/
 env/
 
-# Node
+# ---- Coverage ----
+htmlcov/
+.coverage
+coverage.xml
+
+# ---- Node ----
 node_modules/
-dist/
 .nuxt/
 .output/
+.vite/
 
-# IDE
+# ---- IDE ----
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Environment
+# ---- Environment ----
 .env
 .env.local
 .env.*.local
 
-# OS
+# ---- OS ----
 .DS_Store
 Thumbs.db
 desktop.ini
+nul
 
-# Logs
+# ---- Logs ----
 *.log
 logs/
 
-# Docker volumes
+# ---- Docker volumes ----
 pgdata/
 redis-data/
-
-# Milvus data
 milvus-data/
 
-# Uploads
+# ---- Uploads ----
 uploads/*
 !uploads/.gitkeep
+backend/uploads/
 
-# Test artifacts
+# ---- Runtime user data & stray output dirs ----
+/data/
+backend/backend/
+
+# ---- Test artifacts ----
 test-results/
 playwright-report/
+frontend/tests/.auth/
 
-# Temporary scripts
-*.ps1
-!demo_start.ps1
+# ---- Database ----
+*.db
+backend/app/data/supply_chain.db
+
+# ---- Generated knowledge docs ----
+knowledge/supply_chain_comprehensive_data_manual.md
+
+# ---- Archive directories (iteration artifacts, not tracked) ----
+_archive/
+backend/_archive/
+backend/eval/_archive/
+
+# ---- Large binaries & models ----
+llama.cpp-cuda13/
+models/
+
+# ---- Goal tracking / AI tool artifacts ----
+.workbuddy/
+.codegraph/
+.claude/
+.qoder/
+.understand-anything/
+.hermes/
+.pytest_cache/
+.agents/
+.clawhub/
+.hf_home/
+skills/
+plan/
+docs/.agents/
+docs/.codebuddy/
+docs/.trae/
+docs/.uploads/
+docs/.workbuddy/
+docs/skills-lock.json
+GOAL_HERMES*.md
+PROJECT_SUMMARY.md
+TECHNICAL_DOCUMENTATION.md
+DEMO_SCRIPT.md
+
+# ---- Screenshots & misc ----
+*.png
+supply_chain_qa_cheatsheet.html
+skills-lock.json
+
+# ---- Misc exclusions ----
 *.tmp
 *.bak
 *.cache
 fix_chat*.py
 demo_queries.json
-smartqa_e2e.js
-
-# Development design docs (not project artifacts)
-DESIGN.md
-GOAL_HERMES.md
-
-# Root-level test scripts
-/test_*.py
-
-# Dead code (kept for reference)
-backend/app/core/vision.py
-
-# Eval tuning scripts (one-time runs, not project code)
-backend/eval/*.py
-backend/eval/*.json
-backend/eval/*.csv
-backend/eval/*.md
-backend/eval/tune_results.json
-
-# Generated data
-backend/app/data/supply_chain.db
-*.db
-
-# Local dev helpers
-backend/start_dev.bat
-
-# AI tool artifacts
-.workbuddy/
-PROJECT_SUMMARY.md
-TECHNICAL_DOCUMENTATION.md
-backend/eval/debug_ar.py
-
-# Uploaded files and test data
-backend/uploads/
-backend/eval/knowledge_base/
-backend/app/data/supply_chain.db
-backend/app/data/__pycache__/
-backend/drop_collection.py
-backend/test_*.py
-backend/run_backend.py
-backend/start.sh
-backend/upload_docs.py
-backend/eval/reset_milvus.py
-backend/eval/upload_all_knowledge.py
-backend/check_venv.py
-DEMO_SCRIPT.md
-!plan/DEMO_SCRIPT.md
-upload_knowledge.py
-rebuild_permissions.py
-rebuild_collection.py
-upload_knowledge.py
+scqa_e2e.js
 test_permissions.ps1
+rebuild_collection.py
 
-# Generated knowledge docs
-knowledge/supply_chain_comprehensive_data_manual.md
-
-# Goal tracking docs (not project artifacts)
-GOAL_HERMES_EVIDENCE_GRADING.md
-GOAL_HERMES_PHASE2.md
-GOAL_HERMES*.md
-.workbuddy/
-docs/ai_engineer_learning_path.md
+# ---- One-off scratch scripts (underscore convention & dead codemods) ----
+scripts/_*
+backend/eval/_*
+scripts/fix_dam_tfbs*.py
+scripts/update_java_docs.py
+scripts/rename_smartqa.py
+scripts/integrate_onboarding_tab.py

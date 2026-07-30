@@ -1,0 +1,8 @@
+# 1. Lint-staged: format staged files
+npx lint-staged
+
+# 2. Backend unit tests (skip integration tests)
+cd backend && python -m pytest tests -q -k "not integration" --no-cov && cd ..
+
+# 3. Frontend unit tests
+cd frontend && npx vitest run && cd ..
