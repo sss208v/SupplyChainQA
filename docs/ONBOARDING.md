@@ -181,27 +181,22 @@ BGE-Reranker 精排
 
 ### Day 2: 读懂 RAG 引擎
 
-1. 打开 `core/rag/engine.py:180-270`(已在 manual 中以 inline pre 显示)
-2. 跟着 sync 脚本,看每行代码从真实文件来
-3. 手动跑 `python scripts/sync_doc_snippets.py`,看 body pre 实时更新
+1. 打开 `core/rag/engine.py:180-270`
+2. 对照本文“Key Concepts”表格，把三路召回与 RRF 权重对应到代码段
 
 ### Day 3: 读懂三级路由
 
 1. 打开 `agents/router.py`
 2. 找到"规则 / 语义 / LLM"三段
-3. 读 manual Q4 + Q14,看怎么讲
 
-### Day 4+: 用 source-command-learn 模拟面试
+### Day 4+: 模拟面试
 
-- 我扮面试官,问项目问题(从 manual 64 条 Q&A 抽),你答
+- 我扮面试官,问项目问题,你答
 
 ---
 
 ## 8. 配套资源
 
-- `scripts/sync_doc_snippets.py` — 代码-文档同步脚本
-- `scripts/verify_doc_integrity.py` — 文档完整性验证
-- `scripts/check_doc_drift.py` — 引用漂移检测
 - `backend/tests/test_text_to_sql.py` — Text-to-SQL 测试(14 个用例)
 
 ---
