@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _ENDPOINT_LIMITS: dict[str, int] = {
     "/api/v1/chat/stream": 20,
     "/api/v1/chat/completions": 20,
-    "/api/v1/auth/login": 10,
+    "/api/v1/auth/login": 30,
     "/api/v1/auth/register": 10,
     "/api/v1/knowledge/upload": 10,
 }
@@ -114,6 +114,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             count = results[2]
             oldest = results[3]
             if count > limit:
+                # 超限时移除本次写入的 member：被拒请求不占窗口（与内存路径语义对齐，
+                # 否则重试会不断填满窗口导致锁死状态被持续续期）
+                await self._redis.client.zrem(key, member)
                 # Retry-After = 窗口内最老记录滑出所需时间
                 oldest_ts = oldest[0][1] if oldest else now
                 retry_after = max(1, int(oldest_ts + _WINDOW_SECONDS - now) + 1)

@@ -12,7 +12,7 @@ def test_classify_chat_endpoint():
 
 
 def test_classify_auth_endpoint():
-    assert _classify_endpoint("/api/v1/auth/login") == 10
+    assert _classify_endpoint("/api/v1/auth/login") == 30
 
 
 def test_classify_unknown_endpoint():
@@ -73,3 +73,42 @@ def test_memory_rate_limit_records_first_request():
 
     middleware._check_rate_memory("fresh:key", now, window_start, 10)
     assert len(middleware._memory_store["fresh:key"]) == 1
+
+
+async def test_redis_rate_limit_rejected_request_not_counted():
+    """Redis 路径超限时必须 zrem 本次写入：被拒请求不占窗口（旧实现会让重试不断续期锁死状态）"""
+    now = time.time()
+    redis_client = MagicMock()
+    redis_client.is_connected = True
+    pipe = MagicMock()
+    # pipeline 链式调用均为同步 mock，execute 返回 [zremrangebyscore, zadd, zcard, zrange, expire]
+    pipe.execute = AsyncMock(return_value=[0, 1, 11, [(b"m", now - 30)], True])
+    redis_client.client.pipeline.return_value = pipe
+    redis_client.client.zrem = AsyncMock()
+
+    middleware = RateLimitMiddleware(app=MagicMock(), redis_client=redis_client)
+    allowed, remaining, retry_after = await middleware._check_rate_redis("test:key", now, now - 60, 10)
+
+    assert allowed is False
+    assert remaining == 0
+    redis_client.client.zrem.assert_awaited_once()
+    # 最老记录在 30s 前，retry_after 应约为剩余窗口时长
+    assert 1 <= retry_after <= 61
+
+
+async def test_redis_rate_limit_allows_within_threshold():
+    """Redis 路径未超限时正常放行且不调 zrem"""
+    now = time.time()
+    redis_client = MagicMock()
+    redis_client.is_connected = True
+    pipe = MagicMock()
+    pipe.execute = AsyncMock(return_value=[0, 1, 3, [(b"m", now - 10)], True])
+    redis_client.client.pipeline.return_value = pipe
+    redis_client.client.zrem = AsyncMock()
+
+    middleware = RateLimitMiddleware(app=MagicMock(), redis_client=redis_client)
+    allowed, remaining, retry_after = await middleware._check_rate_redis("test:key", now, now - 60, 10)
+
+    assert allowed is True
+    assert remaining == 7
+    redis_client.client.zrem.assert_not_awaited()
