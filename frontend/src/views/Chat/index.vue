@@ -12,11 +12,30 @@
           新对话
         </el-button>
       </div>
+      <!-- 连接状态指示器 -->
+      <div v-if="chatStore.connectionStatus !== 'connected'" :class="['connection-bar', chatStore.connectionStatus]">
+        <span class="status-dot"></span>
+        <span class="status-text">
+          <template v-if="chatStore.connectionStatus === 'connecting'">正在连接...</template>
+          <template v-else-if="chatStore.connectionStatus === 'error'">连接异常：{{ chatStore.connectionError || '请检查后端服务' }}</template>
+          <template v-else-if="chatStore.connectionStatus === 'disconnected'">未连接</template>
+        </span>
+        <el-button
+          v-if="chatStore.connectionStatus === 'error' && chatStore.lastQuery"
+          size="small"
+          type="warning"
+          plain
+          @click="chatStore.retryLastMessage()"
+          :loading="chatStore.streaming"
+        >
+          重试
+        </el-button>
+      </div>
       <!-- 消息列表 -->
       <div class="message-list" ref="messageListRef">
         <!-- 欢迎消息 -->
         <div v-if="chatStore.messages.length === 0" class="welcome">
-          <el-icon :size="48" color="#409eff"><ChatDotRound /></el-icon>
+          <el-icon :size="48" color="#2563eb"><ChatDotRound /></el-icon>
           <h2>供应链智能助手</h2>
           <p>我可以帮你查询制度规范、库存订单、创建工单</p>
           <!-- 演示模式横幅 -->
@@ -154,8 +173,8 @@ watch(
     if (wasStreaming && !isStreaming && chatStore.sessionId) {
       const userMsgs = chatStore.messages.filter(m => m.role === 'user')
       const lastQuery = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].content : ''
-      if (window.__smartqa_addHistory) {
-        window.__smartqa_addHistory(chatStore.sessionId, lastQuery)
+      if (window.__scqa_addHistory) {
+        window.__scqa_addHistory(chatStore.sessionId, lastQuery)
       }
     }
   }
@@ -172,13 +191,16 @@ const quickActions = [
   { text: '安全库存的计算公式是什么？', icon: 'DataAnalysis' },
 ]
 
-function handleSend() {
+async function handleSend() {
   const query = inputText.value.trim()
   if (!query || chatStore.streaming) return
   inputText.value = ''
-  chatStore.sendMessage(query)
-  // 发送后清除图片
-  chatStore.clearImages()
+  try {
+    await chatStore.sendMessage(query)
+  } finally {
+    // 发送后清除图片（无论成功失败都执行）
+    chatStore.clearImages()
+  }
 }
 
 function handleQuickAction(text) {
@@ -244,11 +266,11 @@ watch(
   flex-direction: column;
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
   box-shadow: var(--shadow-surface);
   overflow: hidden;
 }
 
-/* 顶部操作栏 */
 .chat-header {
   display: flex;
   justify-content: flex-end;
@@ -263,7 +285,7 @@ watch(
   padding: var(--space-5) var(--space-6);
 }
 
-/* 欢迎界面 */
+/* Welcome screen */
 .welcome {
   display: flex;
   flex-direction: column;
@@ -271,13 +293,16 @@ watch(
   justify-content: center;
   height: 100%;
   color: var(--color-text-secondary);
+  animation: fadeIn 0.5s ease both;
 }
 
 .welcome h2 {
   margin-top: var(--space-4);
-  font-size: 22px;
-  font-weight: 700;
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 800;
   color: var(--color-text-primary);
+  letter-spacing: -0.02em;
 }
 
 .welcome p {
@@ -294,15 +319,26 @@ watch(
   justify-content: center;
 }
 
-/* 输入区域 */
+.quick-actions .el-button {
+  border-radius: var(--radius-full);
+  height: 40px;
+  padding: 0 20px;
+  transition: all var(--transition-base);
+}
+
+.quick-actions .el-button:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-raised);
+}
+
+/* Input area */
 .input-area {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-light);
   padding: var(--space-3) var(--space-5) var(--space-4);
   background: var(--color-bg-subtle);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
-/* 图片预览条 */
 .image-preview-bar {
   display: flex;
   gap: 8px;
@@ -319,7 +355,7 @@ watch(
   width: 64px;
   height: 64px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border-light);
 }
 
@@ -342,5 +378,132 @@ watch(
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+/* Connection status bar */
+.connection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+.connection-bar.connecting {
+  background: #fffbeb;
+  color: #d97706;
+}
+.connection-bar.error {
+  background: #fef2f2;
+  color: #dc2626;
+}
+.connection-bar.disconnected {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.connection-bar.connecting .status-dot {
+  background: #d97706;
+  animation: pulse 1s infinite;
+}
+.connection-bar.error .status-dot {
+  background: #dc2626;
+}
+.connection-bar.disconnected .status-dot {
+  background: var(--color-text-placeholder);
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.status-text {
+  flex: 1;
+}
+.connection-bar .el-button {
+  flex-shrink: 0;
+}
+
+/* ===== Mobile Responsive ===== */
+@media (max-width: 767px) {
+  .chat-container {
+    height: calc(100vh - 72px);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .chat-header {
+    padding: 6px 10px;
+  }
+
+  .chat-header .el-button {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  .message-list {
+    padding: 10px 8px;
+  }
+
+  .welcome h2 {
+    font-size: 18px;
+  }
+
+  .welcome p {
+    font-size: 13px;
+    padding: 0 20px;
+    text-align: center;
+  }
+
+  .quick-actions {
+    flex-direction: column;
+    width: 100%;
+    padding: 0 16px;
+  }
+
+  .quick-actions .el-button {
+    width: 100%;
+    justify-content: flex-start;
+    font-size: 13px;
+  }
+
+  .input-area {
+    padding: 8px 10px 10px;
+    border-radius: 0;
+  }
+
+  .input-wrapper {
+    max-width: 100%;
+  }
+
+  .input-actions {
+    gap: 6px;
+  }
+
+  .input-actions .el-button {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  .preview-thumb {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+/* Tablet */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .chat-container {
+    height: calc(100vh - 80px);
+  }
+
+  .input-wrapper {
+    max-width: 100%;
+  }
 }
 </style>

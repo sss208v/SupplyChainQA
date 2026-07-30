@@ -33,7 +33,7 @@
           size="small"
           @click="handleCopy"
         >
-          📋
+          复制
         </el-button>
         <!-- 意图标签 + 置信度决策 -->
         <div v-if="message.intent && message.content" class="intent-tag">
@@ -63,7 +63,7 @@
             effect="plain"
             round
           >
-            ⚡ 缓存命中
+            缓存命中
           </el-tag>
           <!-- CLIP 图像检索结果 -->
           <el-tag
@@ -73,7 +73,7 @@
             effect="plain"
             round
           >
-            🖼️ 图像检索: {{ message.imageSearch.count }}张 ({{ message.imageSearch.duration_ms }}ms)
+            图像检索: {{ message.imageSearch.count }}张 ({{ message.imageSearch.duration_ms }}ms)
           </el-tag>
           <el-tag
             v-if="message.confidence > 0"
@@ -102,7 +102,7 @@
             effect="plain"
             round
           >
-            🌐 Web搜索补充
+            Web搜索补充
           </el-tag>
           <!-- 演示模式标签 -->
           <el-tag
@@ -112,7 +112,7 @@
             effect="dark"
             round
           >
-            🎯 演示模式
+            演示模式
           </el-tag>
           <!-- Query复杂度分析标签 -->
           <el-tag
@@ -132,7 +132,7 @@
             effect="plain"
             round
           >
-            ⏱ {{ message.performanceMetrics.total_ms }}ms
+            {{ message.performanceMetrics.total_ms }}ms
             (路由{{ message.performanceMetrics.route_ms }}ms
             / 检索{{ message.performanceMetrics.search_ms }}ms
             / 生成{{ message.performanceMetrics.llm_ms }}ms)
@@ -165,7 +165,7 @@
         </div>
 
         <!-- 消息正文（支持Markdown） -->
-        <div class="message-text" v-html="renderedContent"></div>
+        <div :class="['message-text', { 'is-error': isErrorMessage }]" v-html="renderedContent"></div>
 
         <!-- 参考来源 -->
         <div v-if="message.sources && message.sources.length" class="sources">
@@ -180,6 +180,13 @@
             <el-tag type="info" size="small">{{ src.source || `来源 ${idx + 1}` }}</el-tag>
             <span class="source-text">{{ src.content?.slice(0, 100) }}...</span>
           </div>
+        </div>
+
+        <!-- 空来源提示：有回答但未检索到相关文档 -->
+        <div v-if="message.content && !message.streaming && (!message.sources || message.sources.length === 0) && !isErrorMessage" class="empty-sources">
+          <el-alert type="info" :closable="false" show-icon>
+            <template #title>未检索到相关文档，回答基于通用知识生成</template>
+          </el-alert>
         </div>
 
         <!-- RAG 流程 DAG 可视化（仅 RAG 类型意图时显示） -->
@@ -199,10 +206,10 @@
           </el-alert>
           <div class="approval-actions">
             <el-button type="primary" size="small" @click="handleApprove">
-              ✅ 确认执行
+              确认执行
             </el-button>
             <el-button size="small" @click="handleDeny">
-              ❌ 取消
+              取消
             </el-button>
           </div>
         </div>
@@ -210,7 +217,7 @@
         <!-- 澄清提问标记 -->
         <div v-if="message.clarify" class="clarify-tag">
           <el-tag type="info" size="small" effect="plain" round>
-            💬 需要补充信息
+            需要补充信息
           </el-tag>
         </div>
 
@@ -222,7 +229,7 @@
             show-icon
           >
             <template #title>
-              ⚠️ 检测到 {{ message.conflicts.length }} 处数据矛盾，已标注供参考
+              检测到 {{ message.conflicts.length }} 处数据矛盾，已标注供参考
             </template>
             <template #default>
               <div
@@ -246,7 +253,7 @@
             :disabled="feedbackGiven !== null"
             @click="submitFeedback(1)"
           >
-            👍
+            <el-icon><CircleCheck /></el-icon>
           </el-button>
           <el-button
             text
@@ -255,7 +262,7 @@
             :disabled="feedbackGiven !== null"
             @click="submitFeedback(-1)"
           >
-            👎
+            <el-icon><CircleClose /></el-icon>
           </el-button>
           <span v-if="feedbackGiven !== null" class="feedback-thanks">感谢反馈</span>
         </div>
@@ -278,20 +285,20 @@
 
 <script setup>
 /**
- * SmartQA Pro - 消息气泡组件
+ * Supply Chain QA - 消息气泡组件
  *
  * 1. 用户/AI消息的差异化展示：用户靠右蓝色，AI靠左灰色
  * 2. Markdown渲染：使用 marked 库将 AI 回复渲染为 HTML
  * 3. 工具调用折叠面板：展示 ReAct 循环的 Thought→Action→Observation
  * 4. 参考来源卡片：展示 RAG 检索命中的文档片段
- * 5. 用户反馈：👍👎 按钮收集用户满意度，支持优雅降级
+ * 5. 用户反馈：+1/-1 按钮收集用户满意度，支持优雅降级
  */
 import { computed, ref } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
 import { ElMessage } from 'element-plus'
-import { User, Monitor } from '@element-plus/icons-vue'
+import { User, Monitor, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { submitFeedback as apiSubmitFeedback } from '@/api/chat'
 import { useChatStore } from '@/stores/chat'
 import RagDag from './RagDag.vue'
@@ -323,6 +330,12 @@ function handleCopy() {
  */
 const feedbackGiven = ref(null)
 
+// 是否为错误消息（与 chat.js store 中的错误前缀一致）
+const isErrorMessage = computed(() => {
+  const content = props.message.content || ''
+  return content.startsWith('出错了：') || content.startsWith('请求失败：')
+})
+
 // 工具调用折叠状态（空数组 = 全部折叠，点击展开）
 const expandedTools = ref([])
 
@@ -340,10 +353,21 @@ const submitFeedback = async (rating) => {
   // 立即设置反馈状态，防止重复点击
   feedbackGiven.value = rating
 
+  // 从 chatStore 中找到当前 AI 消息之前的最后一条用户消息作为 query
+  const messages = chatStore.messages
+  const currentIdx = messages.findIndex(m => m.id === props.message.id)
+  let userQuery = ''
+  for (let i = currentIdx - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') {
+      userQuery = messages[i].content || ''
+      break
+    }
+  }
+
   try {
     await apiSubmitFeedback({
       session_id: props.message.sessionId || '',
-      query: '',
+      query: userQuery,
       answer: props.message.content || '',
       rating,
     })
@@ -363,6 +387,7 @@ const renderedContent = computed(() => {
     return DOMPurify.sanitize(rawHtml, {
       ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'a', 'span'],
       ALLOWED_ATTR: ['href', 'class', 'target'],
+      ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     })
   } catch {
     return props.message.content
@@ -375,6 +400,8 @@ const intentLabel = computed(() => {
     greeting: '问候',
     rag_answer: '知识库问答',
     tool_call: '工具调用',
+    graph_query: '图谱检索',
+    goal: '目标编排',
     hybrid: '混合',
     unclear: '意图不明',
   }
@@ -400,6 +427,8 @@ const intentTagType = computed(() => {
     greeting: '',
     rag_answer: 'success',
     tool_call: 'warning',
+    graph_query: 'primary',
+    goal: 'danger',
     hybrid: 'danger',
     unclear: 'info',
   }
@@ -425,9 +454,9 @@ const decisionLabel = computed(() => {
   const d = props.message.confidenceDecision
   if (!d) return ''
   const labels = {
-    direct: '✅ 直接回答',
-    rewrite: '🔄 改写重试',
-    web_search: '🌐 Web搜索',
+    direct: '直接回答',
+    rewrite: '改写重试',
+    web_search: 'Web搜索',
   }
   return labels[d.strategy] || d.strategy
 })
@@ -443,9 +472,9 @@ const queryAnalysisLabel = computed(() => {
   const a = props.message.queryAnalysis
   if (!a) return ''
   const strategyLabels = {
-    light: '⚡ 轻量检索',
-    standard: '🔍 标准检索',
-    full: '🔬 深度检索',
+    light: '轻量检索',
+    standard: '标准检索',
+    full: '深度检索',
   }
   const base = strategyLabels[a.strategy] || a.strategy
   return `${base} (${a.complexity.toFixed(2)})`
@@ -484,7 +513,7 @@ const queryAnalysisTagType = computed(() => {
 }
 
 .ai-avatar {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, #6366f1 100%);
 }
 
 .message-content {
@@ -583,18 +612,18 @@ const queryAnalysisTagType = computed(() => {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-placeholder);
 }
 
 .tool-call-detail {
   font-size: 12px;
-  color: #606266;
+  color: var(--color-text-secondary);
 }
 
 .tool-call-detail pre {
-  background: #fff;
+  background: var(--color-bg-subtle);
   padding: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow-x: auto;
   margin: 4px 0;
 }
@@ -605,17 +634,17 @@ const queryAnalysisTagType = computed(() => {
 }
 
 .message-text :deep(code) {
-  background: #e8eaec;
+  background: var(--color-code-inline-bg);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
 }
 
 .message-text :deep(pre) {
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: var(--color-code-bg);
+  color: var(--color-code-text);
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow-x: auto;
   margin: 8px 0;
 }
@@ -640,7 +669,7 @@ const queryAnalysisTagType = computed(() => {
 }
 
 .source-text {
-  color: #909399;
+  color: var(--color-text-placeholder);
   line-height: 1.4;
 }
 
@@ -671,7 +700,7 @@ const queryAnalysisTagType = computed(() => {
 
 /* 选中的反馈按钮高亮 */
 .feedback-bar .feedback-active {
-  color: #409eff !important;
+  color: var(--color-primary) !important;
   font-weight: bold;
   opacity: 1 !important;
 }
@@ -679,7 +708,7 @@ const queryAnalysisTagType = computed(() => {
 /* 感谢反馈提示文字 */
 .feedback-thanks {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-placeholder);
   margin-left: 4px;
 }
 
@@ -733,9 +762,9 @@ const queryAnalysisTagType = computed(() => {
   color: #8a6d10;
 }
 .conflict-values {
-  color: #f56c6c;
+  color: var(--color-danger);
   font-weight: 600;
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Token用量标签 */
@@ -744,7 +773,96 @@ const queryAnalysisTagType = computed(() => {
   gap: 4px;
   margin-top: 6px;
   font-size: 11px;
-  color: #b0b3b8;
-  font-family: 'SF Mono', 'Consolas', monospace;
+  color: var(--color-text-meta);
+  font-family: var(--font-mono);
+}
+
+/* ===== Mobile Responsive ===== */
+@media (max-width: 767px) {
+  .message-row {
+    gap: 8px;
+    padding: 4px 0;
+  }
+
+  .message-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .message-bubble {
+    max-width: calc(100vw - 70px);
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .message-bubble.user {
+    max-width: calc(100vw - 70px);
+  }
+
+  .message-content {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .message-content pre {
+    max-width: calc(100vw - 100px);
+    font-size: 12px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .message-content code {
+    font-size: 12px;
+    word-break: break-all;
+  }
+
+  .message-content table {
+    font-size: 11px;
+  }
+
+  .message-content table th,
+  .message-content table td {
+    padding: 4px 6px;
+  }
+
+  .sources-list {
+    font-size: 11px;
+  }
+
+  .source-item {
+    padding: 6px 8px;
+  }
+
+  .token-usage {
+    font-size: 10px;
+    flex-wrap: wrap;
+  }
+
+  .approval-actions {
+    flex-direction: column;
+  }
+
+  .approval-actions .el-button {
+    width: 100%;
+  }
+
+  .conflict-bar {
+    font-size: 12px;
+  }
+
+  .dag-progress-compact {
+    font-size: 11px;
+  }
+}
+
+/* Tablet */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .message-bubble {
+    max-width: 75%;
+  }
 }
 </style>

@@ -8,6 +8,11 @@ export default defineConfig({
     chunkSizeWarningLimit: 1200, // element-plus 单体包 ~1MB，为已知大库，不触发 warning
     rollupOptions: {
       output: {
+        // 产物文件名必须含 content hash：nginx 对静态资源设了 1 年 immutable 强缓存（L4），
+        // 依赖"内容变更即改名"保证发版后浏览器拉到新文件（vite 默认即此格式，此处显式固化）
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
         manualChunks(id) {
           if (id.includes('node_modules/element-plus')) return 'element-plus'
           if (id.includes('node_modules')) return 'vendor'
@@ -21,7 +26,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    host: true,  // 允许局域网访问（手机演示用）
+    port: 5173,
     allowedHosts: [
       '.ngrok-free.dev',
       '.ngrok-free.app',
@@ -29,6 +35,11 @@ export default defineConfig({
       'localhost',
     ],
     proxy: {
+      // 健康检查接口直接代理到后端
+      '/health': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
       // 代理API请求到后端FastAPI，避免CORS问题
       '/api': {
         target: 'http://localhost:8001',

@@ -1,5 +1,5 @@
 /**
- * SmartQA Pro - 对话状态管理
+ * Supply Chain QA - 对话状态管理
  *
  * 1. Pinia 是 Vue3 官方推荐的状态管理库，替代 Vuex
  * 2. defineStore 定义 store，useChatStore 在组件中使用
@@ -10,18 +10,25 @@
  *    - currentContent 拼接流式内容片段
  */
 import { defineStore } from 'pinia'
-import { chatStream, chatCompletions, cancelStream } from '@/api/chat'
+import { chatStream, cancelStream } from '@/api/chat'
 import { ref, computed } from 'vue'
 
 const debugLog = (...args) => {
   if (import.meta.env.DEV) console.log(...args)
 }
 
+// 递增计数器，用于生成唯一消息 ID（替代 Date.now() 避免碰撞）
+let nextMessageId = 1
+
 export const useChatStore = defineStore('chat', () => {
   // ---- 状态 ----
   const messages = ref([])          // 消息列表
   const sessionId = ref('')         // 当前会话ID
   const streaming = ref(false)      // 是否正在流式输出
+  const connectionStatus = ref('disconnected') // 连接状态
+  const connectionError = ref('')   // 连接错误信息
+  const lastQuery = ref('')         // 最后一次查询（用于重试）
+  const lastQueryOptions = ref({})  // 最后一次查询选项
   const currentContent = ref('')    // 当前流式拼接的内容
   const currentSources = ref([])    // 当前回答的参考来源
   const currentToolCalls = ref([])  // 当前回答的工具调用
@@ -57,16 +64,24 @@ export const useChatStore = defineStore('chat', () => {
 
     // 1. 添加用户消息
     messages.value.push({
-      id: Date.now(),
+      id: nextMessageId++,
       role: 'user',
       content: displayQuery,
       images: uploadingImages.value.length > 0 ? [...uploadingImages.value] : undefined,
       timestamp: new Date().toLocaleTimeString(),
     })
 
+    // 释放历史消息中的图片base64数据，防止内存泄漏
+    if (messages.value.length > 50) {
+      const oldMsg = messages.value[0]
+      if (oldMsg.images) {
+        oldMsg.images = undefined
+      }
+    }
+
     // 2. 创建AI消息占位
     messages.value.push({
-      id: Date.now() + 1,
+      id: nextMessageId++,
       role: 'assistant',
       content: '',
       sources: [],
@@ -83,6 +98,10 @@ export const useChatStore = defineStore('chat', () => {
 
     // 3. 开始流式接收
     streaming.value = true
+    connectionStatus.value = 'connecting'
+    connectionError.value = ''
+    lastQuery.value = query
+    lastQueryOptions.value = options
     currentContent.value = ''
     currentSources.value = []
     currentToolCalls.value = []
@@ -105,6 +124,7 @@ export const useChatStore = defineStore('chat', () => {
           onSession: (id) => {
             debugLog('[ChatStore] onSession:', id)
             sessionId.value = id
+            connectionStatus.value = 'connected'
           },
           onRoute: (data) => {
             debugLog('[ChatStore] onRoute:', data)
@@ -218,13 +238,21 @@ export const useChatStore = defineStore('chat', () => {
             messages.value[aiIdx].toolCalls = [...currentToolCalls.value]
           },
           onToolCall: (data) => {
-            currentToolCalls.value.push(data)
+            // 更新已有条目（onToolStatus 先 push 了 calling 状态）
+            const idx = currentToolCalls.value.findIndex(t => t.tool === data.tool && t.status === 'calling')
+            if (idx !== -1) {
+              currentToolCalls.value[idx] = { ...currentToolCalls.value[idx], ...data, status: 'done' }
+            } else {
+              currentToolCalls.value.push({ ...data, status: 'done' })
+            }
             messages.value[aiIdx].toolCalls = [...currentToolCalls.value]
           },
           onError: (msg) => {
             console.error('[ChatStore] onError:', msg)
             messages.value[aiIdx].content = `出错了：${msg}`
             messages.value[aiIdx].streaming = false
+            connectionStatus.value = 'error'
+            connectionError.value = msg
           },
           onDone: () => {
             debugLog(`[ChatStore] onDone — streaming关闭，currentContent长度=${currentContent.value.length}`)
@@ -243,47 +271,6 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * 发送消息（非流式，备用）
-   */
-  async function sendMessageSync(query) {
-    if (!query.trim()) return
-
-    messages.value.push({
-      id: Date.now(),
-      role: 'user',
-      content: query,
-      timestamp: new Date().toLocaleTimeString(),
-    })
-
-    try {
-      const res = await chatCompletions({
-        query,
-        session_id: sessionId.value || undefined,
-        stream: false,
-      })
-      sessionId.value = res.session_id
-      messages.value.push({
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: res.answer,
-        sources: res.sources || [],
-        toolCalls: res.tool_calls || [],
-        intent: res.intent,
-        confidence: res.confidence,
-        tokenUsage: res.token_usage || null,
-        timestamp: new Date().toLocaleTimeString(),
-      })
-    } catch (err) {
-      messages.value.push({
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: `请求失败：${err.message}`,
-        timestamp: new Date().toLocaleTimeString(),
-      })
-    }
-  }
-
-  /**
    * 清空对话
    */
   function clearChat() {
@@ -297,6 +284,8 @@ export const useChatStore = defineStore('chat', () => {
     currentTokenUsage.value = null
     currentDagProgress.value = null
     streaming.value = false
+    connectionStatus.value = 'disconnected'
+    connectionError.value = ''
     demoMode.value = { active: false }
   }
 
@@ -312,11 +301,24 @@ export const useChatStore = defineStore('chat', () => {
     const tool = pendingApproval.value.tool
     pendingApproval.value = null
     messages.value.push({
-      id: Date.now(),
+      id: nextMessageId++,
       role: 'assistant',
       content: `已取消 ${tool} 操作。`,
       timestamp: new Date().toLocaleTimeString(),
     })
+  }
+
+  /**
+   * 重试最后一条消息（断线重连）
+   */
+  async function retryLastMessage() {
+    if (!lastQuery.value) return
+    // 移除最后一条失败的 AI 消息
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.streaming !== false) {
+      messages.value.pop()
+    }
+    await sendMessage(lastQuery.value, lastQueryOptions.value)
   }
 
   /** 图片管理 */
@@ -341,6 +343,8 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     sessionId,
     streaming,
+    connectionStatus,
+    connectionError,
     currentContent,
     currentTokenUsage,
     currentConfidenceDecision,
@@ -348,10 +352,11 @@ export const useChatStore = defineStore('chat', () => {
     pendingApproval,
     messageCount,
     sendMessage,
-    sendMessageSync,
     approveAction,
     denyAction,
     clearChat,
+    retryLastMessage,
+    lastQuery,
     // 图片管理
     uploadingImages,
     demoMode,

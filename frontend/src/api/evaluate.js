@@ -1,5 +1,5 @@
 /**
- * SmartQA Pro - 评估 API 接口
+ * Supply Chain QA - 评估 API 接口
  */
 import request from './request'
 

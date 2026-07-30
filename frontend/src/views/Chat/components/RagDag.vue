@@ -174,31 +174,31 @@ function getNodeY(idx) {
 function getNodeFill(node) {
   switch (node.status) {
     case 'done':
-      return '#f0f9eb'
+      return '#f0fdf4'
     case 'running':
-      return '#ecf5ff'
+      return '#eff6ff'
     default:
-      return '#f5f7fa'
+      return '#f8f9fb'
   }
 }
 
 function getNodeStroke(node) {
   switch (node.status) {
     case 'done':
-      return '#67c23a'
+      return '#10b981'
     case 'running':
-      return '#409eff'
+      return '#2563eb'
     default:
-      return '#dcdfe6'
+      return '#e5e7eb'
   }
 }
 
 function getTextColor(node) {
   switch (node.status) {
     case 'done':
-      return '#67c23a'
+      return '#10b981'
     case 'running':
-      return '#409eff'
+      return '#2563eb'
     default:
       return '#c0c4cc'
   }
@@ -207,9 +207,9 @@ function getTextColor(node) {
 function getIconColor(node) {
   switch (node.status) {
     case 'done':
-      return '#67c23a'
+      return '#10b981'
     case 'running':
-      return '#409eff'
+      return '#2563eb'
     default:
       return '#c0c4cc'
   }
@@ -238,9 +238,9 @@ function formatDuration(node) {
 
 function getEdgeColor(edge) {
   const fromNode = dagNodes.value[edge.from]
-  if (fromNode?.status === 'done') return '#67c23a'
-  if (fromNode?.status === 'running') return '#409eff'
-  return '#dcdfe6'
+  if (fromNode?.status === 'done') return '#10b981'
+  if (fromNode?.status === 'running') return '#2563eb'
+  return '#e5e7eb'
 }
 
 function arrowPoints(edge) {
@@ -253,10 +253,10 @@ function arrowPoints(edge) {
 <style scoped>
 .rag-dag-wrapper {
   margin: 8px 0;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  background: #fff;
+  background: var(--color-bg-card);
 }
 
 .dag-toggle {
@@ -266,41 +266,41 @@ function arrowPoints(edge) {
   padding: 8px 14px;
   cursor: pointer;
   user-select: none;
-  background: #fafafa;
+  background: var(--color-bg-subtle);
   border-bottom: 1px solid transparent;
-  transition: background 0.2s;
+  transition: background var(--transition-base);
   font-size: 13px;
 }
 
 .dag-toggle:hover {
-  background: #f0f2f5;
+  background: var(--color-bg-hover);
 }
 
 .rag-dag-wrapper:has(.dag-container[style*="display"]) .dag-toggle {
-  border-bottom-color: #ebeef5;
+  border-bottom-color: var(--color-border-light);
 }
 
 .dag-toggle-icon {
   font-size: 10px;
-  color: #909399;
+  color: var(--color-text-placeholder);
   width: 14px;
   text-align: center;
-  transition: transform 0.2s;
+  transition: transform var(--transition-base);
 }
 
 .dag-toggle-label {
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .dag-toggle-status {
   margin-left: auto;
   font-size: 12px;
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 .dag-toggle-status.running {
-  color: #409eff;
+  color: var(--color-primary);
 }
 
 .dag-container {

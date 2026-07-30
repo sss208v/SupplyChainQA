@@ -5,8 +5,8 @@
         <el-col :span="8">
           <el-card shadow="hover">
             <div class="stat-card">
-              <div class="icon-wrap" style="background: rgba(64,158,255,0.1);">
-                <el-icon :size="28" color="#409eff"><Document /></el-icon>
+              <div class="icon-wrap icon-wrap--primary">
+                <el-icon :size="28" color="#2563eb"><Document /></el-icon>
               </div>
               <div>
                 <div class="stat-value">{{ knowledgeStore.stats.total_chunks }}</div>
@@ -18,8 +18,8 @@
         <el-col :span="8">
           <el-card shadow="hover">
             <div class="stat-card">
-              <div class="icon-wrap" style="background: rgba(103,194,58,0.1);">
-                <el-icon :size="28" color="#67c23a"><Cpu /></el-icon>
+              <div class="icon-wrap icon-wrap--success">
+                <el-icon :size="28" color="#10b981"><Cpu /></el-icon>
               </div>
               <div>
                 <div class="stat-value">{{ knowledgeStore.stats.embedding_model }}</div>
@@ -31,8 +31,8 @@
         <el-col :span="8">
           <el-card shadow="hover">
             <div class="stat-card">
-              <div class="icon-wrap" style="background: rgba(230,162,60,0.1);">
-                <el-icon :size="28" color="#e6a23c"><DataAnalysis /></el-icon>
+              <div class="icon-wrap icon-wrap--warning">
+                <el-icon :size="28" color="#f59e0b"><DataAnalysis /></el-icon>
               </div>
               <div>
                 <div class="stat-value">{{ knowledgeStore.stats.embedding_dimension }}</div>
@@ -101,7 +101,7 @@
             style="margin-left: 12px;"
           >
             <el-icon><Download /></el-icon>
-            📥 一键导入大厂供应链样本库
+            一键导入大厂供应链样本库
           </el-button>
         </div>
       </el-card>
@@ -270,6 +270,9 @@ function refreshList() {
   justify-content: center;
   flex-shrink: 0;
 }
+.icon-wrap--primary { background: rgba(37, 99, 235, 0.08); }
+.icon-wrap--success { background: rgba(16, 185, 129, 0.08); }
+.icon-wrap--warning { background: rgba(245, 158, 11, 0.08); }
 
 .stat-value {
   font-size: 24px;
@@ -325,4 +328,6 @@ function refreshList() {
 .doc-list-card {
   margin-bottom: var(--space-5);
 }
+
+@media (max-width: 767px) { .knowledge-page { padding: 0; } .knowledge-page .el-upload-dragger { width: 100%; padding: 20px 10px; } .knowledge-page .el-table { font-size: 12px; } .knowledge-page .el-table .cell { padding: 6px 4px; } }
 </style>

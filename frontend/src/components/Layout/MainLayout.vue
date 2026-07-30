@@ -1,7 +1,15 @@
 <template>
-  <el-container class="main-layout">
+  <!-- 登录页：不显示布局 -->
+  <router-view v-if="route.path === '/login'" />
+
+  <!-- 已登录：显示完整布局 -->
+  <el-container v-else class="main-layout">
     <!-- 侧边栏 -->
-    <el-aside :width="isCollapsed ? '64px' : '220px'" class="sidebar">
+        <!-- Mobile overlay -->
+    <div v-if="isMobile && mobileMenuOpen" class="mobile-overlay" @click="mobileMenuOpen = false" />
+    <el-aside
+      :class="{ 'mobile-sidebar': isMobile, 'mobile-sidebar-open': isMobile && mobileMenuOpen }"
+      :width="isCollapsed ? '64px' : '220px'" class="sidebar">
       <div class="logo">
         <el-icon :size="28"><Monitor /></el-icon>
         <span v-show="!isCollapsed" class="logo-text">供应链助手</span>
@@ -12,10 +20,14 @@
         :collapse="isCollapsed"
         router
         class="sidebar-menu"
-        background-color="#1d1e2c"
-        text-color="#a0a3bd"
-        active-text-color="#409eff"
+        background-color="transparent"
+        :text-color="'#9ca3af'"
+        :active-text-color="'#60a5fa'"
       >
+                <el-menu-item index="/dashboard">
+          <el-icon><Odometer /></el-icon>
+          <template #title>系统概览</template>
+        </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatDotRound /></el-icon>
           <template #title>智能对话</template>
@@ -82,6 +94,13 @@
     <el-container class="main-content">
       <el-header class="header">
         <div class="header-left">
+          <el-button
+            v-if="isMobile"
+            :icon="IconMenu"
+            text
+            class="mobile-menu-btn"
+            @click="mobileMenuOpen = !mobileMenuOpen"
+          />
           <h3>{{ currentPageTitle }}</h3>
         </div>
         <div class="header-right">
@@ -92,8 +111,7 @@
             style="width: 140px; margin-right: 12px"
             @change="onModelChange"
           >
-            <el-option label="DeepSeek" value="deepseek" />
-            <el-option label="MiniMax" value="minimax" />
+            <el-option label="llama.cpp (本地)" value="llamacpp" />
             <el-option label="Ollama" value="ollama" />
           </el-select>
           <el-tag
@@ -138,7 +156,7 @@
 
 <script setup>
 /**
- * SmartQA Pro - 主布局组件
+ * Supply Chain QA - 主布局组件
  *
  * 1. Element Plus 的 Container 布局：el-container + el-aside + el-header + el-main
  * 2. 侧边栏折叠：通过 isCollapsed 控制 el-aside 宽度和 el-menu 的 collapse 属性
@@ -146,7 +164,7 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Expand, Fold, ChatDotRound, Folder, SetUp, Monitor, CircleCheck, DataAnalysis, User, Link, WarningFilled } from '@element-plus/icons-vue'
+import { Expand, Fold, ChatDotRound, Folder, SetUp, Monitor, CircleCheck, DataAnalysis, User, Link, WarningFilled, Odometer, Menu as IconMenu } from '@element-plus/icons-vue'
 import { listModels, switchModel } from '@/api/chat'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
@@ -155,11 +173,13 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const isCollapsed = ref(false)
-const currentModel = ref('deepseek')
+const mobileMenuOpen = ref(false)
+const isMobile = ref(window.innerWidth < 768)
+const currentModel = ref('llamacpp')
 const backendOnline = ref(true)
 
 // ---- 对话历史 ----
-const HISTORY_KEY = 'smartqa_chat_history'
+const HISTORY_KEY = 'scqa_chat_history'
 const MAX_HISTORY = 20
 const chatHistory = ref([])
 
@@ -226,8 +246,14 @@ function truncate(str, len) {
 
 // 将 addHistoryEntry 挂到 window 上，方便 Chat 模块调用
 onMounted(() => {
+  window.addEventListener('resize', () => {
+    isMobile.value = window.innerWidth < 768
+    if (!isMobile.value) mobileMenuOpen.value = false
+  })
+  if (isMobile.value) isCollapsed.value = true
+
   loadHistory()
-  window.__smartqa_addHistory = addHistoryEntry
+  window.__scqa_addHistory = addHistoryEntry
 
   // 健康检查轮询（每 30 秒）
   async function checkHealth() {
@@ -268,7 +294,7 @@ async function onModelChange(provider) {
     ElMessage.success(res.message)
   } catch (e) {
     ElMessage.error(e.message || '切换失败')
-    currentModel.value = 'deepseek'
+    currentModel.value = 'llamacpp'
   }
 }
 
@@ -291,56 +317,84 @@ function openArchitecture() {
   height: 100vh;
 }
 
+/* ===== Sidebar ===== */
 .sidebar {
-  background: #1d1e2c;
-  transition: width 0.3s;
+  background: linear-gradient(180deg, var(--color-sidebar-bg) 0%, #0f1420 100%);
+  transition: width 0.3s var(--transition-slow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
+.sidebar-menu {
+  flex: 1;
+  border-right: none;
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: var(--color-sidebar-text);
+  --el-menu-active-color: var(--color-sidebar-active);
+  --el-menu-hover-bg-color: var(--color-sidebar-hover);
+}
+
+.sidebar-menu :deep(.el-menu-item) {
+  height: 44px;
+  line-height: 44px;
+  margin: 2px 8px;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-base);
+}
+
+.sidebar-menu :deep(.el-menu-item:hover) {
+  transform: translateX(2px);
+}
+
+.sidebar-menu :deep(.el-menu-item.is-active) {
+  background: rgba(37, 99, 235, 0.12) !important;
+  color: #60a5fa !important;
+  font-weight: 500;
+}
+
 .logo {
-  height: 60px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  color: #fff;
-  font-size: 18px;
-  font-weight: bold;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 10px;
+  color: #f9fafb;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  border-bottom: 1px solid var(--color-sidebar-border);
   flex-shrink: 0;
+}
+
+.logo :deep(.el-icon) {
+  color: var(--color-primary);
 }
 
 .logo-text {
   white-space: nowrap;
 }
 
-.sidebar-menu {
-  flex: 1;
-  border-right: none;
-}
-
 .sidebar-footer {
   padding: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--color-sidebar-border);
   text-align: center;
 }
 
 .collapse-btn {
-  color: #a0a3bd !important;
+  color: var(--color-sidebar-text) !important;
 }
 
 .arch-btn {
-  color: #a0a3bd !important;
+  color: var(--color-sidebar-text) !important;
   margin-left: 4px;
 }
 
 .arch-btn:hover {
-  color: #409eff !important;
+  color: var(--color-primary) !important;
 }
 
-/* 对话历史区域 */
+/* ===== History Section ===== */
 .history-section {
   flex-shrink: 0;
   max-height: 280px;
@@ -351,11 +405,11 @@ function openArchitecture() {
 
 .history-divider {
   margin: 8px 16px;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--color-sidebar-border);
 }
 
 .history-divider-text {
-  color: #6c6e7e;
+  color: var(--color-sidebar-meta);
   font-size: 11px;
   letter-spacing: 1px;
 }
@@ -371,7 +425,7 @@ function openArchitecture() {
 }
 
 .history-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 2px;
 }
 
@@ -381,13 +435,14 @@ function openArchitecture() {
   justify-content: space-between;
   padding: 8px 10px;
   margin-bottom: 2px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all var(--transition-base);
 }
 
 .history-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-sidebar-hover);
+  transform: translateX(2px);
 }
 
 .history-item-main {
@@ -406,57 +461,65 @@ function openArchitecture() {
 }
 
 .history-item-id {
-  color: #6c6e7e;
+  color: var(--color-sidebar-meta);
   font-size: 10px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   margin-top: 2px;
 }
 
 .history-item-time {
-  color: #6c6e7e;
+  color: var(--color-sidebar-meta);
   font-size: 10px;
   flex-shrink: 0;
   margin-left: 8px;
 }
 
 .history-empty {
-  color: #6c6e7e;
+  color: var(--color-sidebar-meta);
   font-size: 12px;
   text-align: center;
   padding: 12px 0;
 }
 
+/* ===== Main Content ===== */
 .main-content {
-  background: #f5f7fa;
+  background: var(--color-bg-page);
 }
 
 .header {
-  height: 56px;
-  background: #fff;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #e4e7ed;
-  box-shadow: 0 1px 0 #e4e7ed;
-  padding: 0 24px;
+  border-bottom: 1px solid var(--color-border-light);
+  padding: 0 var(--space-6);
   z-index: 100;
 }
 
 .header-left h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1a1f36;
+  font-family: var(--font-heading);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
   margin: 0;
 }
 
 .content {
-  padding: 20px;
+  padding: var(--space-6);
   overflow: auto;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
 }
 
 .user-dropdown {
   margin-left: 16px;
+}
+
+.user-dropdown :deep(.el-tooltip__trigger:focus-visible) {
+  outline: none;
 }
 
 .user-info {
@@ -465,11 +528,16 @@ function openArchitecture() {
   gap: 6px;
   cursor: pointer;
   font-size: 14px;
-  color: #303133;
+  color: var(--color-text-body);
+  transition: color var(--transition-fast);
+  border-radius: var(--radius-md);
+  padding: 4px 8px;
+  margin: -4px -8px;
 }
 
 .user-info:hover {
-  color: #409eff;
+  color: var(--color-primary);
+  background: var(--color-bg-hover);
 }
 
 .username {
@@ -478,5 +546,82 @@ function openArchitecture() {
 
 .dept-tag {
   margin-left: 4px;
+}
+
+/* ===== Mobile Responsive ===== */
+@media (max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 1001;
+    width: 260px !important;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .mobile-sidebar-open {
+    transform: translateX(0) !important;
+  }
+
+  .mobile-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+  }
+
+  .mobile-menu-btn {
+    margin-right: 8px;
+    font-size: 22px;
+    color: var(--color-text-body);
+    flex-shrink: 0;
+  }
+
+  .header {
+    padding: 0 12px !important;
+    height: 48px !important;
+  }
+
+  .header-left h3 {
+    font-size: 14px !important;
+  }
+
+  .header-right {
+    gap: 6px;
+  }
+
+  .header-right .el-select {
+    width: 100px !important;
+    margin-right: 4px !important;
+  }
+
+  .user-info .username {
+    display: none;
+  }
+
+  .dept-tag {
+    display: none;
+  }
+
+  .content {
+    padding: 12px !important;
+  }
+
+  .history-section {
+    max-height: 200px;
+  }
+}
+
+/* Tablet */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .header {
+    padding: 0 16px !important;
+  }
+
+  .content {
+    padding: 16px !important;
+  }
 }
 </style>

@@ -1,5 +1,5 @@
 /**
- * SmartQA Pro - 工具调用状态管理
+ * Supply Chain QA - 工具调用状态管理
  *
  * 管理工具注册表的可见性状态和工具调用记录：
  * - 工具列表（按角色过滤后）
@@ -64,7 +64,7 @@ export const useToolsStore = defineStore('tools', () => {
         iterations: res.iterations,
         error: null,
       }
-      // 记录到历史
+      // 记录到历史（上限 100 条，防内存泄漏）
       callHistory.value.unshift({
         id: Date.now(),
         tool: toolNames?.[0] || 'mixed',
@@ -72,6 +72,9 @@ export const useToolsStore = defineStore('tools', () => {
         result: testResult.value,
         timestamp: new Date().toLocaleTimeString(),
       })
+      if (callHistory.value.length > 100) {
+        callHistory.value = callHistory.value.slice(0, 100)
+      }
       return res
     } catch (e) {
       testResult.value = { answer: '', tool_calls: [], error: e.message }

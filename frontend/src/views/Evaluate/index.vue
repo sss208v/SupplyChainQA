@@ -150,10 +150,10 @@
         <el-descriptions :column="3" border>
           <el-descriptions-item label="总反馈数">{{ feedbackStats.total_feedback }}</el-descriptions-item>
           <el-descriptions-item label="好评数">
-            <el-tag type="success">👍 {{ feedbackStats.positive_count }}</el-tag>
+            <el-tag type="success">好评 {{ feedbackStats.positive_count }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="差评数">
-            <el-tag type="danger">👎 {{ feedbackStats.negative_count }}</el-tag>
+            <el-tag type="danger">差评 {{ feedbackStats.negative_count }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="满意度">
             <el-progress
@@ -181,72 +181,65 @@
     <el-card class="section-card">
       <template #header>
         <div class="card-header">
-          <span><el-icon><DataAnalysis /></el-icon> RAGAS 全量评估</span>
+          <span><el-icon><DataAnalysis /></el-icon> 官方 RAGAS 评估结果</span>
           <el-button
             type="primary"
             size="small"
             :loading="ragasLoading"
             @click="runRagasEval"
           >
-            <el-icon><DataAnalysis /></el-icon> 运行全量评估
+            <el-icon><DataAnalysis /></el-icon> 加载官方 RAGAS
           </el-button>
         </div>
       </template>
-      <p class="section-desc">基于黄金测试集（12条供应链QA）自动检索并计算三大指标</p>
+      <p class="section-desc">展示最近一次【官方 RAGAS】(ragas 0.4.3, LLM-as-Judge) 评测的四项指标（由 backend/eval/run_comprehensive_ragas.py 生成）</p>
 
-      <div v-if="ragasResult" class="ragas-result">
+      <div v-if="ragasResult && ragasResult.metrics" class="ragas-result">
         <div class="ragas-metrics">
           <div class="metric-card">
-            <div class="metric-label">Context Precision</div>
-            <div class="metric-value" :style="{ color: scoreColor(ragasResult.summary.avg_context_precision) }">
-              {{ (ragasResult.summary.avg_context_precision * 100).toFixed(1) }}%
-            </div>
-            <div class="metric-desc">检索准确率</div>
-          </div>
-          <div class="metric-card">
             <div class="metric-label">Faithfulness</div>
-            <div class="metric-value" :style="{ color: scoreColor(ragasResult.summary.avg_faithfulness) }">
-              {{ (ragasResult.summary.avg_faithfulness * 100).toFixed(1) }}%
+            <div class="metric-value" :style="{ color: scoreColor(ragasResult.metrics.faithfulness) }">
+              {{ (ragasResult.metrics.faithfulness * 100).toFixed(1) }}%
             </div>
             <div class="metric-desc">忠实度/防幻觉</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Answer Relevance</div>
-            <div class="metric-value" :style="{ color: scoreColor(ragasResult.summary.avg_answer_relevance) }">
-              {{ (ragasResult.summary.avg_answer_relevance * 100).toFixed(1) }}%
+            <div class="metric-label">Answer Relevancy</div>
+            <div class="metric-value" :style="{ color: scoreColor(ragasResult.metrics.answer_relevancy) }">
+              {{ (ragasResult.metrics.answer_relevancy * 100).toFixed(1) }}%
             </div>
             <div class="metric-desc">回答相关性</div>
           </div>
+          <div class="metric-card">
+            <div class="metric-label">Context Precision</div>
+            <div class="metric-value" :style="{ color: scoreColor(ragasResult.metrics.context_precision) }">
+              {{ (ragasResult.metrics.context_precision * 100).toFixed(1) }}%
+            </div>
+            <div class="metric-desc">检索准确率</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Context Recall</div>
+            <div class="metric-value" :style="{ color: scoreColor(ragasResult.metrics.context_recall) }">
+              {{ (ragasResult.metrics.context_recall * 100).toFixed(1) }}%
+            </div>
+            <div class="metric-desc">检索召回率</div>
+          </div>
           <div class="metric-card metric-card-overall">
             <div class="metric-label">Overall</div>
-            <div class="metric-value" :style="{ color: scoreColor(ragasResult.summary.avg_overall) }">
-              {{ (ragasResult.summary.avg_overall * 100).toFixed(1) }}%
+            <div class="metric-value" :style="{ color: scoreColor(ragasResult.overall) }">
+              {{ (ragasResult.overall * 100).toFixed(1) }}%
             </div>
             <div class="metric-desc">综合得分</div>
           </div>
         </div>
         <div class="ragas-info">
-          <el-tag size="small">{{ ragasResult.summary.total_queries }} 条测试用例</el-tag>
-          <el-tag size="small" type="info">耗时 {{ ragasResult.summary.total_time_ms }}ms</el-tag>
+          <el-tag size="small" type="success">官方 ragas 0.4.3 (LLM-as-Judge)</el-tag>
+          <el-tag size="small">judge: {{ ragasResult.judge_model || 'N/A' }}</el-tag>
+          <el-tag size="small" type="info">{{ ragasResult.samples }} 条样本</el-tag>
+          <el-tag size="small" type="info">{{ ragasResult.date || '' }}</el-tag>
         </div>
-        <el-collapse v-if="ragasResult.summary.details" class="ragas-details">
-          <el-collapse-item title="查看详细结果" name="details">
-            <div v-for="d in ragasResult.summary.details" :key="d.id" class="ragas-detail-item">
-              <div class="detail-query">
-                <el-tag size="mini" type="info">{{ d.id }}</el-tag>
-                <span>{{ d.query }}</span>
-              </div>
-              <div class="detail-scores">
-                <span>CP: {{ (d.context_precision * 100).toFixed(0) }}%</span>
-                <span>Faith: {{ (d.faithfulness * 100).toFixed(0) }}%</span>
-                <span>AR: {{ (d.answer_relevance * 100).toFixed(0) }}%</span>
-                <span>Overall: {{ (d.overall * 100).toFixed(0) }}%</span>
-              </div>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
       </div>
-      <el-empty v-else-if="!ragasLoading" description="点击「运行全量评估」对12条黄金测试集执行评估" />
+      <el-empty v-else-if="!ragasLoading" description="点击「加载官方 RAGAS」显示最近一次官方评测结果（需先运行 backend/eval/run_comprehensive_ragas.py 生成）" />
     </el-card>
 
     <!-- LLM-as-Judge -->
@@ -312,8 +305,8 @@
     <el-card class="section-card">
       <template #header>
         <div class="card-header">
-          <span>📊 RAGAS 评估雷达图</span>
-          <el-tag size="small" type="info">基于 backend/eval/eval_ragas_result_full_sc.json</el-tag>
+          <span>RAGAS 评估雷达图</span>
+          <el-tag size="small" type="info">官方 RAGAS (ragas 0.4.3, DeepSeek judge, 20条)</el-tag>
         </div>
       </template>
       <div ref="radarChartRef" style="width:100%;height:400px"></div>
@@ -323,8 +316,8 @@
     <el-card class="section-card">
       <template #header>
         <div class="card-header">
-          <span>🔬 RAG 检索诊断白盒</span>
-          <el-tag size="small" type="warning">向量分 vs BM25分 → 融合分 → 精排分</el-tag>
+          <span>RAG 检索诊断白盒</span>
+          <el-tag size="small" type="warning">示例：向量分 vs BM25分 → 融合分 → 精排分</el-tag>
         </div>
       </template>
       <div ref="diagnosisChartRef" style="width:100%;height:350px"></div>
@@ -499,9 +492,10 @@ async function runRagasEval() {
     const res = await runFullEvaluation()
     if (res.success) {
       ragasResult.value = res
-      ElMessage.success(`RAGAS 评估完成: CP=${(res.summary.avg_context_precision * 100).toFixed(1)}%, Faith=${(res.summary.avg_faithfulness * 100).toFixed(1)}%`)
+      const m = res.metrics || {}
+      ElMessage.success(`官方 RAGAS(judge=${res.judge_model || 'N/A'}): F=${(m.faithfulness * 100).toFixed(1)}% / AR=${(m.answer_relevancy * 100).toFixed(1)}%`)
     } else {
-      ElMessage.error(res.error || '评估失败')
+      ElMessage.warning(res.error || '暂无官方 RAGAS 结果')
     }
   } catch (e) {
     ElMessage.error('全量评估失败: ' + (e.message || e))
@@ -512,9 +506,9 @@ async function runRagasEval() {
 
 // ---- 辅助函数 ----
 function scoreColor(score) {
-  if (score >= 0.8) return '#67c23a'
-  if (score >= 0.5) return '#e6a23c'
-  return '#f56c6c'
+  if (score >= 0.8) return '#10b981'
+  if (score >= 0.5) return '#f59e0b'
+  return '#ef4444'
 }
 
 function scoreType(score) {
@@ -563,7 +557,7 @@ async function initRadarChart() {
   const option = {
     title: { text: 'RAGAS 四大核心指标', left: 'center', textStyle: { fontSize: 14, color: '#303133' } },
     tooltip: {},
-    legend: { data: ['当前版本 (v2.3)'], bottom: 0 },
+    legend: { data: ['官方 RAGAS'], bottom: 0 },
     radar: {
       indicator: [
         { name: 'Context Precision\n检索准确率', max: 1 },
@@ -577,11 +571,21 @@ async function initRadarChart() {
       type: 'radar',
       name: 'RAGAS Scores',
       data: [{
-        value: [0.67, 0.74, 0.64, 0.60],
-        name: '当前版本 (v2.3)',
-        areaStyle: { color: 'rgba(64,158,255,0.15)' },
-        lineStyle: { color: '#409eff', width: 2 },
-        itemStyle: { color: '#409eff' },
+        value: [0.693, 0.803, 0.839, 0.825],
+        name: '官方 RAGAS',
+        areaStyle: { color: 'rgba(37,99,235,0.15)' },
+        lineStyle: { color: '#2563eb', width: 2 },
+        itemStyle: { color: '#2563eb' },
+        label: {
+          show: true,
+          distance: 15,
+          formatter: function(params) {
+            return (params.value * 100).toFixed(1) + '%';
+          },
+          color: '#2563eb',
+          fontSize: 12,
+          fontWeight: 600,
+        },
       }],
     }],
   }
@@ -608,10 +612,10 @@ async function initDiagnosisChart() {
     xAxis: { type: 'category', data: chunks, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: 'Score', max: 1 },
     series: [
-      { name: '向量检索分', type: 'bar', data: vectorScores, itemStyle: { color: '#409eff' }, barGap: '10%' },
-      { name: 'BM25分', type: 'bar', data: bm25Scores, itemStyle: { color: '#67c23a' } },
-      { name: 'RRF融合分', type: 'line', data: fusionScores, lineStyle: { color: '#e6a23c', width: 2 }, symbol: 'diamond' },
-      { name: 'Reranker精排分', type: 'line', data: rerankScores, lineStyle: { color: '#f56c6c', width: 2.5 }, symbol: 'circle' },
+      { name: '向量检索分', type: 'bar', data: vectorScores, itemStyle: { color: '#2563eb' }, barGap: '10%' },
+      { name: 'BM25分', type: 'bar', data: bm25Scores, itemStyle: { color: '#10b981' } },
+      { name: 'RRF融合分', type: 'line', data: fusionScores, lineStyle: { color: '#f59e0b', width: 2 }, symbol: 'diamond' },
+      { name: 'Reranker精排分', type: 'line', data: rerankScores, lineStyle: { color: '#ef4444', width: 2.5 }, symbol: 'circle' },
     ],
     grid: { top: 50, bottom: 40 },
   }
@@ -672,29 +676,42 @@ async function initDiagnosisChart() {
   flex: 1;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-light);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   text-align: center;
+  transition: all var(--transition-base);
 }
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-raised);
+}
+
 .metric-card-overall {
-  background: #f0f9ff;
-  border-color: #b3d8ff;
+  background: var(--color-primary-light);
+  border-color: rgba(37, 99, 235, 0.15);
 }
+
 .metric-label {
+  font-family: var(--font-heading);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #909399;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
 }
+
 .metric-value {
+  font-family: var(--font-heading);
   font-size: 28px;
   font-weight: 700;
   margin-bottom: 4px;
 }
+
 .metric-desc {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-placeholder);
 }
 .ragas-info {
   display: flex;
@@ -716,6 +733,8 @@ async function initDiagnosisChart() {
   display: flex;
   gap: 12px;
   font-size: 12px;
-  color: #606266;
+  color: var(--color-text-secondary);
 }
+
+@media (max-width: 767px) { .evaluate-page { padding: 0; } .evaluate-page .el-card { margin-bottom: 10px; } .evaluate-page .el-row { flex-direction: column; } .evaluate-page .el-col { max-width: 100%; flex: 0 0 100%; margin-bottom: 10px; } .evaluate-page .el-table { font-size: 11px; } }
 </style>

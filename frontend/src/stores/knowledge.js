@@ -1,5 +1,5 @@
 /**
- * SmartQA Pro - 知识库状态管理
+ * Supply Chain QA - 知识库状态管理
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -21,6 +21,9 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     try {
       const res = await getDocumentList()
       documents.value = res.documents || []
+    } catch (e) {
+      console.error('获取文档列表失败', e)
+      documents.value = []
     } finally {
       loading.value = false
     }

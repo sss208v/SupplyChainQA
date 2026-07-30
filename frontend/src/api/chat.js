@@ -1,5 +1,5 @@
 /**
- * SmartQA Pro - 对话 API 接口
+ * Supply Chain QA - 对话 API 接口
  *
  *
  * 1. SSE vs WebSocket：
@@ -46,13 +46,6 @@ export function listModels() {
  */
 export function switchModel(provider) {
   return request.post(`${API_PREFIX}/chat/model/switch`, { provider })
-}
-
-/**
- * 非流式对话
- */
-export function chatCompletions(data) {
-  return request.post(`${API_PREFIX}/chat/completions`, data)
 }
 
 /**

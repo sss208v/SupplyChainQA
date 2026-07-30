@@ -1,7 +1,7 @@
 <template>
   <div class="tools-page">
     <div class="tools-header">
-      <h2>🔧 工具管理</h2>
+      <h2>工具管理</h2>
       <p class="tools-subtitle">供应链工具注册表 · 基于 ReAct 模式调用</p>
     </div>
 
@@ -177,7 +177,7 @@ import {
   VideoPlay, SetUp, Refresh, Box,
   OfficeBuilding, List, Top, Bottom,
 } from '@element-plus/icons-vue'
-import { getToolList, callTool } from '@/api/tool'
+import { getToolList, getToolSchemas, callTool } from '@/api/tool'
 
 const tools = ref([])
 const activeTool = ref(null)
@@ -187,59 +187,48 @@ const testInputs = ref({})
 const testResult = ref(null)
 const testLoading = ref(false)
 
-// 工具图标
+// 工具图标（未知工具回退 SetUp 默认图标）
 const iconMap = {
   query_inventory: markRaw(Box),
   query_order: markRaw(List),
   create_ticket: markRaw(OfficeBuilding),
   get_datetime: markRaw(Clock),
   get_knowledge: markRaw(Reading),
+  query_supplier: markRaw(OfficeBuilding),
+  track_logistics: markRaw(Cloudy),
+  calculate_reorder_point: markRaw(DataAnalysis),
+  web_search: markRaw(Cloudy),
+  calculator: markRaw(DataAnalysis),
+  code_interpreter: markRaw(SetUp),
 }
 const colorMap = {
-  query_inventory: '#409eff',
-  query_order: '#67c23a',
-  create_ticket: '#e6a23c',
-  get_datetime: '#909399',
-  get_knowledge: '#f56c6c',
+  query_inventory: '#2563eb',
+  query_order: '#10b981',
+  create_ticket: '#f59e0b',
+  get_datetime: '#6b7280',
+  get_knowledge: '#ef4444',
+  query_supplier: '#8b5cf6',
+  track_logistics: '#0ea5e9',
+  calculate_reorder_point: '#14b8a6',
+  web_search: '#6366f1',
+  calculator: '#f97316',
+  code_interpreter: '#64748b',
 }
 
-// 工具输入 Schema（从代码中提取）
-const toolSchemas = {
-  query_inventory: {
-    inputs: [
-      { name: 'material_code', type: 'str', description: '物料编码（如 MAT-001）' },
-    ],
-    output: '{ material_code, name, quantity, unit, safety_stock, status }',
-    type: '数据查询',
-  },
-  query_order: {
-    inputs: [
-      { name: 'order_id', type: 'str', description: '采购订单号（如 PO-20250101）' },
-    ],
-    output: '{ order_id, supplier, status, items, total_amount, expected_date }',
-    type: '数据查询',
-  },
-  create_ticket: {
-    inputs: [
-      { name: 'title', type: 'str', description: '工单标题' },
-      { name: 'description', type: 'str', description: '工单详细描述' },
-      { name: 'priority', type: 'str', description: '优先级（高/中/低）' },
-    ],
-    output: '{ ticket_id, title, status, created_at }',
-    type: '操作执行',
-  },
-  get_datetime: {
-    inputs: [],
-    output: '当前时间字符串 (YYYY-MM-DD HH:MM:SS)',
-    type: '系统工具',
-  },
-  get_knowledge: {
-    inputs: [
-      { name: 'query', type: 'str', description: '查询关键词' },
-    ],
-    output: '知识库检索结果文本',
-    type: '数据查询',
-  },
+// 工具分类标签（仅展示用途；输入 Schema 不再硬编码，改由
+// GET /api/v1/tools/schema 从后端 TOOL_REGISTRY 动态拉取）
+const toolTypeMap = {
+  query_inventory: '数据查询',
+  query_order: '数据查询',
+  create_ticket: '操作执行',
+  get_datetime: '系统工具',
+  get_knowledge: '数据查询',
+  query_supplier: '数据查询',
+  track_logistics: '数据查询',
+  calculate_reorder_point: '智能计算',
+  web_search: '通用工具',
+  calculator: '通用工具',
+  code_interpreter: '通用工具',
 }
 
 function toolIcon(name) {
@@ -251,7 +240,7 @@ function toolColor(name) {
 }
 
 function toolType(name) {
-  return toolSchemas[name]?.type || '自定义'
+  return toolTypeMap[name] || '自定义'
 }
 
 // 角色中文映射
@@ -286,12 +275,13 @@ function roleColor(role) {
 
 async function fetchTools() {
   try {
-    const res = await getToolList()
-    // 合并 Schema 信息
+    // 并行拉取工具列表 + 后端动态生成的输入 Schema（单一事实来源）
+    const [res, schemaRes] = await Promise.all([getToolList(), getToolSchemas()])
+    const schemas = schemaRes.schemas || {}
     tools.value = (res.tools || []).map(t => ({
       ...t,
-      inputs: toolSchemas[t.name]?.inputs || [],
-      output: toolSchemas[t.name]?.output || 'JSON',
+      inputs: schemas[t.name]?.inputs || [],
+      output: 'JSON',
     }))
   } catch (err) {
     ElMessage.error('获取工具列表失败')
@@ -350,8 +340,10 @@ onMounted(fetchTools)
 }
 
 .tools-header h2 {
-  font-size: 22px;
+  font-family: var(--font-heading);
+  font-size: 24px;
   font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--color-text-primary);
   margin-bottom: 4px;
 }
@@ -371,21 +363,23 @@ onMounted(fetchTools)
 /* 工具节点卡片 */
 .tool-node {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
   padding: var(--space-5);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: all var(--transition-base);
 }
 
 .tool-node:hover {
   border-color: var(--color-primary);
   box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
 }
 
 .tool-node--active {
   border-color: var(--color-primary);
   background: var(--color-primary-light);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
 }
 
 /* 节点头部 */
@@ -416,9 +410,9 @@ onMounted(fetchTools)
 }
 
 .node-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -653,4 +647,6 @@ onMounted(fetchTools)
   word-break: break-all;
   font-family: var(--font-mono);
 }
+
+@media (max-width: 767px) { .tools-page { padding: 0; } .tools-page .el-card { margin-bottom: 10px; } .tools-page .el-descriptions { font-size: 12px; } .tools-page .el-table { font-size: 12px; } }
 </style>

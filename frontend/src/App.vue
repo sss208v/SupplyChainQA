@@ -1,7 +1,7 @@
 <template>
   <div v-if="hasError" class="global-error">
     <div class="global-error-card">
-      <h2>⚠️ 应用出现异常</h2>
+      <h2>应用出现异常</h2>
       <p>{{ errorMessage }}</p>
       <el-button type="primary" @click="reload">重新加载</el-button>
     </div>
@@ -38,8 +38,9 @@ html, body, #app {
   height: 100%;
   font-family: var(--font-body);
 }
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-thumb { background: var(--color-text-meta); border-radius: 3px; }
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-thumb { background: var(--color-text-meta); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-placeholder); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 .global-error {
@@ -47,22 +48,23 @@ html, body, #app {
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
 }
 .global-error-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 40px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
+  padding: var(--space-10);
   text-align: center;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow-floating);
+  border: 1px solid var(--color-border-light);
   max-width: 420px;
 }
 .global-error-card h2 {
-  color: #e6a23c;
+  color: var(--color-warning);
   margin-bottom: 12px;
 }
 .global-error-card p {
-  color: #909399;
+  color: var(--color-text-placeholder);
   font-size: 14px;
   margin-bottom: 20px;
   word-break: break-all;

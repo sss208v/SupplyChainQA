@@ -9,7 +9,13 @@ const routes = [
   },
   {
     path: '/',
-    redirect: '/chat',
+    redirect: '/dashboard',
+  },
+  {
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: () => import('@/views/Dashboard/index.vue'),
+    meta: { title: '系统概览' },
   },
   {
     path: '/chat',

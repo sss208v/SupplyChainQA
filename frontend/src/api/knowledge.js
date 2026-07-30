@@ -1,5 +1,5 @@
 /**
- * SmartQA Pro - 知识库 API 接口
+ * Supply Chain QA - 知识库 API 接口
  */
 import request from './request'
 
