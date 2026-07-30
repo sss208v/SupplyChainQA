@@ -11,7 +11,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.core.graph_engine import (
     extract_entities,
-    classify_graph_query,
     ENTITY_PATTERNS,
 )
 
@@ -46,42 +45,11 @@ class TestEntityExtraction:
         assert "mat-001" in entities.get("material_codes", [])
 
 
-class TestGraphQueryClassification:
-    """图谱查询分类 — 判断查询是否应走图检索"""
-
-    def test_graph_query_with_entity_and_keyword(self):
-        """含实体编码 + 关系词 → 图检索"""
-        assert classify_graph_query(
-            "MAT-001 缺货会影响哪些物料",
-            {"material_codes": ["MAT-001"]},
-        )
-
-    def test_graph_query_supplier_impact(self):
-        assert classify_graph_query(
-            "PO-001 延迟影响什么",
-            {"order_codes": ["PO-001"]},
-        )
-
-    def test_not_graph_query_concept_only(self):
-        """纯概念问题 → 不走图检索"""
-        assert not classify_graph_query(
-            "什么是安全库存",
-            {},
-        )
-
-    def test_not_graph_query_entity_no_keyword(self):
-        """有实体但无关系词 → 不走图检索（可能走工具调用）"""
-        assert not classify_graph_query(
-            "查 MAT-001 库存",
-            {"material_codes": ["MAT-001"]},
-        )
-
-
 class TestCypherTemplates:
     """Cypher 模板 — 语法验证（需 Neo4j 在线）"""
 
     @pytest.mark.integration
-    async def test_inventory_risk_cypher(self):
+    async def test_inventory_risk_cypher(self, _integration_connections):
         """场景 1: 库存短缺评估 — Cypher 语法有效"""
         from app.core.neo4j_client import neo4j_client
         from app.core.graph_engine import CQL_INVENTORY_RISK
@@ -90,16 +58,16 @@ class TestCypherTemplates:
             pytest.skip("Neo4j 未连接")
 
         async with neo4j_client.get_session() as session:
-            # EXPLAIN 验证语法，不实际执行
+            # EXPLAIN 验证语法，不实际执行；语法错误会抛 CypherSyntaxError
             r = await session.run(
                 "EXPLAIN " + CQL_INVENTORY_RISK,
                 material_code="MAT-001",
             )
-            record = await r.single()
-            assert record is not None
+            summary = await r.consume()
+            assert summary.query_type == "r" or summary.counters is not None
 
     @pytest.mark.integration
-    async def test_quality_trace_cypher(self):
+    async def test_quality_trace_cypher(self, _integration_connections):
         """场景 2: 质量追溯 — Cypher 语法有效"""
         from app.core.neo4j_client import neo4j_client
         from app.core.graph_engine import CQL_QUALITY_TRACE
@@ -112,11 +80,11 @@ class TestCypherTemplates:
                 "EXPLAIN " + CQL_QUALITY_TRACE,
                 material_code="MAT-001",
             )
-            record = await r.single()
-            assert record is not None
+            summary = await r.consume()
+            assert summary.query_type == "r" or summary.counters is not None
 
     @pytest.mark.integration
-    async def test_supplier_impact_cypher(self):
+    async def test_supplier_impact_cypher(self, _integration_connections):
         """场景 3: 供应商影响 — Cypher 语法有效"""
         from app.core.neo4j_client import neo4j_client
         from app.core.graph_engine import CQL_SUPPLIER_IMPACT
@@ -129,5 +97,5 @@ class TestCypherTemplates:
                 "EXPLAIN " + CQL_SUPPLIER_IMPACT,
                 supplier_name="深圳赛意法微电子有限公司",
             )
-            record = await r.single()
-            assert record is not None
+            summary = await r.consume()
+            assert summary.query_type == "r" or summary.counters is not None

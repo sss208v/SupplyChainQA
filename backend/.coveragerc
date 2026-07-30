@@ -1,0 +1,51 @@
+[run]
+# 覆盖率统计目标：只覆盖项目自己的业务代码
+source = app
+
+# 排除不需要覆盖的代码（测试、迁移、临时文件、__init__）
+omit =
+    app/__init__.py
+    app/*/__init__.py
+    app/**/__init__.py
+    app/migrations/*
+    app/*/migrations/*
+    app/_archive/*
+    app/_legacy/*
+    app/eval/*
+    app/eval/_archive/*
+
+# 排除无意义的代码行（覆盖统计白名单）
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    \.\.\.
+    pass
+
+# branch = True 开启分支覆盖（如 if/else 的两个分支都要命中）
+
+[report]
+# 终端显示：缺失覆盖率的文件才显示，不显示 100% 文件
+skip_covered = True
+skip_empty = True
+
+# 不显示空文件
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+
+# 排序：缺失率最高的文件排前
+sort = -Cover
+
+# 低于这个百分比的报告标 FAIL（CI 可用 --cov-fail-under=80 强约束）
+# show_missing = True
+
+# 输出格式：终端 + xml（CI 集成用）
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml

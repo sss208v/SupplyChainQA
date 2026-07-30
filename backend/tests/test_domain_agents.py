@@ -1,5 +1,5 @@
 """
-SmartQA Domain Agent 单元测试
+SupplyChainRAG Domain Agent 单元测试
 
 测试专域 Agent 的工具绑定、路由分发、基本结构。
 不测试 LangGraph graph.stream()（MagicMock 不兼容，已知限制）。
@@ -33,14 +33,17 @@ class TestDomainAgents:
         tool_names = [t.name for t in quality_agent.tools]
         assert "get_knowledge" in tool_names
         assert "create_ticket" in tool_names
-        assert len(tool_names) == 2
+        assert "track_logistics" in tool_names
+        assert len(tool_names) == 3
 
     def test_production_agent_tools(self):
         from app.agents.production_agent import production_agent
         tool_names = [t.name for t in production_agent.tools]
         assert "create_ticket" in tool_names
         assert "query_inventory" in tool_names
-        assert len(tool_names) == 2
+        assert "track_logistics" in tool_names
+        assert "calculate_reorder_point" in tool_names
+        assert len(tool_names) == 4
 
     def test_all_agents_have_name(self):
         from app.agents.purchase_agent import purchase_agent
@@ -113,14 +116,14 @@ class TestAgentRouter:
 
 
 class TestChatRouting:
-    """chat.py Agent 路由集成测试"""
+    """意图 handler 层 Agent 路由集成测试（_get_tool_agent 已随 handlers 拆分迁至 tool_call.py）"""
 
     def test_get_tool_agent_imports(self):
-        from app.api.chat import _get_tool_agent
+        from app.api.handlers.tool_call import _get_tool_agent
         agent = _get_tool_agent(tool_name="query_inventory")
         assert agent.name == "InventoryAgent"
 
     def test_get_tool_agent_fallback(self):
-        from app.api.chat import _get_tool_agent
+        from app.api.handlers.tool_call import _get_tool_agent
         agent = _get_tool_agent(None, "get_datetime")
         assert agent.name == "ToolAgent"

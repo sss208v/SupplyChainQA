@@ -1,5 +1,5 @@
 """
-SmartQA 跨域 Orchestrator 测试
+SupplyChainRAG 跨域 Orchestrator 测试
 
 测试 Orchestrator 的步骤执行、结果聚合、汇总能力。
 LLM 依赖的 plan() 标记为 integration 测试，CI 中可跳过。
@@ -41,6 +41,8 @@ class TestOrchestratorStructure:
         result = asyncio.run(_run())
         assert result["goal"] == "test goal"
 
+    @pytest.mark.integration
+    @skip_no_llm
     def test_orchestrator_summarize(self):
         """LLM 汇总（需要 API key，跳过无 key 场景）"""
         from app.agents.orchestrator import orchestrator
@@ -150,7 +152,10 @@ class TestDomainAgentExecution:
             )
             assert "answer" in result
             assert "plan" in result
-            execution = result.get("execution", {})
+            execution = result.get("execution")
+            if execution is None:
+                # LLM 不可用(502等)时 orchestrator 返回 execution=None，跳过后续断言
+                pytest.skip("Orchestrator execution is None — LLM backend unavailable")
             assert execution.get("total_steps", 0) > 0
             print(f"Orchestrator: {execution.get('total_steps')} steps, "
                   f"success={execution.get('success_steps')}, "

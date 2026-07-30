@@ -1,145 +1,74 @@
-"""路由模块单元测试"""
+"""路由模块单元测试 — 使用真实 router_agent"""
 import pytest
-import asyncio
+from unittest.mock import patch, AsyncMock
 
-# 测试规则匹配
+
 class TestRuleMatching:
-    """测试规则匹配逻辑"""
+    """测试真实 router_agent 的规则匹配"""
 
-    def test_greeting_detection(self):
-        """测试问候语识别"""
-        greetings = ["你好", "早上好", "嗨", "谢谢", "再见"]
-        for g in greetings:
-            # 简单检查是否包含问候关键词
-            assert any(kw in g for kw in ["你好", "好", "嗨", "谢谢", "再见"])
+    @pytest.mark.asyncio
+    async def test_greeting_routed_correctly(self):
+        from app.agents.router import router_agent, IntentType
+        result = await router_agent.route("你好")
+        assert result["intent"] == IntentType.GREETING
 
-    def test_tool_keyword_detection(self):
-        """测试工具关键词识别"""
-        tool_queries = [
-            "帮我查一下物料MAT-001的库存",
-            "采购单PO-20250101到货了吗",
-            "帮我建个补货工单",
-        ]
-        tool_keywords = ["查", "库存", "物料", "MAT-", "采购单", "PO-", "工单"]
-        for q in tool_queries:
-            assert any(kw in q for kw in tool_keywords)
+    @pytest.mark.asyncio
+    async def test_tool_query_routed_correctly(self):
+        from app.agents.router import router_agent, IntentType
+        result = await router_agent.route("帮我查一下物料MAT-001的库存")
+        assert result["intent"] in (IntentType.TOOL_CALL, IntentType.GRAPH_QUERY)
 
-    def test_rag_keyword_detection(self):
-        """测试 RAG 关键词识别"""
-        rag_queries = [
-            "供应商准入需要什么资质",
-            "安全库存的计算公式",
-            "库存管理制度",
-        ]
-        rag_keywords = ["供应商", "准入", "资质", "安全库存", "公式", "制度"]
-        for q in rag_queries:
-            assert any(kw in q for kw in rag_keywords)
+    @pytest.mark.asyncio
+    async def test_rag_query_routed_correctly(self):
+        from app.agents.router import router_agent, IntentType
+        result = await router_agent.route("供应商准入需要什么资质")
+        assert result["intent"] in (IntentType.RAG_ANSWER, IntentType.GRAPH_QUERY)
 
+    @pytest.mark.asyncio
+    async def test_graph_query_routed_correctly(self):
+        from app.agents.router import router_agent, IntentType
+        result = await router_agent.route("MAT-001 缺货会影响哪些物料")
+        assert result["intent"] == IntentType.GRAPH_QUERY
 
-# 测试 Query 复杂度分析
-class TestQueryComplexity:
-    """测试 Query 复杂度分析逻辑"""
-
-    def test_simple_query_low_score(self):
-        """简单查询应得低分"""
-        simple_queries = ["安全库存公式", "MAT-001", "查库存"]
-        for q in simple_queries:
-            # 短查询应被识别为简单
-            assert len(q) < 20
-
-    def test_complex_query_high_score(self):
-        """复杂查询应得高分"""
-        complex_queries = [
-            "为什么供应商准入流程需要三步审核？",
-            "对比分析两种库存管理策略的优劣",
-        ]
-        for q in complex_queries:
-            # 包含推理词的应被识别为复杂
-            reasoning_words = ["为什么", "对比", "分析"]
-            assert any(w in q for w in reasoning_words)
-
-    def test_entity_counting(self):
-        """测试实体计数"""
-        query = "物料MAT-001和供应商SUP-002的采购单PO-20250101"
-        entities = ["物料", "MAT-", "供应商", "SUP-", "采购单", "PO-"]
-        count = sum(1 for e in entities if e in query)
-        assert count >= 3
-
-
-# 测试语义路由
-class TestSemanticRouter:
-    """测试语义路由逻辑"""
-
-    def test_cosine_similarity_identical(self):
-        """相同向量相似度应为1"""
-        import numpy as np
-        a = np.array([1.0, 0.0, 0.0])
-        b = np.array([1.0, 0.0, 0.0])
-        dot = np.dot(a, b)
-        norm = np.linalg.norm(a) * np.linalg.norm(b)
-        similarity = float(dot / norm) if norm > 0 else 0.0
-        assert abs(similarity - 1.0) < 0.001
-
-    def test_cosine_similarity_orthogonal(self):
-        """正交向量相似度应为0"""
-        import numpy as np
-        a = np.array([1.0, 0.0, 0.0])
-        b = np.array([0.0, 1.0, 0.0])
-        dot = np.dot(a, b)
-        norm = np.linalg.norm(a) * np.linalg.norm(b)
-        similarity = float(dot / norm) if norm > 0 else 0.0
-        assert abs(similarity) < 0.001
-
-
-# 测试图谱检索路由
-class TestGraphQueryRouting:
-    """测试 GRAPH_QUERY 意图的规则匹配"""
-
-    def test_graph_query_material_impact(self):
-        """含物料编码 + 关系词 → 应识别为图检索"""
+    @pytest.mark.asyncio
+    async def test_intent_type_enum_values(self):
         from app.agents.router import IntentType
-
-        query = "MAT-001 缺货会影响哪些物料"
-        # 规则匹配：含 MAT-xxx + "哪些物料"/"影响"
-        import re
-        entity = re.search(r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE)
-        graph_kws = ["哪些物料", "什么供应商", "影响的物料", "关联工单",
-                     "在途", "上游供应商", "缺货影响", "追溯", "延迟影响", "影响的订单"]
-        has_entity = bool(entity)
-        has_kw = any(kw in query for kw in graph_kws)
-        assert has_entity and has_kw, f"应识别为图检索: entity={has_entity}, kw={has_kw}"
-
-    def test_graph_query_order_delay(self):
-        """含订单编码 + 延迟影响 → 图检索"""
-        query = "PO-20250601 延迟影响什么"
-        import re
-        entity = re.search(r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE)
-        graph_kws = ["哪些物料", "什么供应商", "影响的物料", "关联工单",
-                     "在途", "上游供应商", "缺货影响", "追溯", "延迟影响", "影响的订单"]
-        assert bool(entity) and any(kw in query for kw in graph_kws)
-
-    def test_not_graph_query_pure_concept(self):
-        """纯概念问题 → 不走图检索"""
-        query = "什么是安全库存"
-        import re
-        entity = re.search(r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE)
-        assert not entity  # 无实体编码
-
-    def test_not_graph_query_simple_lookup(self):
-        """简单查库存（有实体但无关系词）→ 不走图检索"""
-        query = "查 MAT-001 库存"
-        import re
-        entity = re.search(r"(MAT-\d+|PO-\d+|TK-\d+)", query, re.IGNORECASE)
-        graph_kws = ["哪些物料", "什么供应商", "影响的物料", "关联工单",
-                     "在途", "上游供应商", "缺货影响", "追溯", "延迟影响", "影响的订单"]
-        has_kw = any(kw in query for kw in graph_kws)
-        assert not has_kw  # 无图检索关键词
-
-    def test_graph_query_intent_type_exists(self):
-        """验证 IntentType.GRAPH_QUERY 存在"""
-        from app.agents.router import IntentType
-        assert hasattr(IntentType, "GRAPH_QUERY")
+        assert IntentType.GREETING.value == "greeting"
+        assert IntentType.RAG_ANSWER.value == "rag_answer"
+        assert IntentType.TOOL_CALL.value == "tool_call"
         assert IntentType.GRAPH_QUERY.value == "graph_query"
+        assert IntentType.GOAL.value == "goal"
+        assert IntentType.UNCLEAR.value == "unclear"
+
+    @pytest.mark.asyncio
+    async def test_route_returns_required_keys(self):
+        from app.agents.router import router_agent
+        result = await router_agent.route("你好")
+        assert "intent" in result
+        assert "method" in result
+
+    @pytest.mark.asyncio
+    async def test_method_field_valid(self):
+        from app.agents.router import router_agent
+        result = await router_agent.route("你好")
+        assert result["method"] in ("rule", "semantic", "llm")
+
+
+class TestGraphQueryRouting:
+    """测试 GRAPH_QUERY 路由的边界情况"""
+
+    @pytest.mark.asyncio
+    async def test_pure_concept_not_graph(self):
+        from app.agents.router import router_agent, IntentType
+        result = await router_agent.route("什么是安全库存")
+        assert result["intent"] != IntentType.GRAPH_QUERY
+
+    @pytest.mark.asyncio
+    async def test_entity_no_relation_not_graph(self):
+        from app.agents.router import router_agent, IntentType
+        result = await router_agent.route("查 MAT-001 库存")
+        # "查库存" 没有关系词，应走 TOOL_CALL 而非 GRAPH_QUERY
+        assert result["intent"] != IntentType.GRAPH_QUERY
 
 
 if __name__ == "__main__":
