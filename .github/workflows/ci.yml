@@ -45,10 +45,12 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov
 
-      - name: Run tests (unit only)
+      - name: Run tests (unit only, coverage gate owner)
+        # 覆盖率门禁单一归属处：只在这里显式传入 --cov-fail-under=70，
+        # backend/pytest.ini 与 .husky/pre-commit 默认不带覆盖率门禁（见 AGENTS.md “编辑后验证流程”）
         run: |
           cd backend
-          python -m pytest tests -q -k "not integration" --tb=short --cov=app --cov-report=xml
+          python -m pytest tests -q -k "not integration" --tb=short --cov=app --cov-report=xml --cov-fail-under=70
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

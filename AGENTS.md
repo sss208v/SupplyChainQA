@@ -17,18 +17,20 @@
 
 ## 常用命令
 
-```bash
+以下命令假定在 **Windows PowerShell** 中执行，且每条命令都从仓库根目录开始（PowerShell 不支持 `&&`，用 `;` 分隔）：
+
+```powershell
 # 后端测试（单元测试，不需要 Docker）
-cd backend && venv\Scripts\python.exe -m pytest tests -q -k "not integration"
+cd backend; venv\Scripts\python.exe -m pytest tests -q -k "not integration"
 
 # 后端全部测试（需要 Docker 服务）
-cd backend && venv\Scripts\python.exe -m pytest tests -q
+cd backend; venv\Scripts\python.exe -m pytest tests -q
 
 # 前端测试
-cd frontend && npm run test:unit
+cd frontend; npm run test:unit
 
 # 启动后端开发服务器
-cd backend && uvicorn app.main:app --reload --port 8001
+cd backend; uvicorn app.main:app --reload --port 8001
 
 # Docker 全部启动
 docker-compose up -d
@@ -88,17 +90,17 @@ docker-compose up -d
 
 ## 新增文件放置规则
 
-| 类型 | 位置 | 命名 |
-|------|------|------|
-| API 路由 | `backend/app/api/` | 功能名.py |
-| Agent | `backend/app/agents/` | 功能名.py |
-| 核心逻辑 | `backend/app/core/` | 功能名.py |
-| 测试 | `backend/tests/` | test_功能名.py |
-| 前端页面 | `frontend/src/views/页面名/` | index.vue |
-| 前端 Store | `frontend/src/stores/` | 功能名.js |
-| 前端 API | `frontend/src/api/` | 功能名.js |
-| 知识库文档 | `knowledge/` | SC-{部门}-{序号}.md |
-| 意图路由配置 | `backend/app/data/` | intent_routes.json（关键词/实体规则/语义样本，改配置不改代码） |
+| 类型         | 位置                         | 命名                                                           |
+| ------------ | ---------------------------- | -------------------------------------------------------------- |
+| API 路由     | `backend/app/api/`           | 功能名.py                                                      |
+| Agent        | `backend/app/agents/`        | 功能名.py                                                      |
+| 核心逻辑     | `backend/app/core/`          | 功能名.py                                                      |
+| 测试         | `backend/tests/`             | test_功能名.py                                                 |
+| 前端页面     | `frontend/src/views/页面名/` | index.vue                                                      |
+| 前端 Store   | `frontend/src/stores/`       | 功能名.js                                                      |
+| 前端 API     | `frontend/src/api/`          | 功能名.js                                                      |
+| 知识库文档   | `knowledge/`                 | SC-{部门}-{序号}.md                                            |
+| 意图路由配置 | `backend/app/data/`          | intent_routes.json（关键词/实体规则/语义样本，改配置不改代码） |
 
 ## 测试规范
 
@@ -110,30 +112,46 @@ docker-compose up -d
 
 ## 编辑后验证流程
 
-每次对代码进行实质性修改后，必须运行对应范围的验证命令来确认改动未引入回归：
+每次对代码进行实质性修改后，必须运行对应范围的验证命令来确认改动未引入回归（Windows PowerShell，从仓库根目录执行）：
 
-```bash
-# 后端改动后（单元测试，不需要 Docker）
-cd backend && venv\Scripts\python.exe -m pytest tests -q -k "not integration"
+```powershell
+# 后端改动后（单元测试，不需要 Docker，默认不带覆盖率门禁）
+cd backend; venv\Scripts\python.exe -m pytest tests -q -k "not integration"
 
 # 前端改动后
-cd frontend && npm run test:unit
+cd frontend; npm run test:unit
 ```
 
 - 如果验证失败，必须修复后再提交
 - 同时改动前后端时，两个范围的验证都需要运行
-- 重大架构改动提交前，建议使用 `code-review` skill 进行代码审查
+- 重大架构改动提交前，建议按 [代码审查](#代码审查) 一节中的可用路径发起代码审查
+
+### 覆盖率门禁归属（单一归属，不要改回去）
+
+- 覆盖率门禁（`--cov=app --cov-fail-under=70`）**只在 CI 生效**：`.github/workflows/ci.yml` 的 “Run tests (unit only, coverage gate owner)” 步骤显式传入
+- `backend/pytest.ini` 的 `addopts` 不带任何 `--cov` 参数，不要把覆盖率参数加回 `addopts`（否则本地 `--collect-only` 等非测试运行会因覆盖率不足假失败）
+- 本地想看覆盖率时手动加参数：`pytest tests --cov=app --cov-report=term-missing`
+
+### pre-commit 钩子（.husky/pre-commit）
+
+提交时自动依次执行三项检查，均不带覆盖率门禁：
+
+1. `npx lint-staged`：对暂存文件执行格式化（Prettier）
+2. 后端单元测试：`pytest tests -q -k "not integration"`（跳过 integration，无覆盖率门禁）
+3. 前端单元测试：`npx vitest run`
+
+失败处置：任一项失败会阻断提交，先修复对应失败项再重新 `git commit`；不要用 `--no-verify` 绕过钩子。覆盖率不达标不会在 pre-commit 阶段报错，而是由 CI 的覆盖率门禁步骤拦截。
 
 ## 交付流程
 
 ### 分支策略
 
-| 分支类型 | 命名规则 | 说明 |
-|---------|---------|------|
-| 主分支 | `main` | 生产就绪代码，只接受 PR 合入 |
-| 功能分支 | `feature/功能名-简述` | 新功能开发 |
-| 修复分支 | `fix/问题简述` | Bug 修复 |
-| 重构分支 | `refactor/范围-简述` | 代码重构 |
+| 分支类型 | 命名规则              | 说明                         |
+| -------- | --------------------- | ---------------------------- |
+| 主分支   | `main`                | 生产就绪代码，只接受 PR 合入 |
+| 功能分支 | `feature/功能名-简述` | 新功能开发                   |
+| 修复分支 | `fix/问题简述`        | Bug 修复                     |
+| 重构分支 | `refactor/范围-简述`  | 代码重构                     |
 
 ### PR 创建规则
 
@@ -147,13 +165,15 @@ cd frontend && npm run test:unit
 
 ### 代码审查
 
-请求审查时在 PR 描述中使用 `/review` 触发 code-review skill，或在对话中输入：
+当前实际可用的审查路径：
 
-```
-/claude review 当前改动的代码
-```
+- **Qoder IDE 对话中**：输入 `/code-review` 调用 code-review skill 审查当前改动，或直接让 Agent 使用内置的 CodeReview 子代理
+- **其他环境 / 人工**：按下方审查重点自查，并在 PR 中请求至少 1 名 reviewer 人工审查
+
+> 注意：仓库内 `.claude/skills/code-review` 是指向 `.agents/skills/code-review` 的 Junction，目标目录不存在，该本地 skill 当前不可用；PR 描述中的 `/review` 和对话中的 `/claude review` 没有配置任何触发器（CI 中无对应 workflow），写了不会产生任何动作。
 
 审查重点：
+
 - 是否符合 AGENTS.md 中的架构约束
 - 测试是否覆盖了新增逻辑
 - 是否存在安全隐患（SQL 注入、XSS、权限绕过等）
