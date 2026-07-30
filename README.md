@@ -72,8 +72,7 @@ supply-chain-qa/
 ├── knowledge/                 # 知识库文档（7 部门，90+ 篇管理制度与业务数据）
 ├── models/                    # 本地 GGUF 模型（Qwen3-14B / Qwen2.5 系列）
 ├── llama.cpp-cuda13/          # llama.cpp CUDA 13 运行时（llama-server.exe）
-├── docs/                      # 设计、部署、验证、上手文档
-├── deploy/                    # 生产部署（nginx / 证书 / 部署脚本）
+├── docs/                      # 设计、验证、上手文档
 ├── docker-compose.yml         # 基础设施容器编排
 ├── start.ps1 / start-dev.ps1  # 一键启动脚本
 └── AGENTS.md                  # AI 编码规则（架构约束与踩坑记录）
@@ -155,11 +154,11 @@ cd backend && python scripts/upload_knowledge.py
 
 > 由 `DEMO_SEED_USERS=true` 控制，仅用于演示环境。
 
-| 账号 | 密码 | 角色 | 可见范围 |
-|------|------|------|----------|
-| admin | admin123 | 管理员 | 全部 |
-| purchase | purchase123 | 采购部 | 采购 / 供应商 / 公共 |
-| warehouse | warehouse123 | 仓库部 | 库存 / 物流 / 公共 |
+| 账号      | 密码         | 角色   | 可见范围             |
+| --------- | ------------ | ------ | -------------------- |
+| admin     | admin123     | 管理员 | 全部                 |
+| purchase  | purchase123  | 采购部 | 采购 / 供应商 / 公共 |
+| warehouse | warehouse123 | 仓库部 | 库存 / 物流 / 公共   |
 
 更多角色（quality / production / finance / logistics）可通过注册页面或 API 创建。
 
@@ -218,44 +217,42 @@ backend/app/core/redis_client.py       # 连接管理 / 对话记忆 / 锁 / 幂
 
 ### 启动与测试
 
-| 命令 | 功能 |
-|------|------|
-| `.\start.ps1` | 一键启动全部服务 |
-| `docker-compose up -d` | 启动基础设施容器 |
-| `cd backend && uvicorn app.main:app --reload --port 8001` | 后端开发服务器 |
-| `cd frontend && npm run dev` | 前端开发服务器 (5173) |
-| `cd backend && venv\Scripts\python.exe -m pytest tests -q -k "not integration"` | 后端单元测试（无需 Docker） |
-| `cd backend && venv\Scripts\python.exe -m pytest tests -q` | 全部测试（需 Docker 服务） |
-| `cd frontend && npm run test:unit` | 前端单元测试 |
-| `python scripts/run_benchmark.py --mode both` | Agent 工具调用 benchmark（performance / quality 双模式） |
+| 命令                                                                            | 功能                                                     |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `.\start.ps1`                                                                   | 一键启动全部服务                                         |
+| `docker-compose up -d`                                                          | 启动基础设施容器                                         |
+| `cd backend && uvicorn app.main:app --reload --port 8001`                       | 后端开发服务器                                           |
+| `cd frontend && npm run dev`                                                    | 前端开发服务器 (5173)                                    |
+| `cd backend && venv\Scripts\python.exe -m pytest tests -q -k "not integration"` | 后端单元测试（无需 Docker）                              |
+| `cd backend && venv\Scripts\python.exe -m pytest tests -q`                      | 全部测试（需 Docker 服务）                               |
+| `cd frontend && npm run test:unit`                                              | 前端单元测试                                             |
+| `python scripts/run_benchmark.py --mode both`                                   | Agent 工具调用 benchmark（performance / quality 双模式） |
 
 ### 测试状态
 
 单元测试约 1051 个用例全部通过（覆盖率 71%+，门槛 70%）。运行前确保 `.env` 中已配置 `JWT_SECRET`；本地匿名演示需设 `REQUIRE_AUTH_CHAT=false`。
 
-> 部署提示：开发用 `docker-compose.yml` 内置弱密码且暴露数据库端口，仅限本机开发；生产必须用 `docker-compose.prod.yml`（强制要求在 `.env` 中提供 DB_PASSWORD/NEO4J_PASSWORD/JWT_SECRET/MINIO_* 等强密钥，缺失时拒绝启动）。
-
 ## API
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| /api/v1/chat/ask | POST | 对话（SSE 流式，7 种事件类型） |
-| /api/v1/tools/call | POST | Agent 工具调用 |
-| /api/v1/tools/list | GET | 工具列表 |
-| /api/v1/knowledge/upload | POST | 上传文档（自动切块入库） |
-| /api/v1/knowledge/list | GET | 文档列表 |
-| /api/v1/auth/login | POST | 登录（JWT） |
-| /health | GET | 全链路健康检查（Milvus / Redis / PostgreSQL / Neo4j） |
+| 端点                     | 方法 | 说明                                                  |
+| ------------------------ | ---- | ----------------------------------------------------- |
+| /api/v1/chat/ask         | POST | 对话（SSE 流式，7 种事件类型）                        |
+| /api/v1/tools/call       | POST | Agent 工具调用                                        |
+| /api/v1/tools/list       | GET  | 工具列表                                              |
+| /api/v1/knowledge/upload | POST | 上传文档（自动切块入库）                              |
+| /api/v1/knowledge/list   | GET  | 文档列表                                              |
+| /api/v1/auth/login       | POST | 登录（JWT）                                           |
+| /health                  | GET  | 全链路健康检查（Milvus / Redis / PostgreSQL / Neo4j） |
 
 交互式文档：启动后访问 http://localhost:8001/docs
 
 ## RAG 与 Agent 的分工
 
-| 类型 | 处理内容 | 数据来源 |
-|------|---------|---------|
-| RAG 链路 | 制度、流程、规范类知识问答 | knowledge/ 文档库（Milvus + BM25 + Neo4j） |
-| Agent 链路 | 库存、订单、供应商实时查询与工单创建 | PostgreSQL 业务库（工具调用） |
-| Text-to-SQL | 自然语言统计分析 | PostgreSQL（五层安全防护：仅 SELECT / 表白名单 / 禁用关键词 / 行数限制 / 超时） |
+| 类型        | 处理内容                             | 数据来源                                                                        |
+| ----------- | ------------------------------------ | ------------------------------------------------------------------------------- |
+| RAG 链路    | 制度、流程、规范类知识问答           | knowledge/ 文档库（Milvus + BM25 + Neo4j）                                      |
+| Agent 链路  | 库存、订单、供应商实时查询与工单创建 | PostgreSQL 业务库（工具调用）                                                   |
+| Text-to-SQL | 自然语言统计分析                     | PostgreSQL（五层安全防护：仅 SELECT / 表白名单 / 禁用关键词 / 行数限制 / 超时） |
 
 ## Docker 运行
 
@@ -267,37 +264,30 @@ docker-compose up -d
 
 包含服务：Milvus（etcd + minio）、Redis、PostgreSQL、Neo4j、Langfuse。
 
-生产部署：
-
-```Plain Text
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-前后端均提供 Dockerfile（`backend/Dockerfile`、`frontend/Dockerfile`），nginx 配置与部署脚本见 `deploy/`，详细流程见 [docs/DEPLOY.md](docs/DEPLOY.md)。
+前后端均提供 Dockerfile（`backend/Dockerfile`、`frontend/Dockerfile`）用于容器化构建。
 
 ## 重要数据路径
 
-| 数据 | 路径 |
-|------|------|
-| 知识库源文档 | knowledge/ |
-| 上传文档 | backend/uploads/ |
-| 向量数据 | Milvus collection `supply_chain_qa_docs`（含 security_group 权限列） |
-| 对话记忆 | Redis `scqa:chat:*` / `scqa:chat_summary:*`（滑动窗口 + 摘要） |
-| 幂等与锁 | Redis `idempotent:tool:*` / `lock:tool:*` |
-| 业务数据 | PostgreSQL（端口 15432） |
-| 实体图谱 | Neo4j（bolt 端口 17687） |
-| 本地模型 | models/*.gguf（llama.cpp 加载） |
+| 数据         | 路径                                                                 |
+| ------------ | -------------------------------------------------------------------- |
+| 知识库源文档 | knowledge/                                                           |
+| 上传文档     | backend/uploads/                                                     |
+| 向量数据     | Milvus collection `supply_chain_qa_docs`（含 security_group 权限列） |
+| 对话记忆     | Redis `scqa:chat:*` / `scqa:chat_summary:*`（滑动窗口 + 摘要）       |
+| 幂等与锁     | Redis `idempotent:tool:*` / `lock:tool:*`                            |
+| 业务数据     | PostgreSQL（端口 15432）                                             |
+| 实体图谱     | Neo4j（bolt 端口 17687）                                             |
+| 本地模型     | models/*.gguf（llama.cpp 加载）                                      |
 
 ## 关键文档
 
-| 文档 | 用途 |
-|------|------|
-| [AGENTS.md](AGENTS.md) | AI 编码规则：架构约束、踩坑记录、交付流程 |
-| [docs/DESIGN.md](docs/DESIGN.md) | 系统设计文档 |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | 部署指南 |
-| [docs/ONBOARDING.md](docs/ONBOARDING.md) | 新成员上手指南 |
-| [docs/VERIFICATION_GUIDE.md](docs/VERIFICATION_GUIDE.md) | 功能验证手册 |
-| [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) | 项目背景与上下文 |
+| 文档                                                     | 用途                                      |
+| -------------------------------------------------------- | ----------------------------------------- |
+| [AGENTS.md](AGENTS.md)                                   | AI 编码规则：架构约束、踩坑记录、交付流程 |
+| [docs/DESIGN.md](docs/DESIGN.md)                         | 系统设计文档                              |
+| [docs/ONBOARDING.md](docs/ONBOARDING.md)                 | 新成员上手指南                            |
+| [docs/VERIFICATION_GUIDE.md](docs/VERIFICATION_GUIDE.md) | 功能验证手册                              |
+| [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)       | 项目背景与上下文                          |
 
 ## 适合如何使用
 

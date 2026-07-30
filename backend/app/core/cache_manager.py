@@ -5,7 +5,7 @@ SupplyChainRAG - 多层缓存统一门面（4 层缓存架构）
   L1 — 进程内 LRU + TTL（最快，进程私有，多 worker 各持一份）
   L2 — Redis 语义缓存（余弦相似度匹配，跨实例共享，见 semantic_cache.py）
   L3 — Redis 数据查询结果缓存（Text-to-SQL / 只读工具的 read-through）
-  L4 — nginx 静态资源缓存（前端构建产物，见 deploy/nginx.conf，不经过本模块）
+  L4 — nginx 静态资源缓存（前端构建产物，见 frontend/nginx.conf，不经过本模块）
 
 设计原则：
 - 门面只做统一入口 + 命中率指标收集，不迁移各层业务逻辑

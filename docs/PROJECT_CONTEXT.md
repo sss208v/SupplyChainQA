@@ -18,24 +18,24 @@ Supply Chain QA 是面向制造业供应链的企业级智能问答系统，核�
 
 ## 二、技术栈
 
-| 层级 | 技术选型 |
-|------|----------|
-| 后端框架 | FastAPI + Uvicorn (异步) |
-| LLM 服务 | llama.cpp 本地部署 Qwen2.5-1.5B (端口 8080)，兼容 OpenAI API |
-| LLM 编排 | LangChain >=0.3 + LangGraph >=0.2 |
-| 向量数据库 | Milvus 2.3.4 (standalone) |
-| 图数据库 | Neo4j 5 Community |
-| 缓存/消息 | Redis 7 |
-| 关系数据库 | PostgreSQL 15 (元数据) + SQLite (应用数据) |
-| Embedding | BAAI/bge-base-zh-v1.5 (512维) |
-| Reranker | BAAI/bge-reranker-v2-m3 |
-| 前端 | Vue 3 + Element Plus + Pinia (JavaScript，非 TypeScript) |
-| 构建工具 | Vite 8 |
-| 前端测试 | Vitest 3 + @vue/test-utils |
-| 后端测试 | pytest 8 + pytest-asyncio |
-| 容器化 | Docker Compose (10个服务) |
-| 可观测性 | Langfuse (span级追踪) |
-| 流式传输 | SSE (Server-Sent Events)，7种事件类型 |
+| 层级       | 技术选型                                                     |
+| ---------- | ------------------------------------------------------------ |
+| 后端框架   | FastAPI + Uvicorn (异步)                                     |
+| LLM 服务   | llama.cpp 本地部署 Qwen2.5-1.5B (端口 8080)，兼容 OpenAI API |
+| LLM 编排   | LangChain >=0.3 + LangGraph >=0.2                            |
+| 向量数据库 | Milvus 2.3.4 (standalone)                                    |
+| 图数据库   | Neo4j 5 Community                                            |
+| 缓存/消息  | Redis 7                                                      |
+| 关系数据库 | PostgreSQL 15 (元数据) + SQLite (应用数据)                   |
+| Embedding  | BAAI/bge-base-zh-v1.5 (512维)                                |
+| Reranker   | BAAI/bge-reranker-v2-m3                                      |
+| 前端       | Vue 3 + Element Plus + Pinia (JavaScript，非 TypeScript)     |
+| 构建工具   | Vite 8                                                       |
+| 前端测试   | Vitest 3 + @vue/test-utils                                   |
+| 后端测试   | pytest 8 + pytest-asyncio                                    |
+| 容器化     | Docker Compose (10个服务)                                    |
+| 可观测性   | Langfuse (span级追踪)                                        |
+| 流式传输   | SSE (Server-Sent Events)，7种事件类型                        |
 
 ---
 
@@ -105,28 +105,28 @@ LLM 生成 → SSE 流式输出
 
 ## 四、项目规模与指标
 
-| 指标 | 数值 |
-|------|------|
-| 后端 Python 源文件 | 66 个 |
-| 后端代码行数 | 14,584 行 |
-| 后端测试文件 | 40 个 (39 test + 1 conftest) |
-| 后端测试用例 | 728 个 (684 单元 + 44 集成) |
-| 前端源文件 | 29 个 |
-| 前端代码行数 | 7,025 行 |
-| 前端测试用例 | 62 个 (Vitest) |
-| 知识库文档 | 94 份 Markdown，覆盖 7 个部门 |
-| Docker 服务 | 10 个 (dev) / 10+nginx (prod) |
-| 设计文档 | 32 个 (plan/) |
-| 工具脚本 | 32 个 (scripts/) |
+| 指标               | 数值                          |
+| ------------------ | ----------------------------- |
+| 后端 Python 源文件 | 66 个                         |
+| 后端代码行数       | 14,584 行                     |
+| 后端测试文件       | 40 个 (39 test + 1 conftest)  |
+| 后端测试用例       | 728 个 (684 单元 + 44 集成)   |
+| 前端源文件         | 29 个                         |
+| 前端代码行数       | 7,025 行                      |
+| 前端测试用例       | 62 个 (Vitest)                |
+| 知识库文档         | 94 份 Markdown，覆盖 7 个部门 |
+| Docker 服务        | 10 个 (dev) / 10+nginx (prod) |
+| 设计文档           | 32 个 (plan/)                 |
+| 工具脚本           | 32 个 (scripts/)              |
 
 ### RAGAS 评估得分
 
-| 指标 | 分数 |
-|------|------|
+| 指标              | 分数 |
+| ----------------- | ---- |
 | Context Precision | 0.82 |
-| Faithfulness | 0.88 |
-| Answer Relevance | 0.85 |
-| Context Recall | 0.84 |
+| Faithfulness      | 0.88 |
+| Answer Relevance  | 0.85 |
+| Context Recall    | 0.84 |
 
 ---
 
@@ -185,10 +185,8 @@ supply-chain-qa/
 ├── scripts/                    # 工具脚本 (demo/benchmark/upload/e2e)
 ├── plan/                       # 设计文档 (32份)
 ├── docs/                       # 文档 (架构图/面试指南/学习路径)
-├── deploy/                     # 部署配置 (nginx/certs/脚本)
 ├── llama.cpp-cuda13/          # llama.cpp 本地推理服务
 ├── docker-compose.yml          # 开发环境 (10个服务)
-├── docker-compose.prod.yml     # 生产环境 (+ nginx)
 ├── README.md                   # 中文 README
 └── README_EN.md                # 英文 README
 ```
@@ -197,33 +195,33 @@ supply-chain-qa/
 
 ## 六、API 端点
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/api/v1/chat/ask` | POST | 聊天 (SSE 流式) |
-| `/api/v1/tools/call` | POST | Agent 工具调用 |
-| `/api/v1/knowledge/upload` | POST | 上传文档 |
-| `/api/v1/knowledge/list` | GET | 文档列表 |
-| `/api/v1/auth/login` | POST | 登录 |
-| `/api/v1/tools/list` | GET | 工具列表 |
-| `/api/v1/evaluate/run` | POST | 运行 RAG 评估 |
-| `/health` | GET | 健康检查 |
+| 端点                       | 方法 | 说明            |
+| -------------------------- | ---- | --------------- |
+| `/api/v1/chat/ask`         | POST | 聊天 (SSE 流式) |
+| `/api/v1/tools/call`       | POST | Agent 工具调用  |
+| `/api/v1/knowledge/upload` | POST | 上传文档        |
+| `/api/v1/knowledge/list`   | GET  | 文档列表        |
+| `/api/v1/auth/login`       | POST | 登录            |
+| `/api/v1/tools/list`       | GET  | 工具列表        |
+| `/api/v1/evaluate/run`     | POST | 运行 RAG 评估   |
+| `/health`                  | GET  | 健康检查        |
 
 ---
 
 ## 七、Docker 服务 (docker-compose.yml)
 
-| 服务 | 镜像 | 端口 | 用途 |
-|------|------|------|------|
-| backend | 自建 (python:3.11-slim) | 8001 | FastAPI 后端 |
-| frontend | 自建 (nginx) | 3000 | Vue3 前端 |
-| milvus | milvusdb/milvus:v2.3.4 | 19530 | 向量数据库 |
-| redis | redis:7-alpine | 6379 | 缓存 + 会话 |
-| postgres | postgres:15-alpine | 15432 | 元数据存储 |
-| neo4j | neo4j:5-community | 7474/7687 | 图数据库 |
-| etcd | quay.io/coreos/etcd:v3.5.5 | - | Milvus 元数据 |
-| minio | minio/minio | 9000/9001 | Milvus 对象存储 |
-| attu | zilliz/attu:v2.3.4 | 8000 | Milvus GUI |
-| redisinsight | redis/redisinsight | 5541 | Redis GUI |
+| 服务         | 镜像                       | 端口      | 用途            |
+| ------------ | -------------------------- | --------- | --------------- |
+| backend      | 自建 (python:3.11-slim)    | 8001      | FastAPI 后端    |
+| frontend     | 自建 (nginx)               | 3000      | Vue3 前端       |
+| milvus       | milvusdb/milvus:v2.3.4     | 19530     | 向量数据库      |
+| redis        | redis:7-alpine             | 6379      | 缓存 + 会话     |
+| postgres     | postgres:15-alpine         | 15432     | 元数据存储      |
+| neo4j        | neo4j:5-community          | 7474/7687 | 图数据库        |
+| etcd         | quay.io/coreos/etcd:v3.5.5 | -         | Milvus 元数据   |
+| minio        | minio/minio                | 9000/9001 | Milvus 对象存储 |
+| attu         | zilliz/attu:v2.3.4         | 8000      | Milvus GUI      |
+| redisinsight | redis/redisinsight         | 5541      | Redis GUI       |
 
 ---
 
@@ -273,7 +271,6 @@ cd frontend && npm run test:unit
 - 62 个前端测试全部通过
 - README 中英文版本已同步（功能列表14项、llama.cpp 本地部署、Docker 10服务、正确的 API 路径）
 - CI badge 已修复为静态 badges
-- docker-compose.prod.yml 已补充 LLM 配置环境变量
 - LangChain 弃用警告已抑制
 
 ---
@@ -292,13 +289,13 @@ cd frontend && npm run test:unit
 
 ### 技术决策理由（面试追问）
 
-| 决策 | 理由 |
-|------|------|
-| 为什么用 llama.cpp 而非 API？ | 企业数据敏感，本地部署保证数据不出网 |
-| 为什么 RRF 而非加权求和？ | RRF 不依赖分数归一化，对不同检索器的分数尺度鲁棒 |
-| 为什么用 Milvus ARRAY 做 RBAC？ | 避免维护独立权限表，检索与过滤在同一次查询中完成 |
-| 为什么用模板化 Cypher？ | LLM 直接生成 Cypher 容易幻觉，模板化保证查询正确性 |
-| 为什么 Self-RAG？ | 固定 top-k 在简单问题上浪费 token，Self-RAG 自适应决定是否检索 |
+| 决策                            | 理由                                                           |
+| ------------------------------- | -------------------------------------------------------------- |
+| 为什么用 llama.cpp 而非 API？   | 企业数据敏感，本地部署保证数据不出网                           |
+| 为什么 RRF 而非加权求和？       | RRF 不依赖分数归一化，对不同检索器的分数尺度鲁棒               |
+| 为什么用 Milvus ARRAY 做 RBAC？ | 避免维护独立权限表，检索与过滤在同一次查询中完成               |
+| 为什么用模板化 Cypher？         | LLM 直接生成 Cypher 容易幻觉，模板化保证查询正确性             |
+| 为什么 Self-RAG？               | 固定 top-k 在简单问题上浪费 token，Self-RAG 自适应决定是否检索 |
 
 ### 常见面试问题预备
 
@@ -312,26 +309,26 @@ cd frontend && npm run test:unit
 
 ## 十二、关键文件索引
 
-| 文件 | 说明 | 面试相关度 |
-|------|------|-----------|
-| `backend/app/agents/rag.py` | RAG Agent 核心实现 | 高 |
-| `backend/app/core/rag/engine.py` | RAG 引擎 (检索+融合+后处理) | 高 |
-| `backend/app/core/tool_engine.py` | 工具调用引擎 | 高 |
-| `backend/app/api/chat.py` | SSE 聊天流 (最大文件) | 高 |
-| `backend/app/agents/router.py` | 三级意图路由 | 高 |
-| `backend/app/core/semantic_cache.py` | 语义缓存 | 中 |
-| `backend/app/core/self_rag.py` | Self-RAG | 高 |
-| `backend/app/core/faithfulness.py` | 可信度护栏 | 中 |
-| `backend/app/core/milvus_client.py` | Milvus 操作 | 中 |
-| `backend/app/core/neo4j_client.py` | Graph RAG | 中 |
-| `backend/app/core/text_to_sql.py` | Text-to-SQL | 中 |
-| `backend/app/config.py` | 全局配置 | 低 |
-| `backend/app/main.py` | 应用启动 + 生命周期 | 低 |
-| `CLAUDE.md` | AI 编码规则文件（30+ 条踩坑规则） | 高 |
-| `docs/PROJECT_METRICS.md` | 项目指标 | 中 |
+| 文件                                 | 说明                              | 面试相关度 |
+| ------------------------------------ | --------------------------------- | ---------- |
+| `backend/app/agents/rag.py`          | RAG Agent 核心实现                | 高         |
+| `backend/app/core/rag/engine.py`     | RAG 引擎 (检索+融合+后处理)       | 高         |
+| `backend/app/core/tool_engine.py`    | 工具调用引擎                      | 高         |
+| `backend/app/api/chat.py`            | SSE 聊天流 (最大文件)             | 高         |
+| `backend/app/agents/router.py`       | 三级意图路由                      | 高         |
+| `backend/app/core/semantic_cache.py` | 语义缓存                          | 中         |
+| `backend/app/core/self_rag.py`       | Self-RAG                          | 高         |
+| `backend/app/core/faithfulness.py`   | 可信度护栏                        | 中         |
+| `backend/app/core/milvus_client.py`  | Milvus 操作                       | 中         |
+| `backend/app/core/neo4j_client.py`   | Graph RAG                         | 中         |
+| `backend/app/core/text_to_sql.py`    | Text-to-SQL                       | 中         |
+| `backend/app/config.py`              | 全局配置                          | 低         |
+| `backend/app/main.py`                | 应用启动 + 生命周期               | 低         |
+| `CLAUDE.md`                          | AI 编码规则文件（30+ 条踩坑规则） | 高         |
+| `docs/PROJECT_METRICS.md`            | 项目指标                          | 中         |
 
 > **面试资料已独立存放至 `D:\2026\面试准备\`**（25 个文件），包括面试指南、速查手册、演示脚本、AI 编码话术、学习路径等，不与项目代码混在一起。
 
 ---
 
-*本文件随项目持续更新。修改日期: 2026-06-14*
+_本文件随项目持续更新。修改日期: 2026-06-14_

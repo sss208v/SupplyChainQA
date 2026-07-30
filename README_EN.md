@@ -72,8 +72,7 @@ supply-chain-qa/
 ├── knowledge/                 # Knowledge base docs (7 departments, 90+ policies & business data)
 ├── models/                    # Local GGUF models (Qwen3-14B / Qwen2.5 series)
 ├── llama.cpp-cuda13/          # llama.cpp CUDA 13 runtime (llama-server.exe)
-├── docs/                      # Design, deployment, verification, onboarding docs
-├── deploy/                    # Production deployment (nginx / certs / deploy scripts)
+├── docs/                      # Design, verification, onboarding docs
 ├── docker-compose.yml         # Infrastructure container orchestration
 ├── start.ps1 / start-dev.ps1  # One-click startup scripts
 └── AGENTS.md                  # AI coding rules (architecture constraints & pitfalls)
@@ -155,11 +154,11 @@ Chunks, vectorizes, and writes documents under `knowledge/` into Milvus (automat
 
 > Controlled by `DEMO_SEED_USERS=true`, for demo environments only.
 
-| Account | Password | Role | Visibility |
-|---------|----------|------|------------|
-| admin | admin123 | Administrator | All |
-| purchase | purchase123 | Purchasing | Purchasing / Suppliers / Public |
-| warehouse | warehouse123 | Warehouse | Inventory / Logistics / Public |
+| Account   | Password     | Role          | Visibility                      |
+| --------- | ------------ | ------------- | ------------------------------- |
+| admin     | admin123     | Administrator | All                             |
+| purchase  | purchase123  | Purchasing    | Purchasing / Suppliers / Public |
+| warehouse | warehouse123 | Warehouse     | Inventory / Logistics / Public  |
 
 More roles (quality / production / finance / logistics) can be created via the registration page or API.
 
@@ -220,44 +219,42 @@ backend/app/core/redis_client.py       # Connection mgmt / memory / locks / idem
 
 ### Startup and Testing
 
-| Command | Purpose |
-|---------|---------|
-| `.\start.ps1` | One-click start of all services |
-| `docker-compose up -d` | Start infrastructure containers |
-| `cd backend && uvicorn app.main:app --reload --port 8001` | Backend dev server |
-| `cd frontend && npm run dev` | Frontend dev server (5173) |
-| `cd backend && venv\Scripts\python.exe -m pytest tests -q -k "not integration"` | Backend unit tests (no Docker needed) |
-| `cd backend && venv\Scripts\python.exe -m pytest tests -q` | All tests (Docker services required) |
-| `cd frontend && npm run test:unit` | Frontend unit tests |
-| `python scripts/run_benchmark.py --mode both` | Agent tool-calling benchmark (performance / quality modes) |
+| Command                                                                         | Purpose                                                    |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `.\start.ps1`                                                                   | One-click start of all services                            |
+| `docker-compose up -d`                                                          | Start infrastructure containers                            |
+| `cd backend && uvicorn app.main:app --reload --port 8001`                       | Backend dev server                                         |
+| `cd frontend && npm run dev`                                                    | Frontend dev server (5173)                                 |
+| `cd backend && venv\Scripts\python.exe -m pytest tests -q -k "not integration"` | Backend unit tests (no Docker needed)                      |
+| `cd backend && venv\Scripts\python.exe -m pytest tests -q`                      | All tests (Docker services required)                       |
+| `cd frontend && npm run test:unit`                                              | Frontend unit tests                                        |
+| `python scripts/run_benchmark.py --mode both`                                   | Agent tool-calling benchmark (performance / quality modes) |
 
 ### Test Status
 
 About 1051 unit test cases, all passing (coverage 71%+, gate 70%). Make sure `JWT_SECRET` is configured in `.env` before running; set `REQUIRE_AUTH_CHAT=false` for local anonymous demo.
 
-> Deployment note: the dev `docker-compose.yml` ships weak default passwords and exposes database ports — local development only. Production must use `docker-compose.prod.yml` (it refuses to start unless strong DB_PASSWORD/NEO4J_PASSWORD/JWT_SECRET/MINIO_* secrets are provided via `.env`).
-
 ## API
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| /api/v1/chat/ask | POST | Chat (SSE streaming, 7 event types) |
-| /api/v1/tools/call | POST | Agent tool calling |
-| /api/v1/tools/list | GET | Tool list |
-| /api/v1/knowledge/upload | POST | Upload document (auto chunk & ingest) |
-| /api/v1/knowledge/list | GET | Document list |
-| /api/v1/auth/login | POST | Login (JWT) |
-| /health | GET | Full-chain health check (Milvus / Redis / PostgreSQL / Neo4j) |
+| Endpoint                 | Method | Description                                                   |
+| ------------------------ | ------ | ------------------------------------------------------------- |
+| /api/v1/chat/ask         | POST   | Chat (SSE streaming, 7 event types)                           |
+| /api/v1/tools/call       | POST   | Agent tool calling                                            |
+| /api/v1/tools/list       | GET    | Tool list                                                     |
+| /api/v1/knowledge/upload | POST   | Upload document (auto chunk & ingest)                         |
+| /api/v1/knowledge/list   | GET    | Document list                                                 |
+| /api/v1/auth/login       | POST   | Login (JWT)                                                   |
+| /health                  | GET    | Full-chain health check (Milvus / Redis / PostgreSQL / Neo4j) |
 
 Interactive docs: http://localhost:8001/docs after startup.
 
 ## Division of Labor: RAG vs Agent
 
-| Type | Handles | Data Source |
-|------|---------|-------------|
-| RAG pathway | Policies, processes, and standards Q&A | knowledge/ document base (Milvus + BM25 + Neo4j) |
-| Agent pathway | Real-time inventory/order/supplier queries and ticket creation | PostgreSQL business database (tool calls) |
-| Text-to-SQL | Natural-language statistical analysis | PostgreSQL (five-layer safety: SELECT-only / table allowlist / keyword denylist / row limit / timeout) |
+| Type          | Handles                                                        | Data Source                                                                                            |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| RAG pathway   | Policies, processes, and standards Q&A                         | knowledge/ document base (Milvus + BM25 + Neo4j)                                                       |
+| Agent pathway | Real-time inventory/order/supplier queries and ticket creation | PostgreSQL business database (tool calls)                                                              |
+| Text-to-SQL   | Natural-language statistical analysis                          | PostgreSQL (five-layer safety: SELECT-only / table allowlist / keyword denylist / row limit / timeout) |
 
 ## Running with Docker
 
@@ -269,37 +266,30 @@ docker-compose up -d
 
 Included services: Milvus (etcd + minio), Redis, PostgreSQL, Neo4j, Langfuse.
 
-Production deployment:
-
-```Plain Text
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-Both frontend and backend ship Dockerfiles (`backend/Dockerfile`, `frontend/Dockerfile`); nginx config and deploy scripts live in `deploy/`. See [docs/DEPLOY.md](docs/DEPLOY.md) for details.
+Both frontend and backend ship Dockerfiles (`backend/Dockerfile`, `frontend/Dockerfile`) for containerized builds.
 
 ## Important Data Paths
 
-| Data | Path |
-|------|------|
-| Knowledge source docs | knowledge/ |
-| Uploaded documents | backend/uploads/ |
-| Vector data | Milvus collection `supply_chain_qa_docs` (with security_group column) |
-| Conversation memory | Redis `scqa:chat:*` / `scqa:chat_summary:*` (sliding window + summary) |
-| Idempotency & locks | Redis `idempotent:tool:*` / `lock:tool:*` |
-| Business data | PostgreSQL (port 15432) |
-| Entity graph | Neo4j (bolt port 17687) |
-| Local models | models/*.gguf (loaded by llama.cpp) |
+| Data                  | Path                                                                   |
+| --------------------- | ---------------------------------------------------------------------- |
+| Knowledge source docs | knowledge/                                                             |
+| Uploaded documents    | backend/uploads/                                                       |
+| Vector data           | Milvus collection `supply_chain_qa_docs` (with security_group column)  |
+| Conversation memory   | Redis `scqa:chat:*` / `scqa:chat_summary:*` (sliding window + summary) |
+| Idempotency & locks   | Redis `idempotent:tool:*` / `lock:tool:*`                              |
+| Business data         | PostgreSQL (port 15432)                                                |
+| Entity graph          | Neo4j (bolt port 17687)                                                |
+| Local models          | models/*.gguf (loaded by llama.cpp)                                    |
 
 ## Key Documents
 
-| Document | Purpose |
-|----------|---------|
-| [AGENTS.md](AGENTS.md) | AI coding rules: architecture constraints, pitfalls, delivery process |
-| [docs/DESIGN.md](docs/DESIGN.md) | System design document |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | Deployment guide |
-| [docs/ONBOARDING.md](docs/ONBOARDING.md) | Onboarding guide for new members |
-| [docs/VERIFICATION_GUIDE.md](docs/VERIFICATION_GUIDE.md) | Feature verification manual |
-| [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) | Project background and context |
+| Document                                                 | Purpose                                                               |
+| -------------------------------------------------------- | --------------------------------------------------------------------- |
+| [AGENTS.md](AGENTS.md)                                   | AI coding rules: architecture constraints, pitfalls, delivery process |
+| [docs/DESIGN.md](docs/DESIGN.md)                         | System design document                                                |
+| [docs/ONBOARDING.md](docs/ONBOARDING.md)                 | Onboarding guide for new members                                      |
+| [docs/VERIFICATION_GUIDE.md](docs/VERIFICATION_GUIDE.md) | Feature verification manual                                           |
+| [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)       | Project background and context                                        |
 
 ## Who Is This For
 

@@ -1,8 +1,0 @@
-# SSL 证书目录
-
-生产环境部署时，将 SSL 证书文件放在此目录：
-
-- `fullchain.pem` - 完整证书链
-- `privkey.pem` - 私钥文件
-
-如果不需要 HTTPS，可在 `docker-compose.prod.yml` 中注释掉此卷挂载和 443 端口映射。

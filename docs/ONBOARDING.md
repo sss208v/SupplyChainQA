@@ -14,16 +14,16 @@
 
 ## 1. Project Overview
 
-| 维度 | 内容 |
-|---|---|
-| **项目名** | Supply Chain QA |
-| **场景** | 制造业供应链 |
-| **架构特点** | 双链路驱动(知识库检索 + 业务系统查询) |
+| 维度         | 内容                                                           |
+| ------------ | -------------------------------------------------------------- |
+| **项目名**   | Supply Chain QA                                                |
+| **场景**     | 制造业供应链                                                   |
+| **架构特点** | 双链路驱动(知识库检索 + 业务系统查询)                          |
 | **核心能力** | RAG / Graph RAG / NL2SQL / 多 Agent 协作 / 行级权限 / SSE 流式 |
-| **语言** | Python + JavaScript + Vue |
-| **框架** | FastAPI / LangChain / LangGraph / Vue3 / Element Plus |
-| **存储** | Milvus(向量) + Neo4j(图) + Redis(缓存) + PostgreSQL(业务) |
-| **可观测** | Langfuse 全链路 trace |
+| **语言**     | Python + JavaScript + Vue                                      |
+| **框架**     | FastAPI / LangChain / LangGraph / Vue3 / Element Plus          |
+| **存储**     | Milvus(向量) + Neo4j(图) + Redis(缓存) + PostgreSQL(业务)      |
+| **可观测**   | Langfuse 全链路 trace                                          |
 
 ---
 
@@ -44,6 +44,7 @@
 ```
 
 每层职责:
+
 - **frontend**: 聊天界面 + 知识库管理 + 评估可视化(雷达图)
 - **api**: REST 端点 + SSE 流式对话(9 种事件类型)
 - **agent**: 三级意图路由 + ReAct 主 Agent + 7 个领域 Agent
@@ -54,14 +55,14 @@
 
 ## 3. Key Concepts(项目独有的 6 个)
 
-| 概念 | 解释 | 在哪 |
-|---|---|---|
-| **Loop Breaker** | Agent ReAct 循环的熔断器,25 轮自动收敛,防死循环 | `agents/tool.py` |
-| **Semantic Self-Correction** | 工具调用失败时,语义相似度去重+自动修正 | `agents/tool.py` + `core/neo4j_client.py` |
-| **Query-Type-Aware RRF** | 查询类型感知的自适应 RRF 权重 — precise 查询 BM25×1.25、semantic 查询向量×2.25、default 场景 BM25×1.75+向量×1.25。全部通过 optuna TPE 贝叶斯优化在 57Q 上确定（见 eval/rrf_full_tuning_report.md） | `core/rag/engine.py` + `config.py` |
-| **Three-Level Routing** | 规则<1ms → 语义<10ms → LLM~2.5s,三级级联 | `agents/router.py` |
-| **Graph RAG (Hybrid)** | Neo4j 实体关系图 + 关键词重叠阈值 0.2 才注入 | `core/rag/engine.py` Graph 注入段 |
-| **Row-Level Security** | RBAC + 字段级脱敏 + Milvus 表达式过滤 | `core/auth.py:90/190` + `core/milvus_client.py:326` |
+| 概念                         | 解释                                                                                                                                                                                               | 在哪                                                |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| **Loop Breaker**             | Agent ReAct 循环的熔断器,25 轮自动收敛,防死循环                                                                                                                                                    | `agents/tool.py`                                    |
+| **Semantic Self-Correction** | 工具调用失败时,语义相似度去重+自动修正                                                                                                                                                             | `agents/tool.py` + `core/neo4j_client.py`           |
+| **Query-Type-Aware RRF**     | 查询类型感知的自适应 RRF 权重 — precise 查询 BM25×1.25、semantic 查询向量×2.25、default 场景 BM25×1.75+向量×1.25。全部通过 optuna TPE 贝叶斯优化在 57Q 上确定（见 eval/rrf_full_tuning_report.md） | `core/rag/engine.py` + `config.py`                  |
+| **Three-Level Routing**      | 规则<1ms → 语义<10ms → LLM~2.5s,三级级联                                                                                                                                                           | `agents/router.py`                                  |
+| **Graph RAG (Hybrid)**       | Neo4j 实体关系图 + 关键词重叠阈值 0.2 才注入                                                                                                                                                       | `core/rag/engine.py` Graph 注入段                   |
+| **Row-Level Security**       | RBAC + 字段级脱敏 + Milvus 表达式过滤                                                                                                                                                              | `core/auth.py:90/190` + `core/milvus_client.py:326` |
 
 ---
 
@@ -108,6 +109,7 @@ BGE-Reranker 精排
 ## 5. File Map(按层组织)
 
 ### 5.1 API 层(13 文件)
+
 - `backend/app/main.py` — FastAPI 应用入口(中间件/路由/默认账户)
 - `backend/app/api/chat.py` — 对话 API(1139 行 SSE 流式主循环,9 种事件)
 - `backend/app/api/auth.py` — 认证 API(RBAC + JWT)
@@ -117,6 +119,7 @@ BGE-Reranker 精排
 - `backend/app/api/feedback.py` — 反馈 API
 
 ### 5.2 Agent 层(12 文件)
+
 - `backend/app/agents/router.py` — **三级意图路由器**(核心)
 - `backend/app/agents/tool.py` — **ToolAgent (LangGraph ReAct)**(核心)
 - `backend/app/agents/langgraph_agent.py` — LangGraph 编排(4 阶段:Router→Tool→Observe→Decide)
@@ -128,6 +131,7 @@ BGE-Reranker 精排
 - `backend/app/agents/{inventory,purchase,quality,production}_agent.py` — 4 个业务 Agent
 
 ### 5.3 Core 层(23 文件,重点)
+
 - `backend/app/core/rag/engine.py` — **RAG 引擎主入口**(753 行,你刚合并的 180-270 就在这)
 - `backend/app/core/rag/graph_engine.py` — Graph RAG 引擎
 - `backend/app/core/semantic_router.py` — 语义路由(零 token 消耗，per-intent 阈值 + margin 判据)
@@ -140,13 +144,14 @@ BGE-Reranker 精排
 - `backend/app/core/keyword_coverage.py` — 关键词覆盖护栏
 
 ### 5.4 Data 层(7 个核心 Docker 服务)
+
 - `supply-chain-qa-postgres`(业务数据)
 - `supply-chain-qa-milvus`(向量)
 - `supply-chain-qa-neo4j`(知识图谱)
 - `supply-chain-qa-redis`(缓存)
 - `supply-chain-qa-etcd` / `supply-chain-qa-minio`(Milvus 依赖)
 
-> 开发版 `docker-compose.yml` 含 11 个服务定义（7 核心 + backend/frontend/attu/redisinsight）。backend/frontend 容器需构建（Dockerfile），开发时通常直接用 uvicorn + vite 更便捷。可观测性 Langfuse 与 Nginx 反向代理只在生产版 `docker-compose.prod.yml` 中启用。
+> 开发版 `docker-compose.yml` 含 11 个服务定义（7 核心 + backend/frontend/attu/redisinsight）。backend/frontend 容器需构建（Dockerfile），开发时通常直接用 uvicorn + vite 更便捷。
 
 ---
 
@@ -154,36 +159,40 @@ BGE-Reranker 精排
 
 > 按"面试官最可能追问"排序
 
-| 优先级 | 模块 | 为什么重要 | 怎么学 |
-|---|---|---|---|
-| 🔴 必懂 | `core/rag/engine.py` 180-270 | 你刚合并的 RAG 5 步流水线 | 打开 sync 后的 inline pre,逐行读 |
-| 🔴 必懂 | `agents/router.py` | 三级路由,问"为什么这样设计"必问 | 读 manual Q4 + 打开源码 |
-| 🔴 必懂 | `core/keyword_coverage.py` | 在线护栏 vs 离线 RAGAS 的"两个不同东西" | 读 manual Q11 |
-| 🟡 重要 | `core/text_to_sql.py` (你刚升级的 492 行) | NL2SQL 五重防护 + 自纠正 | 读 manual Q28-Q30 + Part 7 Q49-Q56 |
-| 🟡 重要 | `agents/tool.py` | ReAct 循环 + Loop Breaker | 读 manual Step 2 Tour |
-| 🟡 重要 | `core/observability.py` | Langfuse 全链路 trace_id 透传 | 看 observability 配置 |
-| 🟢 选懂 | `core/llm_router.py` | 多模型路由(OpenAI/Anthropic) | 看 settings |
+| 优先级  | 模块                                      | 为什么重要                              | 怎么学                             |
+| ------- | ----------------------------------------- | --------------------------------------- | ---------------------------------- |
+| 🔴 必懂 | `core/rag/engine.py` 180-270              | 你刚合并的 RAG 5 步流水线               | 打开 sync 后的 inline pre,逐行读   |
+| 🔴 必懂 | `agents/router.py`                        | 三级路由,问"为什么这样设计"必问         | 读 manual Q4 + 打开源码            |
+| 🔴 必懂 | `core/keyword_coverage.py`                | 在线护栏 vs 离线 RAGAS 的"两个不同东西" | 读 manual Q11                      |
+| 🟡 重要 | `core/text_to_sql.py` (你刚升级的 492 行) | NL2SQL 五重防护 + 自纠正                | 读 manual Q28-Q30 + Part 7 Q49-Q56 |
+| 🟡 重要 | `agents/tool.py`                          | ReAct 循环 + Loop Breaker               | 读 manual Step 2 Tour              |
+| 🟡 重要 | `core/observability.py`                   | Langfuse 全链路 trace_id 透传           | 看 observability 配置              |
+| 🟢 选懂 | `core/llm_router.py`                      | 多模型路由(OpenAI/Anthropic)            | 看 settings                        |
 
 ---
 
 ## 7. 推荐学习路径(给"项目陌生"的你)
 
 ### Day 1(今天): 5 分钟走通主链路
+
 1. 打开浏览器 → `http://localhost:8001/docs`(FastAPI 自动生成的 API 文档)
 2. 试着发一条 `/api/v1/chat` 请求,看 SSE 9 种事件
 3. 打开 `backend/app/api/chat.py:1139 行 SSE 主循环`,数一下 9 种事件
 
 ### Day 2: 读懂 RAG 引擎
+
 1. 打开 `core/rag/engine.py:180-270`(已在 manual 中以 inline pre 显示)
 2. 跟着 sync 脚本,看每行代码从真实文件来
 3. 手动跑 `python scripts/sync_doc_snippets.py`,看 body pre 实时更新
 
 ### Day 3: 读懂三级路由
+
 1. 打开 `agents/router.py`
 2. 找到"规则 / 语义 / LLM"三段
 3. 读 manual Q4 + Q14,看怎么讲
 
 ### Day 4+: 用 source-command-learn 模拟面试
+
 - 我扮面试官,问项目问题(从 manual 64 条 Q&A 抽),你答
 
 ---
