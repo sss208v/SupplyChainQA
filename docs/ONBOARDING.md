@@ -55,14 +55,14 @@
 
 ## 3. Key Concepts(项目独有的 6 个)
 
-| 概念                         | 解释                                                                                                                                                                                               | 在哪                                                |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| **Loop Breaker**             | Agent ReAct 循环的熔断器,25 轮自动收敛,防死循环                                                                                                                                                    | `agents/tool.py`                                    |
-| **Semantic Self-Correction** | 工具调用失败时,语义相似度去重+自动修正                                                                                                                                                             | `agents/tool.py` + `core/neo4j_client.py`           |
-| **Query-Type-Aware RRF**     | 查询类型感知的自适应 RRF 权重 — precise 查询 BM25×1.25、semantic 查询向量×2.25、default 场景 BM25×1.75+向量×1.25。全部通过 optuna TPE 贝叶斯优化在 57Q 上确定（见 eval/rrf_full_tuning_report.md） | `core/rag/engine.py` + `config.py`                  |
-| **Three-Level Routing**      | 规则<1ms → 语义<10ms → LLM~2.5s,三级级联                                                                                                                                                           | `agents/router.py`                                  |
-| **Graph RAG (Hybrid)**       | Neo4j 实体关系图 + 关键词重叠阈值 0.2 才注入                                                                                                                                                       | `core/rag/engine.py` Graph 注入段                   |
-| **Row-Level Security**       | RBAC + 字段级脱敏 + Milvus 表达式过滤                                                                                                                                                              | `core/auth.py:90/190` + `core/milvus_client.py:326` |
+| 概念                         | 解释                                                                                                                                                          | 在哪                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| **Loop Breaker**             | Agent ReAct 循环的熔断器,25 轮自动收敛,防死循环                                                                                                               | `agents/tool.py`                                    |
+| **Semantic Self-Correction** | 工具调用失败时,语义相似度去重+自动修正                                                                                                                        | `agents/tool.py` + `core/neo4j_client.py`           |
+| **Query-Type-Aware RRF**     | 查询类型感知的自适应 RRF 权重 — precise 查询 BM25×1.25、semantic 查询向量×2.25、default 场景 BM25×1.75+向量×1.25。全部通过 optuna TPE 贝叶斯优化在 57Q 上确定 | `core/rag/engine.py` + `config.py`                  |
+| **Three-Level Routing**      | 规则<1ms → 语义<10ms → LLM~2.5s,三级级联                                                                                                                      | `agents/router.py`                                  |
+| **Graph RAG (Hybrid)**       | Neo4j 实体关系图 + 关键词重叠阈值 0.2 才注入                                                                                                                  | `core/rag/engine.py` Graph 注入段                   |
+| **Row-Level Security**       | RBAC + 字段级脱敏 + Milvus 表达式过滤                                                                                                                         | `core/auth.py:90/190` + `core/milvus_client.py:326` |
 
 ---
 
