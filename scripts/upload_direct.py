@@ -51,7 +51,7 @@ def chunk_text(text, size=1000, overlap=200):
 
 def main():
     print("=" * 60)
-    print("SmartQA Knowledge Base Direct Upload")
+    print("Supply Chain QA Knowledge Base Direct Upload")
     print("=" * 60)
     
     # 1. Load embedding model

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SmartQA 文档解析链验证脚本
+Supply Chain QA 文档解析链验证脚本
 测试三阶回退：opendataloader → pymupdf4llm → pdfplumber
 """
 import sys, os, io, logging, time
@@ -155,7 +155,7 @@ def test_create_and_parse():
         
         c = canvas.Canvas(tmp_path, pagesize=A4)
         c.setFont("Helvetica", 16)
-        c.drawString(100, 750, "SmartQA Document Parsing Test")
+        c.drawString(100, 750, "Supply Chain QA Document Parsing Test")
         c.setFont("Helvetica", 10)
         c.drawString(100, 700, "This is a test PDF for supply chain QA system.")
         c.drawString(100, 680, "It contains a simple table:")
@@ -185,7 +185,7 @@ def test_create_and_parse():
 
 
 if __name__ == "__main__":
-    log.info("SmartQA 文档解析链验证")
+    log.info("Supply Chain QA 文档解析链验证")
     log.info("=" * 50)
     
     # 1. 测试导入

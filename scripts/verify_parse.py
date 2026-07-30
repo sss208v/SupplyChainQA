@@ -7,14 +7,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from fpdf import FPDF
 
 # Step 1: Create test PDF
-pdf_path = os.path.join(os.path.dirname(__file__), "smartqa_test.pdf")
+pdf_path = os.path.join(os.path.dirname(__file__), "supply_chain_qa_test.pdf")
 pdf = FPDF()
 pdf.add_page()
 pdf.set_font("Helvetica", size=12)
-pdf.cell(200, 10, text="SmartQA Test PDF - Supply Chain Report", align="C")
+pdf.cell(200, 10, text="Supply Chain QA Test PDF - Supply Chain Report", align="C")
 pdf.ln(15)
 pdf.set_font("Helvetica", size=10)
-pdf.multi_cell(0, 6, text="This is a test PDF document for the SmartQA document parsing pipeline. It validates the three-tier fallback chain: opendataloader -> pymupdf4llm -> pdfplumber.")
+pdf.multi_cell(0, 6, text="This is a test PDF document for the Supply Chain QA document parsing pipeline. It validates the three-tier fallback chain: opendataloader -> pymupdf4llm -> pdfplumber.")
 pdf.ln(10)
 # Table
 pdf.set_font("Helvetica", "B", size=10)

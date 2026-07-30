@@ -53,7 +53,7 @@ def upload_file(filepath, token, dept):
 
 def main():
     print("=" * 60)
-    print("SmartQA 知识库批量上传")
+    print("Supply Chain QA 知识库批量上传")
     print("=" * 60)
     
     # 1. 登录

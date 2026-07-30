@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  SmartQA Pro — 一键启动脚本（面试演示用）
+  Supply Chain QA — 一键启动脚本（面试演示用）
 .DESCRIPTION
   1. 检查 Docker Desktop 运行状态
   2. 启动 docker-compose（Milvus + Redis + PostgreSQL）
@@ -17,7 +17,7 @@ $FRONTEND_DIR = Join-Path $PROJECT_ROOT "frontend"
 $SCRIPTS_DIR  = Join-Path $PROJECT_ROOT "scripts"
 
 Write-Host "======================================" -ForegroundColor Cyan
-Write-Host "  SmartQA Pro 一键启动" -ForegroundColor Cyan
+Write-Host "  Supply Chain QA 一键启动" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -88,7 +88,7 @@ try {
 
 # 等待 PostgreSQL
 try {
-    $pgOk = docker compose -f $composeFile exec postgres pg_isready -U smartqa -p 15432 2>$null
+    $pgOk = docker compose -f $composeFile exec postgres pg_isready -U supply_chain_qa -p 15432 2>$null
     if ($pgOk -match "accepting connections") { Write-Host "  ✅ PostgreSQL 就绪" -ForegroundColor Green }
     else { Write-Host "  ⚠️  PostgreSQL 未就绪" -ForegroundColor Yellow }
 } catch { Write-Host "  ⚠️  PostgreSQL 检查失败" -ForegroundColor Yellow }
