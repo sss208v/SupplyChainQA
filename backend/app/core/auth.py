@@ -1,32 +1,52 @@
 """
-SmartQA Pro - 认证与授权核心模块
+SupplyChainRAG - 认证与授权核心模块
 ============================================================
 【设计说明】
 1. 密码哈希：使用hashlib的PBKDF2-SHA256（标准库，无需额外依赖）
-2. Token管理：使用uuid4生成token，Redis存储，简单可靠
+2. Token管理：JWT（HS256签名）签发 + Redis黑名单（登出撤销）
+   - JWT 优势：无状态，本地验签名，不查存储即可验证身份
+   - Redis黑名单：登出时加入jti，TTL = 令牌剩余有效期
 3. RBAC装饰器：检查用户角色权限
 
 【安全设计】
 - 密码不可逆哈希（PBKDF2 + 随机salt）
-- Token有过期时间（24小时）
-- Token绑定用户ID，登出时删除即可失效
+- JWT 自包含过期时间（exp），防止重放
+- Redis黑名单支持主动登出
 ============================================================
 """
-import uuid
 import hashlib
 import logging
 import secrets
-from functools import wraps
+import time
+import uuid
 from typing import Optional
 
+import jwt
 from fastapi import HTTPException, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Token前缀
-TOKEN_PREFIX = "smartqa:token:"
+# Redis key前缀（黑名单用）
+TOKEN_PREFIX = "scqa:token:"
+TOKEN_BLACKLIST_PREFIX = "scqa:blacklist:"
 TOKEN_TTL = 86400  # 24小时
+
+
+def _get_jwt_secret() -> str:
+    """获取JWT密钥（从配置中读取）"""
+    return get_settings().JWT_SECRET
+
+
+def _get_jwt_algorithm() -> str:
+    """获取JWT签名算法"""
+    return get_settings().JWT_ALGORITHM
+
+
+def _get_jwt_expire_seconds() -> int:
+    """获取JWT过期时间（秒）"""
+    return get_settings().JWT_EXPIRE_SECONDS
 
 
 def hash_password(password: str) -> str:
@@ -70,56 +90,148 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 async def create_token(user_id: int, username: str) -> str:
     """
-    创建认证Token（存入Redis）
+    创建JWT认证Token
 
-    Token = uuid4字符串，足够随机且唯一
-    Redis key: smartqa:token:{token} -> {user_id, username}
+    签发流程：
+    1. 生成唯一jti（用于登出黑名单）
+    2. 编码payload：{user_id, username, jti, iat, exp}
+    3. 用HS256 + JWT_SECRET签名
+    4. Redis存储 token→用户信息（可选，用于在线用户管理）
+
+    Token可通过 jwt.io 解码验证
     """
     from app.core.redis_client import redis_manager
 
-    token = str(uuid.uuid4())
-    client = redis_manager.client
+    settings = get_settings()
+    now = int(time.time())
+    jti = str(uuid.uuid4())
 
-    # 存储token -> 用户信息
-    token_data = f"{user_id}:{username}"
-    await client.set(f"{TOKEN_PREFIX}{token}", token_data, ex=TOKEN_TTL)
+    payload = {
+        "user_id": user_id,
+        "username": username,
+        "jti": jti,
+        "iat": now,
+        "exp": now + settings.JWT_EXPIRE_SECONDS,
+    }
 
-    logger.info(f"Token创建成功: user_id={user_id}, username={username}")
+    token = jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+    # 同步存Redis（用于在线状态管理 + 登出黑名单对照）
+    try:
+        client = redis_manager.client
+        if client:
+            token_data = f"{user_id}:{username}:{jti}"
+            await client.set(
+                f"{TOKEN_PREFIX}{jti}", token_data, ex=settings.JWT_EXPIRE_SECONDS
+            )
+    except Exception as e:
+        logger.warning(f"Redis存储token元数据失败（不影响JWT签发）: {e}")
+
+    logger.info(f"JWT签发成功: user_id={user_id}, username={username}")
     return token
 
 
 async def verify_token(token: str) -> Optional[dict]:
     """
-    验证Token
+    验证JWT Token
 
-    从Redis查询token对应的用户信息
-    返回 {"user_id": int, "username": str} 或 None
+    流程：
+    1. jwt.decode()：验证签名 + 过期时间（纯本地运算，不查Redis）
+    2. 查Redis黑名单：检查是否已被登出撤销
+    3. 返回 {"user_id": int, "username": str} 或 None
     """
-    from app.core.redis_client import redis_manager
+    settings = get_settings()
 
-    client = redis_manager.client
-    token_data = await client.get(f"{TOKEN_PREFIX}{token}")
-
-    if not token_data:
-        return None
-
+    # 1. JWT解码 + 签名验证（纯本地）
     try:
-        user_id_str, username = token_data.split(":", 1)
-        return {"user_id": int(user_id_str), "username": username}
-    except (ValueError, AttributeError):
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"require": ["exp", "jti", "user_id", "username"]},
+        )
+    except jwt.ExpiredSignatureError:
+        logger.debug("JWT验证失败: token已过期")
         return None
+    except jwt.InvalidTokenError as e:
+        logger.debug(f"JWT验证失败: 签名无效或格式错误 ({e})")
+        return None
+
+    # 2. 检查Redis黑名单（登出撤销）
+    try:
+        from app.core.redis_client import redis_manager
+
+        client = redis_manager.client
+        if client:
+            blacklisted = await client.get(f"{TOKEN_BLACKLIST_PREFIX}{payload['jti']}")
+            if blacklisted:
+                logger.debug(f"JWT验证失败: token已被登出撤销 jti={payload['jti']}")
+                return None
+    except Exception as e:
+        logger.warning(f"Redis黑名单查询失败（不影响验证）: {e}")
+
+    return {
+        "user_id": payload["user_id"],
+        "username": payload["username"],
+    }
 
 
 async def delete_token(token: str) -> None:
-    """删除Token（用于登出）"""
+    """
+    登出Token（加入Redis黑名单）
+
+    流程：
+    1. 解码JWT获取jti和剩余有效期（不验证过期，刚过期的也可接受）
+    2. 将jti加入Redis黑名单，TTL=剩余有效期
+    3. 删除Redis中的活跃token记录
+    """
     from app.core.redis_client import redis_manager
+
+    settings = get_settings()
+
+    # 解码获取jti（不验证过期，因为登出时token可能刚刚过期）
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_exp": False},
+        )
+        jti = payload.get("jti", "")
+    except jwt.InvalidTokenError:
+        logger.debug("登出时JWT解码失败，跳过黑名单")
+        return
+
     client = redis_manager.client
-    await client.delete(f"{TOKEN_PREFIX}{token}")
+    if not client:
+        return
+
+    # 计算剩余有效期
+    exp = payload.get("exp", 0)
+    remaining_ttl = max(0, exp - int(time.time()))
+
+    # 加入黑名单（TTL = 剩余有效期，过期后自动清除）
+    if jti and remaining_ttl > 0:
+        await client.set(
+            f"{TOKEN_BLACKLIST_PREFIX}{jti}", "1", ex=remaining_ttl
+        )
+
+    # 删除活跃token记录
+    await client.delete(f"{TOKEN_PREFIX}{jti}")
+    logger.info(f"Token已登出: jti={jti}")
 
 
 # ---- FastAPI依赖注入 ----
 
-security = HTTPBearer(auto_error=False)
+security = None  # 不再需要HTTPBearer，使用手动解析
+
+
+async def _extract_token(request: Request) -> Optional[str]:
+    """从Authorization头提取Bearer token"""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    return None
 
 
 async def get_current_user_optional(
@@ -130,11 +242,9 @@ async def get_current_user_optional(
 
     用于不要求登录但需要识别用户的接口（如chat）
     """
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    token = await _extract_token(request)
+    if not token:
         return None
-
-    token = auth_header[7:]  # 去掉 "Bearer " 前缀
     return await verify_token(token)
 
 

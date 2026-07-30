@@ -1,22 +1,22 @@
 """
-SmartQA - Query 复杂度分析器
+SupplyChainRAG - Query 复杂度分析器
 
 不同复杂度的 query 需要不同深度的检索策略：
-- 简单查询（"安全库存公式"）→ 向量检索直接返回，省掉 Reranker/Self-RAG
+- 简单查询（"安全库存公式"）→ 向量检索直接返回，省掉 Reranker/LLM相关性过滤
 - 中等查询（"供应商准入流程"）→ 完整 RAG 流程
-- 复杂查询（多实体+推理）→ RAG + Query 改写 + Self-RAG
+- 复杂查询（多实体+推理）→ RAG + Query 改写 + LLM相关性过滤
 
 实现方式：LLM 分析 query 的4个维度，输出结构化 JSON。
 LLM 不可用时回退到规则（关键词长度）。
 
-简单查询跳过 Reranker 和 Self-RAG（省 8 秒），只有复杂查询才走完整流程。
+简单查询跳过 Reranker 和 LLM相关性过滤（省 8 秒），只有复杂查询才走完整流程。
 这样 90% 的常见问题响应更快，复杂问题保证质量。"
 """
 import json
 import logging
 import re
 from typing import Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class QueryAnalysis:
 # 检索策略定义
 STRATEGIES = {
     "light": {
-        "description": "轻量检索：仅向量检索，跳过 Reranker 和 Self-RAG",
+        "description": "轻量检索：仅向量检索，跳过 Reranker 和 LLM相关性过滤",
         "use_reranker": False,
         "use_self_rag": False,
         "use_query_rewrite": False,
@@ -48,7 +48,7 @@ STRATEGIES = {
         "top_k": 5,
     },
     "full": {
-        "description": "完整检索：全流程（Reranker + Self-RAG + Query Rewrite）",
+        "description": "完整检索：全流程（Reranker + LLM相关性过滤 + Query Rewrite）",
         "use_reranker": True,
         "use_self_rag": True,
         "use_query_rewrite": True,
@@ -67,7 +67,7 @@ class QueryComplexityAnalyzer:
 
     # 简单查询特征：短 query，单一实体，无推理词
     SIMPLE_PATTERNS = [
-        r"^.{2,15}$",  # 短 query
+        r"^.{2,15}$",  # short query
         r"(公式|定义|是什么|什么意思|含义)",
         r"(查|查询|看看|帮我查)",
     ]
@@ -159,10 +159,10 @@ class QueryComplexityAnalyzer:
         length = len(query)
         if length < 10:
             score -= 0.2
-        elif length > 30:
-            score += 0.15
         elif length > 60:
             score += 0.25
+        elif length > 30:
+            score += 0.15
 
         # 简单模式匹配
         for pattern in self.SIMPLE_PATTERNS:
@@ -223,6 +223,36 @@ class QueryComplexityAnalyzer:
             },
         }
 
+
+
+    def upgrade_strategy(self, current_strategy: str, retrieval_quality: str) -> str:
+        """Agentic RAG - Adaptive Strategy Upgrade
+        
+        参考论文: Singh et al. "Agentic RAG" (arXiv:2501.09136) Section 5.5
+        Adaptive RAG: 根据检索结果质量动态升级策略
+        
+        Args:
+            current_strategy: 当前策略 (light/standard/full)
+            retrieval_quality: 检索质量 (high/medium/low)
+            
+        Returns:
+            升级后的策略 (如果没有升级，返回原策略)
+        """
+        upgrade_map = {
+            "light": {"medium": "standard", "low": "full"},
+            "standard": {"low": "full"},
+            "full": {},  # full 已是最高级，无法再升级
+        }
+        
+        if retrieval_quality in upgrade_map.get(current_strategy, {}):
+            upgraded = upgrade_map[current_strategy][retrieval_quality]
+            logger.info(
+                f"[AdaptiveRAG] 策略升级: {current_strategy} -> {upgraded} "
+                f"(retrieval_quality={retrieval_quality})"
+            )
+            return upgraded
+        
+        return current_strategy
 
 # 单例
 query_analyzer = QueryComplexityAnalyzer()

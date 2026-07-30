@@ -13,10 +13,9 @@ import logging
 from typing import Optional
 
 from app.agents.tool import tool_agent  # 通用 Agent（兜底）
-from app.agents.purchase_agent import purchase_agent
-from app.agents.inventory_agent import inventory_agent
-from app.agents.quality_agent import quality_agent
-from app.agents.production_agent import production_agent
+from app.agents.domain_agents import (
+    purchase_agent, inventory_agent, quality_agent, production_agent,
+)
 
 logger = logging.getLogger(__name__)
 

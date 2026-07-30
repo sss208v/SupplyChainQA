@@ -1,5 +1,5 @@
 """
-SmartQA Pro - 多模态嵌入引擎（CLIP）
+SupplyChainRAG - 多模态嵌入引擎（CLIP）
 ============================================================
 同时编码文本和图像到统一向量空间，实现跨模态检索。
 
@@ -20,12 +20,12 @@ SmartQA Pro - 多模态嵌入引擎（CLIP）
 import logging
 import base64
 import io
-from typing import Optional
-from PIL import Image
-import torch
-from transformers import CLIPProcessor, CLIPModel
+from typing import TYPE_CHECKING
 
 from app.config import get_settings
+
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -35,9 +35,9 @@ class CLIPEmbeddingEngine:
     """CLIP 多模态嵌入引擎"""
 
     def __init__(self):
-        self._model: Optional[CLIPModel] = None
-        self._processor: Optional[CLIPProcessor] = None
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._model = None
+        self._processor = None
+        self._device: str = "cpu"
         self._initialized = False
 
     @property
@@ -52,6 +52,9 @@ class CLIPEmbeddingEngine:
         """懒加载 CLIP 模型（首次调用时自动触发）"""
         if self._initialized:
             return
+        import torch
+        from transformers import CLIPProcessor, CLIPModel
+        self._device = settings.CLIP_DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"[CLIP] 加载模型: {self.model_name} (device={self._device})")
         self._model = CLIPModel.from_pretrained(self.model_name).to(self._device)
         self._processor = CLIPProcessor.from_pretrained(self.model_name)
@@ -61,6 +64,7 @@ class CLIPEmbeddingEngine:
 
     def encode_text(self, text: str) -> list[float]:
         """将文本编码为 CLIP 向量"""
+        import torch
         self.init()
         with torch.no_grad():
             inputs = self._processor(
@@ -79,6 +83,8 @@ class CLIPEmbeddingEngine:
 
     def encode_image(self, image_data: bytes) -> list[float]:
         """将图片（bytes）编码为 CLIP 向量"""
+        import torch
+        from PIL import Image
         self.init()
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
         with torch.no_grad():

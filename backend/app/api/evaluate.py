@@ -1,5 +1,5 @@
 """
-SmartQA Pro - RAG 评估 API
+SupplyChainRAG - RAG 评估 API
 ============================================================
 1. 离线评估需要 ground truth（相关文档标注），用于计算 Recall/Precision/MRR/NDCG
 2. 在线评估无需 ground truth，通过 rerank_score 分布和检索来源分析质量
@@ -10,8 +10,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
-from app.core.rag_evaluator import rag_evaluator
-from app.core.evaluator import ragas_evaluator, load_ground_truth
+from app.core.retrieval_evaluator import retrieval_evaluator as rag_evaluator
 from app.agents.rag import rag_agent
 from app.core.llm_router import LLMFactory
 import asyncio
@@ -36,28 +35,26 @@ class OnlineEvalRequest(BaseModel):
 
 
 class JudgeRequest(BaseModel):
-    """LLM-as-Judge 评判请求"""
-    query: str = Field(..., description="原始问题")
-    retrieved_contexts: list[str] = Field(..., description="检索到的上下文列表")
-    generated_answer: str = Field(..., description="LLM生成的答案")
-    reference_answer: Optional[str] = Field(default=None, description="参考答案（可选）")
+    """LLM-as-Judge 评判请求
+
+    安全约束：retrieved_contexts 限制 ≤20 条，防止攻击者传 N 万条触发
+    LLM prompt 长度爆炸 + LLM API 拒绝服务（DoS）。
+    """
+    query: str = Field(..., max_length=2000, description="原始问题")
+    retrieved_contexts: list[str] = Field(
+        ..., max_length=20, description="检索到的上下文列表（最多 20 条，防 DoS）"
+    )
+    generated_answer: str = Field(..., max_length=10000, description="LLM生成的答案")
+    reference_answer: Optional[str] = Field(
+        default=None, max_length=5000, description="参考答案（可选）"
+    )
 
 
 # ---- API 接口 ----
 
 @router.post("/offline")
 async def evaluate_offline(req: OfflineEvalRequest, request: Request):
-    """
-    离线评估：基于 ground truth 计算检索指标
-
-    适用场景：
-    - 提前准备好标注数据（query → relevant chunks）
-    - 对比不同检索策略的效果
-    - 评估 recall@K、precision@K、MRR、NDCG 等指标
-
-    请求示例：
-    {
-    """
+    """离线评估：基于 ground truth 计算检索指标"""
     from app.core.auth import get_current_user_required
     await get_current_user_required(request)
 
@@ -126,7 +123,7 @@ async def evaluate_judge(req: JudgeRequest, request: Request):
     await get_current_user_required(request)
     try:
         from app.config import get_settings
-        settings = get_settings()
+        get_settings()  # 触发配置加载
 
         # 构建评判 Prompt
         judge_prompt = f"""你是一个严格的 RAG 系统答案质量评审员。请对以下问答进行评估。
@@ -165,12 +162,11 @@ async def evaluate_judge(req: JudgeRequest, request: Request):
         response = await llm.ainvoke([HumanMessage(content=judge_prompt)])
         content = response.content
 
-        import json, re
-        # 提取JSON
-        match = re.search(r'\{.*\}', content, re.DOTALL)
-        if match:
-            scores = json.loads(match.group())
-        else:
+        # 提取JSON（使用统一工具函数）
+        from app.core.utils import parse_llm_json
+        try:
+            scores = parse_llm_json(content)
+        except (ValueError, Exception):
             scores = {"raw_output": content}
 
         return {
@@ -187,107 +183,71 @@ async def evaluate_judge(req: JudgeRequest, request: Request):
 
 @router.get("/full")
 async def run_full_evaluation(request: Request):
-    """
-    运行全量 RAGAS 评估套件
+    """返回最新的【官方 RAGAS】评估结果（由 backend/eval/run_comprehensive_ragas.py 生成）。
+
+    本接口不再实时计算任何关键词 proxy 指标；改为读取最近一次官方 ragas 库
+    (LLM-as-Judge) 落盘的四项指标（Faithfulness / AnswerRelevancy / ContextPrecision / ContextRecall）。
     """
     from app.core.auth import get_current_user_required
     await get_current_user_required(request)
 
-    # 对黄金测试集中的每条 query 执行：
-    # 1. 混合检索（向量 + BM25）
-    # 2. LLM 生成回答
-    # 3. 计算三大 RAGAS 指标：
-    #    - Context Precision（检索准确率）
-    #    - Faithfulness（忠实度/防幻觉）
-    #    - Answer Relevance（回答相关性）
+    import os
+    import json
+    import glob
 
-    # 返回逐条评分和汇总统计。
-    """
-    try:
-        ground_truth = load_ground_truth()
-        if not ground_truth:
-            return {
-                "success": False,
-                "error": "黄金测试集为空，请确认 backend/data/eval_ground_truth.json 存在",
-            }
+    eval_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "eval",
+    )
+    candidates = []
+    for fp in glob.glob(os.path.join(eval_dir, "*.json")):
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            continue
+        rm = data.get("ragas_metrics")
+        if isinstance(rm, dict) and any(v is not None for v in rm.values()):
+            candidates.append((os.path.getmtime(fp), fp, data))
 
-        logger.info(f"启动全量 RAGAS 评估: {len(ground_truth)} 条测试用例")
-
-        # 逐条评估（仅检索模式，避免 LLM 调用耗时过高）
-        results = []
-        total_cp = 0.0
-        total_faith = 0.0
-        total_ar = 0.0
-        total_time = 0.0
-
-        for item in ground_truth:
-            query = item.get("query", "")
-            qid = item.get("id", "unknown")
-            t0 = asyncio.get_running_loop().time()
-
-            try:
-                # 检索
-                search_result = rag_agent.rag.search(query, top_k=5)
-                chunks = search_result.get("results", [])
-
-                # 评估
-                eval_result = ragas_evaluator.evaluate_single(
-                    query=query,
-                    retrieved_chunks=chunks,
-                    generated_answer="",
-                    reference_answer=item.get("reference_answer", ""),
-                )
-
-                elapsed = (asyncio.get_running_loop().time() - t0) * 1000
-                total_time += elapsed
-
-                results.append({
-                    "id": qid,
-                    "query": query,
-                    "context_precision": eval_result.context_precision,
-                    "faithfulness": eval_result.faithfulness,
-                    "answer_relevance": eval_result.answer_relevance,
-                    "overall": eval_result.overall_score,
-                    "retrieval_count": eval_result.retrieval_count,
-                    "time_ms": round(elapsed, 1),
-                })
-                total_cp += eval_result.context_precision
-                total_faith += eval_result.faithfulness
-                total_ar += eval_result.answer_relevance
-
-            except Exception as e:
-                logger.error(f"评估用例 {qid} 失败: {e}")
-                results.append({
-                    "id": qid,
-                    "query": query,
-                    "error": str(e),
-                })
-
-        n = len(results)
-        summary = {
-            "total_queries": n,
-            "avg_context_precision": round(total_cp / n, 4) if n > 0 else 0,
-            "avg_faithfulness": round(total_faith / n, 4) if n > 0 else 0,
-            "avg_answer_relevance": round(total_ar / n, 4) if n > 0 else 0,
-            "avg_overall": round((total_cp + total_faith + total_ar) / (n * 3), 4) if n > 0 else 0,
-            "total_time_ms": round(total_time, 1),
-            "details": results,
+    if not candidates:
+        return {
+            "success": False,
+            "error": "暂无官方 RAGAS 结果。请先配置 RAGAS_JUDGE_*（backend/.env）并运行 "
+                     "backend/eval/run_comprehensive_ragas.py --judge-only 生成官方 RAGAS 评分。",
         }
 
-        return {"success": True, "summary": summary}
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    _, fp, data = candidates[0]
+    rm = data["ragas_metrics"]
+    metrics = {
+        "faithfulness": rm.get("faithfulness"),
+        "answer_relevancy": rm.get("answer_relevancy"),
+        "context_precision": rm.get("context_precision"),
+        "context_recall": rm.get("context_recall"),
+    }
+    vals = [v for v in metrics.values() if v is not None]
+    overall = data.get("overall")
+    if overall is None and vals:
+        overall = round(sum(vals) / len(vals), 4)
 
-    except Exception as e:
-        logger.error(f"全量评估失败: {e}")
-        raise HTTPException(status_code=500, detail=f"评估失败: {e}")
+    return {
+        "success": True,
+        "official": True,
+        "source_file": os.path.basename(fp),
+        "judge_model": data.get("judge_model"),
+        "gen_model": data.get("gen_model"),
+        "date": data.get("date"),
+        "samples": data.get("valid_samples", data.get("samples", 0)),
+        "metrics": metrics,
+        "overall": overall,
+    }
 
 
 @router.get("/summary")
 async def get_evaluation_summary(request: Request):
     """
     获取评估汇总
-    """
-    from app.core.auth import get_current_user_required
-    await get_current_user_required(request)
 
     返回所有离线评估指标的平均值，包括：
     - avg_recall_at_5: 平均召回率
@@ -297,6 +257,9 @@ async def get_evaluation_summary(request: Request):
     - avg_retrieval_score: 综合检索得分
     - retrieval_score_p50/p90: 综合得分的50/90分位数
     """
+    from app.core.auth import get_current_user_required
+    await get_current_user_required(request)
+
     try:
         summary = rag_evaluator.get_summary()
         return {

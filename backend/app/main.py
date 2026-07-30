@@ -1,5 +1,5 @@
 """
-SmartQA Pro - 企业级智能问答助手系统
+SupplyChainRAG - 企业级智能问答助手系统
 ============================================================
 
 1. lifespan（生命周期）是FastAPI 0.93+引入的新特性
@@ -18,6 +18,9 @@ SmartQA Pro - 企业级智能问答助手系统
    allow_origins=["*"] 仅开发环境使用，生产环境需指定具体域名
 ============================================================
 """
+import warnings
+warnings.filterwarnings("ignore", category=PendingDeprecationWarning, module="langgraph")
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -33,19 +36,16 @@ from app.core.neo4j_client import neo4j_client
 from app.models.user import User, UserRole
 from app.core.auth import hash_password
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+# 配置日志：DEBUG 模式用人类可读格式，生产环境用 JSON 格式
+from app.core.structured_logging import setup_logging  # noqa: E402
+setup_logging(debug=settings.DEBUG)
 
 # 日志层PII脱敏：所有日志输出自动过滤敏感信息（手机号、身份证、姓名等）
 from app.core.data_filter import PIILogFilter
 logging.getLogger().addFilter(PIILogFilter())
-
-logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
 @asynccontextmanager
@@ -57,43 +57,52 @@ async def lifespan(app: FastAPI):
     如果某个服务连不上，应该明确报错而不是静默失败。
     """
     # ---- 启动阶段 ----
+    # 安全校验：DEBUG=False 时拒绝默认密码（fail-fast）
+    settings.validate_security()
+
     logger.info("=" * 50)
-    logger.info(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} 启动中...")
+    logger.info(f"[启动] {settings.APP_NAME} v{settings.APP_VERSION} 启动中...")
     logger.info("=" * 50)
 
     # 1. 连接Milvus
     try:
         milvus_manager.connect()
         milvus_manager.create_collection()
-        logger.info("✅ Milvus连接成功")
+        milvus_manager.ensure_loaded()  # 启动时预加载一次，避免每次检索重复 load
+        logger.info("[OK] Milvus连接成功")
     except Exception as e:
-        logger.warning(f"⚠️ Milvus连接失败: {e}（RAG功能不可用）")
+        logger.warning(f"[警告] Milvus连接失败: {e}（RAG功能不可用）")
 
     # 2. 连接Redis
     try:
         await init_redis()
-        logger.info("✅ Redis连接成功")
+        logger.info("[OK] Redis连接成功")
     except Exception as e:
-        logger.warning(f"⚠️ Redis连接失败: {e}（对话记忆不可用）")
+        logger.warning(f"[警告] Redis连接失败: {e}（对话记忆不可用）")
 
     # 3. 初始化数据库
     try:
         await init_db()
-        logger.info("✅ PostgreSQL连接成功")
+        logger.info("[OK] PostgreSQL连接成功")
     except Exception as e:
-        logger.warning(f"⚠️ PostgreSQL连接失败: {e}（元数据功能不可用）")
+        logger.warning(f"[警告] PostgreSQL连接失败: {e}（元数据功能不可用）")
     # 4. 创建默认用户（受 DEMO_SEED_USERS 控制，仅用于演示环境）
     # 默认用户列表 — 格式: (用户名, 密码, 角色, 部门)
+    # 密码优先从环境变量读取，仅作演示 fallback（与前端硬编码一致）
+    import os as _os
     default_users = [
-        ("admin", "admin123", UserRole.ADMIN, "管理部"),
-        ("purchase", "purchase123", UserRole.PURCHASE, "采购部"),
-        ("warehouse", "warehouse123", UserRole.WAREHOUSE, "仓库部"),
+        ("admin", _os.getenv("DEMO_ADMIN_PASSWORD", "admin123"), UserRole.ADMIN, "管理部"),
+        ("purchase", _os.getenv("DEMO_PURCHASE_PASSWORD", "purchase123"), UserRole.PURCHASE, "采购部"),
+        ("warehouse", _os.getenv("DEMO_WAREHOUSE_PASSWORD", "warehouse123"), UserRole.WAREHOUSE, "仓库部"),
+        ("quality", _os.getenv("DEMO_QUALITY_PASSWORD", "quality123"), UserRole.QUALITY, "质量部"),
+        ("production", _os.getenv("DEMO_PRODUCTION_PASSWORD", "production123"), UserRole.PRODUCTION, "生产部"),
+        ("finance", _os.getenv("DEMO_FINANCE_PASSWORD", "finance123"), UserRole.FINANCE, "财务部"),
+        ("logistics", _os.getenv("DEMO_LOGISTICS_PASSWORD", "logistics123"), UserRole.LOGISTICS, "物流部"),
     ]
 
     if settings.DEMO_SEED_USERS:
         try:
             import asyncio as _asyncio
-            import threading
             from sqlalchemy import select
             from app.core.database import async_session
 
@@ -104,7 +113,15 @@ async def lifespan(app: FastAPI):
                             result = await session.execute(
                                 select(User).where(User.username == username)
                             )
-                            if not result.scalar_one_or_none():
+                            existing = result.scalar_one_or_none()
+                            if existing:
+                                # 确密码哈希正确（修复损坏的哈希）
+                                from app.core.auth import verify_password
+                                if not verify_password(password, existing.password_hash):
+                                    existing.password_hash = hash_password(password)
+                                    existing.role = role.value
+                                    existing.department = dept
+                            else:
                                 user = User(
                                     username=username,
                                     password_hash=hash_password(password),
@@ -114,22 +131,11 @@ async def lifespan(app: FastAPI):
                                 session.add(user)
                         await session.commit()
 
-            # 在新的事件循环中运行（不阻塞 uvicorn startup）
-            def _run_seed():
-                loop = _asyncio.new_event_loop()
-                try:
-                    loop.run_until_complete(_seed_users())
-                except Exception:
-                    pass
-                finally:
-                    loop.close()
-
-            t = threading.Thread(target=_run_seed, daemon=True)
-            t.start()
-            t.join(timeout=3)  # 最多等 3 秒
-            logger.info("✅ 默认用户初始化已触发")
+            # 直接在 lifespan async 上下文中执行（避免线程竞态）
+            await _seed_users()
+            logger.info("[OK] 默认用户初始化完成")
         except Exception as e:
-            logger.warning(f"⚠️ 创建默认用户失败: {e}")
+            logger.warning(f"[警告] 创建默认用户失败: {e}")
     else:
         logger.info("ℹ️ DEMO_SEED_USERS=false，跳过默认账号创建")
 
@@ -138,21 +144,54 @@ async def lifespan(app: FastAPI):
         if await neo4j_client.connect():
             result = await neo4j_client.sync_from_sqlite()
             if result.get("synced"):
-                logger.info("✅ Neo4j 连接成功，图谱同步完成")
+                logger.info("[OK] Neo4j 连接成功，图谱同步完成")
             else:
-                logger.warning("⚠️ 图谱同步失败: %s", result.get("reason", "未知"))
+                logger.warning("[警告] 图谱同步失败: %s", result.get("reason", "未知"))
         else:
-            logger.warning("⚠️ Neo4j 未连接（图谱检索不可用）")
+            logger.warning("[警告] Neo4j 未连接（图谱检索不可用）")
     except Exception as e:
-        logger.warning("⚠️ Neo4j 初始化失败: %s（图谱检索不可用）", e)
+        logger.warning("[警告] Neo4j 初始化失败: %s（图谱检索不可用）", e)
 
-    logger.info(f"🎉 {settings.APP_NAME} 启动完成！")
-    logger.info(f"📖 API文档: http://localhost:8001/docs")
+    # 6. 从 Milvus 重建 BM25 索引（启动时自动恢复）
+    try:
+        from collections import defaultdict
+        from app.core.rag_engine import rag_engine as _rag
+        c = milvus_manager.collection
+        c.load()
+        all_chunks = []
+        offset = 0
+        batch_size = 5000
+        while True:
+            batch = c.query(expr="id > 0", output_fields=["doc_id", "chunk_id", "content", "source", "page_num", "security_group"], limit=batch_size, offset=offset)
+            if not batch:
+                break
+            all_chunks.extend(batch)
+            offset += batch_size
+            if len(batch) < batch_size:
+                break
+        doc_chunks = defaultdict(list)
+        for r in all_chunks:
+            doc_chunks[r["doc_id"]].append({
+                "chunk_id": r["chunk_id"],
+                "content": r["content"],
+                "source": r["source"],
+                "page_num": r.get("page_num", 0),
+                "security_group": r.get("security_group", ["admin"]),
+            })
+        for doc_id, chunks in doc_chunks.items():
+            sg = chunks[0].get("security_group", ["admin"])
+            _rag.bm25.index_documents(doc_id, chunks, security_group=sg)
+        logger.info("[OK] BM25 索引重建完成: %d chunks, %d docs", len(all_chunks), len(doc_chunks))
+    except Exception as e:
+        logger.warning("[警告] BM25 索引重建失败: %s", e)
+
+    logger.info(f" {settings.APP_NAME} 启动完成！")
+    logger.info(" API文档: http://localhost:8001/docs")
 
     # 4. 预热模型（跳过——首次请求时懒加载）
     # 注：warmup 需要多次 HuggingFace HEAD 请求验证缓存，网络不好时可能很慢
     # 模型会在首次使用时自动初始化
-    logger.info("🔥 预热: 跳过（模型首次使用时懒加载）")
+    logger.info(" 预热: 跳过（模型首次使用时懒加载）")
 
     yield  # ← 应用运行期间
 
@@ -164,7 +203,7 @@ async def lifespan(app: FastAPI):
     await neo4j_client.disconnect()
     milvus_manager.disconnect()
 
-    logger.info("👋 服务已关闭")
+    logger.info(" 服务已关闭")
 
 
 # ---- 创建FastAPI应用 ----
@@ -186,6 +225,11 @@ app.add_middleware(
     allow_methods=["*"],          # 允许所有HTTP方法
     allow_headers=["*"],          # 允许所有请求头
 )
+
+# ---- 限流中间件 ----
+from app.core.rate_limiter import RateLimitMiddleware  # noqa: E402
+from app.core.redis_client import redis_manager  # noqa: E402
+app.add_middleware(RateLimitMiddleware, redis_client=redis_manager)
 
 # ---- 注册API路由 ----
 app.include_router(chat.router, prefix=settings.API_PREFIX)
@@ -211,6 +255,7 @@ async def health_check():
         "reranker_enabled": settings.RERANKER_ENABLED,
         "agent_type": getattr(settings, "AGENT_TYPE", "react"),
         "knowledge_docs_count": 0,
+        "knowledge_chunks_count": 0,
         "services": {}
     }
 
@@ -222,15 +267,27 @@ async def health_check():
     }
     if milvus_connected:
         try:
-            count = milvus_manager.get_count()
-            health["knowledge_docs_count"] = count
-        except Exception:
-            pass
+            health["knowledge_chunks_count"] = milvus_manager.get_count()
+            health["knowledge_docs_count"] = milvus_manager.get_distinct_doc_count()
+        except Exception as e:
+            logger.debug(f"[Health] Milvus计数获取失败: {e}")
 
     # Redis
     try:
+        import time as _time
+        _t0 = _time.perf_counter()
         redis_ok = await redis_manager.client.ping()
-        health["services"]["redis"] = {"connected": redis_ok}
+        latency_ms = round((_time.perf_counter() - _t0) * 1000, 1)
+        info_mem = await redis_manager.client.info(section="memory")
+        info_stats = await redis_manager.client.info(section="stats")
+        hits = info_stats.get("keyspace_hits", 0)
+        misses = info_stats.get("keyspace_misses", 0)
+        health["services"]["redis"] = {
+            "connected": bool(redis_ok),
+            "latency_ms": latency_ms,
+            "used_memory_human": info_mem.get("used_memory_human"),
+            "hit_rate": round(hits / (hits + misses), 3) if (hits + misses) else None,
+        }
     except Exception:
         health["services"]["redis"] = {"connected": False}
 

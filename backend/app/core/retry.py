@@ -1,5 +1,5 @@
 """
-SmartQA - 重试装饰器
+SupplyChainRAG - 重试装饰器
 
 外部 API 调用（DeepSeek/MiniMax/Milvus）可能临时失败。
 指数退避重试是最简单的容错策略。
@@ -121,7 +121,9 @@ async def retry_astream(
                     f"[Retry] {context_name} 第{attempt}次失败: {type(e).__name__}: {e}, "
                     f"已达最大重试次数({max_attempts})"
                 )
-    raise last_exception
+    if last_exception is not None:
+        raise last_exception
+    return  # max_attempts=0 时直接返回
 
 
 def retry_async(max_attempts: int = 3, base_delay: float = 2.0, exceptions=(Exception,)):
@@ -182,3 +184,31 @@ def retry_sync(max_attempts: int = 3, base_delay: float = 2.0, exceptions=(Excep
             raise last_exception
         return wrapper
     return decorator
+
+
+async def retry_call(
+    func: Callable,
+    max_attempts: int = 3,
+    base_delay: float = 2.0,
+    context_name: str = "retry_call",
+):
+    """直接调用的异步重试（非装饰器），适用于 Circuit Breaker 等需要手动编排的场景。"""
+    last_exception = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await func()
+        except Exception as e:
+            last_exception = e
+            if attempt < max_attempts:
+                delay = base_delay * (2 ** (attempt - 1))
+                logger.warning(
+                    f"[Retry] {context_name} 第{attempt}次失败: {type(e).__name__}: {e}, "
+                    f"{delay:.1f}秒后重试..."
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(
+                    f"[Retry] {context_name} 第{attempt}次失败: {type(e).__name__}: {e}, "
+                    f"已达最大重试次数({max_attempts})"
+                )
+    raise last_exception

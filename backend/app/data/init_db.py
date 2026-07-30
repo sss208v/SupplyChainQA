@@ -105,6 +105,25 @@ def init_db():
     )
     """)
 
+    # ---- 6. 供应商主数据（Odoo: res_partner）----
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS res_partner (
+        code              TEXT PRIMARY KEY,       -- 供应商编码（SUP-001）
+        name              TEXT NOT NULL,           -- 供应商名称
+        category          TEXT DEFAULT '',         -- 类别（轴承/液压/传动/电气）
+        contact           TEXT DEFAULT '',         -- 联系人
+        phone             TEXT DEFAULT '',         -- 联系电话
+        email             TEXT DEFAULT '',         -- 邮箱
+        address           TEXT DEFAULT '',         -- 地址
+        credit_level      TEXT DEFAULT 'B',        -- 信用等级（A/B/C/D）
+        qualification     TEXT DEFAULT '',         -- 资质认证（ISO9001等）
+        payment_terms     TEXT DEFAULT '月结30天',  -- 账期条款
+        lead_time_days    INTEGER DEFAULT 15,      -- 平均交期（天）
+        cooperation_since TEXT DEFAULT '',         -- 合作起始日期
+        notes             TEXT DEFAULT ''          -- 备注
+    )
+    """)
+
     # ---- 检查是否已有数据 ----
     cur.execute("SELECT COUNT(*) FROM product_product")
     if cur.fetchone()[0] > 0:
@@ -189,6 +208,24 @@ def init_db():
         "state, date_expected, date_done, reference) "
         "VALUES (?,?,?,?,?,?,?,?,?)",
         moves
+    )
+
+    # -- 供应商（6条，res_partner）--
+    suppliers = [
+        # (code, name, category, contact, phone, email, address, credit_level, qualification, payment_terms, lead_time_days, cooperation_since, notes)
+        ("SUP-001", "东莞精密轴承有限公司", "轴承",  "张工", "0769-85551234", "zhang@dg-bearing.com",       "东莞市长安镇工业区A1",   "A", "ISO9001, IATF16949", "月结30天", 7,  "2021-03-15", "核心战略供应商"),
+        ("SUP-002", "广州液压器材厂",       "液压",  "李经理", "020-87654321", "li@gz-hydraulic.com",     "广州市黄埔区机械城B2",   "B", "ISO9001",            "月结60天", 15, "2022-07-01", "定期评估"),
+        ("SUP-003", "深圳传动设备科技",     "传动",  "王工", "0755-23456789", "wang@sz-drivetech.com",    "深圳市龙华区科技园C5",   "A", "ISO9001, ISO14001",  "月结30天", 10, "2020-11-20", "技术合作紧密"),
+        ("SUP-004", "上海气动元件有限公司",  "气动",  "赵经理", "021-64321098", "zhao@sh-pneumatic.com",   "上海市嘉定区工业园D3",   "B", "ISO9001",            "款到发货", 5,  "2023-01-10", "新供应商考察期"),
+        ("SUP-005", "成都电气控制设备厂",    "电气",  "陈工", "028-87651234", "chen@cd-elec.com",        "成都市高新区电子园E8",   "A", "ISO9001, CCC",       "月结45天", 12, "2019-05-08", "长期合作"),
+        ("SUP-006", "天津密封件有限公司",    "密封",  "刘经理", "022-59872345", "liu@tj-seals.com",        "天津市滨海新区工贸园F2", "C", "ISO9001",            "款到发货", 20, "2023-08-15", "交期不稳定需关注"),
+    ]
+    cur.executemany(
+        "INSERT INTO res_partner "
+        "(code, name, category, contact, phone, email, address, credit_level, qualification, "
+        "payment_terms, lead_time_days, cooperation_since, notes) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        suppliers
     )
 
     conn.commit()

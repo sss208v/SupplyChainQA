@@ -1,5 +1,5 @@
 """
-SmartQA Pro - 数据预处理工具
+SupplyChainRAG - 数据预处理工具
 ============================================================
 【功能说明】业务数据（文本/图片）的清洗、标注与批量化处理
 
@@ -23,7 +23,6 @@ SmartQA Pro - 数据预处理工具
     chunks = pp.chunk_for_rag(clean_text)
 ============================================================
 """
-import os
 import re
 import json
 import hashlib
@@ -31,7 +30,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
-from collections import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +280,9 @@ class DataPreprocessor:
                         break
 
             chunks.append(chunk.strip())
-            start = start + len(chunk) - chunk_overlap
+            # 保证 start 至少前进 1 个字符，防止句子边界截断导致死循环
+            advance = max(len(chunk) - chunk_overlap, 1)
+            start += advance
             if start >= len(text):
                 break
 
@@ -345,12 +345,11 @@ class DataPreprocessor:
     def text_stats(self, text: str) -> dict:
         """文本统计"""
         lines = text.split("\n")
-        words = re.findall(r"[\u4e00-\u9fff]+|[a-zA-Z]+", text)
 
         return {
             "total_chars": len(text),
             "total_lines": len(lines),
-            "non_empty_lines": len([l for l in lines if l.strip()]),
+            "non_empty_lines": len([line for line in lines if line.strip()]),
             "chinese_chars": len(re.findall(r"[\u4e00-\u9fff]", text)),
             "english_words": len(re.findall(r"[a-zA-Z]+", text)),
             "numbers": len(re.findall(r"\d+", text)),
@@ -379,7 +378,7 @@ class DataPreprocessor:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="SmartQA 数据预处理工具")
+    parser = argparse.ArgumentParser(description="SupplyChainRAG 数据预处理工具")
     parser.add_argument("--input", "-i", required=True, help="输入文件/目录")
     parser.add_argument("--output", "-o", help="输出目录")
     parser.add_argument("--filter-pii", action="store_true", help="启用PII脱敏")

@@ -1,9 +1,2 @@
-"""库存 Agent — 负责物料库存查询、在途库存追踪"""
-from app.agents.domain_agent import DomainAgent
-
-
-class InventoryAgent(DomainAgent):
-    TOOL_NAMES = ["query_inventory"]
-
-
-inventory_agent = InventoryAgent()
+"""向后兼容 re-export — 已合并到 app.agents.domain_agents"""
+from app.agents.domain_agents import InventoryAgent, inventory_agent  # noqa: F401

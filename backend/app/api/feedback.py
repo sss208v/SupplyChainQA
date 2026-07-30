@@ -1,5 +1,5 @@
 """
-SmartQA Pro - 用户反馈API路由
+SupplyChainRAG - 用户反馈API路由
 ============================================================
 【功能说明】
 记录用户对RAG回答的反馈，用于：
@@ -98,18 +98,14 @@ async def create_feedback(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    提交用户反馈
+    提交用户反馈（需认证）
 
-    【调用场景】
-    前端在用户点击👍/👎按钮时调用此接口。
-
-    【数据流】
-    前端 -> POST /feedback -> 存入PostgreSQL -> 用于后续分析
-
-    【设计决策】
-    - 使用flush+refresh获取自增ID，而非commit后查询
-    - client_info记录客户端信息，用于前端行为分析
+    前端在用户点击赞/踩按钮时调用此接口。
+    数据流: 前端 -> POST /feedback -> 存入PostgreSQL -> 用于后续分析
     """
+    from app.core.auth import get_current_user_required
+    await get_current_user_required(request)
+
     # 参数校验：rating必须是1或-1
     if feedback.rating not in (1, -1):
         from fastapi import HTTPException
@@ -148,24 +144,14 @@ async def create_feedback(
 
 @router.get("/stats", response_model=FeedbackStats)
 async def get_feedback_stats(
+    request: Request,
     days: int = Query(default=30, ge=1, le=365, description="统计周期（天）"),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    获取反馈统计分析
+    """获取反馈统计分析（需认证）"""
+    from app.core.auth import get_current_user_required
+    await get_current_user_required(request)
 
-    【返回指标】
-    - total_feedback: 反馈总数
-    - positive_count: 正面反馈数（rating=1）
-    - negative_count: 负面反馈数（rating=-1）
-    - satisfaction_rate: 满意度 = positive_count / total_feedback
-    - recent_negative: 最近5条负面反馈详情
-
-    【设计决策】
-    - 使用SQL聚合函数而非Python循环，充分利用数据库性能
-    - recent_negative限制5条，避免响应体过大
-    - 满意度保留3位小数，避免浮点精度问题
-    """
     since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
     # ============================================================

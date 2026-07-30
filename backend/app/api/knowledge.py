@@ -1,5 +1,5 @@
 """
-SmartQA Pro - 知识库API路由
+SupplyChainRAG - 知识库API路由
 ============================================================
 1. 知识库管理的核心流程：
    上传文档 → 解析(PDF/Word/TXT) → 切片(Chunking) → 嵌入(Embedding) → 存入Milvus
@@ -17,17 +17,16 @@ SmartQA Pro - 知识库API路由
 import os
 import uuid
 import re
+import asyncio
 import logging
-from typing import Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Request, BackgroundTasks
+from pydantic import BaseModel
 from app.core.milvus_client import milvus_manager
 from app.core.rag_engine import rag_engine
 from app.core.data_filter import PIIFilter
 from app.config import get_settings
 from app.models.user import UserRole
 from app.core.auth import (
-    get_current_user_required,
     get_current_user_full,
     check_role,
 )
@@ -62,24 +61,61 @@ class KnowledgeListResponse(BaseModel):
 
 # ---- API接口 ----
 
+# security_group 合法角色白名单：部门角色枚举 + public 通配
+_VALID_SECURITY_GROUPS = {r.value for r in UserRole} | {"public"}
+
+
+def _resolve_security_groups(requested: str, user_role: str) -> list[str]:
+    """根据当前用户角色解析合法的文档权限组（防止 RBAC 越权）
+
+    规则：
+    - admin：可自由指定，但每项必须在白名单内（部门角色 + public），非法值拒绝
+    - 非 admin：权限组强制为自身角色；仅当 ALLOW_PUBLIC_UPLOAD=True 时允许附加 public，
+      其余传入值一律忽略（不能把文档挂到其他部门/admin 名下）
+    """
+    requested_groups = [g.strip() for g in (requested or "").split(",") if g.strip()]
+
+    if user_role == UserRole.ADMIN.value:
+        groups = requested_groups or ["admin"]
+        invalid = [g for g in groups if g not in _VALID_SECURITY_GROUPS]
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"非法权限角色: {invalid}，允许值: {sorted(_VALID_SECURITY_GROUPS)}",
+            )
+        return groups
+
+    # 非 admin：无视前端传入的其他角色，强制降级为自身角色
+    groups = [user_role]
+    settings = get_settings()
+    if "public" in requested_groups and settings.ALLOW_PUBLIC_UPLOAD:
+        groups.append("public")
+    dropped = [g for g in requested_groups if g not in groups]
+    if dropped:
+        logger.warning(
+            f"[RBAC] 用户角色={user_role} 上传时请求权限组 {requested_groups}，"
+            f"已降级为 {groups}（丢弃: {dropped}）"
+        )
+    return groups
+
+
 @router.post("/upload", response_model=KnowledgeBaseResponse)
 async def upload_document(
     file: UploadFile = File(..., description="上传的文档文件"),
-    security_group: str = Form("admin", description="权限角色，逗号分隔，如: admin,finance,sales"),
+    security_group: str = Form("", description="权限角色，逗号分隔；非admin用户强制为自身角色"),
     request: Request = None,
 ):
     """
     上传文档到知识库
     支持格式：PDF、TXT、Markdown、DOCX
-    security_group: 文档可见的角色列表，逗号分隔
+    security_group: 文档可见的角色列表（由当前用户角色派生，防越权）
     """
-    # RBAC：所有部门角色都可以上传
+    # RBAC：所有部门角色都可以上传，但权限组由自身角色派生
     current_user = await get_current_user_full(request)
+    user_role = current_user.get("role", "")
 
-    # 解析 security_group
-    groups = [g.strip() for g in security_group.split(",") if g.strip()]
-    if not groups:
-        groups = ["admin"]
+    # 解析 security_group（服务端权威裁决，不信任前端）
+    groups = _resolve_security_groups(security_group, user_role)
 
     # 验证文件类型
     allowed_types = [".pdf", ".txt", ".md", ".markdown", ".docx", ".doc"]
@@ -90,23 +126,44 @@ async def upload_document(
             detail=f"不支持的文件类型: {file_ext}，支持: {allowed_types}",
         )
 
+    # 文件大小限制：分块读取累计，超限立即中断（避免大文件一次性读入内存 OOM）
+    settings = get_settings()
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    chunks_buf = []
+    total_size = 0
+    while True:
+        piece = await file.read(1024 * 1024)  # 1MB 分块
+        if not piece:
+            break
+        total_size += len(piece)
+        if total_size > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"文件超过大小限制 {settings.MAX_UPLOAD_MB}MB",
+            )
+        chunks_buf.append(piece)
+    content = b"".join(chunks_buf)
+
     # 生成文档ID
     doc_id = str(uuid.uuid4())[:12]
 
     # 保存文件
     file_path = os.path.join(UPLOAD_DIR, f"{doc_id}_{file.filename}")
     with open(file_path, "wb") as f:
-        content = await file.read()
         f.write(content)
 
-    logger.info(f"文件上传成功: {file.filename}, doc_id={doc_id}")
+    logger.info(f"文件上传成功: {file.filename}, doc_id={doc_id}, size={total_size}B")
 
     try:
-        # 解析文档 → 切片
-        chunks = _parse_and_chunk(file_path, file.filename, doc_id)
+        # 解析文档 → 切片 → 嵌入入库：均为 CPU/IO 密集型同步操作，
+        # 用 to_thread 隔离，避免阻塞事件循环（embedding 计算可达数秒）
+        chunks = await asyncio.to_thread(_parse_and_chunk, file_path, file.filename, doc_id)
+        result = await asyncio.to_thread(
+            rag_engine.index_document, doc_id, chunks, security_group=groups
+        )
 
-        # 嵌入 + 存入Milvus（带权限组）
-        result = rag_engine.index_document(doc_id, chunks, security_group=groups)
+        # 知识库变更 → 失效检索缓存（L1 全清 + L2 语义缓存清空），避免脏检索结果
+        await _invalidate_retrieval_caches()
 
         return KnowledgeBaseResponse(
             doc_id=doc_id,
@@ -121,15 +178,58 @@ async def upload_document(
         raise HTTPException(status_code=500, detail="文档处理失败，请检查文件格式或稍后重试")
 
 
-@router.get("/list", response_model=KnowledgeListResponse)
-async def list_documents(request: Request = None):
-    """获取知识库文档列表 - 按用户角色过滤（行级权限）"""
-    # 尝试获取当前用户，未登录则只看 purchase 可见文档
+async def _invalidate_retrieval_caches() -> None:
+    """知识库变更（上传/删除）后清理检索相关缓存，保证一致性"""
     try:
-        current_user = await get_current_user_full(request)
-        role = current_user.get("role", "purchase") if current_user else "purchase"
-    except Exception:
-        role = "purchase"
+        from app.core.cache_manager import cache_manager
+        cleared = cache_manager.l1_clear()
+        await cache_manager.l2_invalidate()
+        logger.info(f"[Knowledge] 检索缓存已失效（L1 清除 {cleared} 条 + L2 版本号递增）")
+    except Exception as e:
+        logger.warning(f"[Knowledge] 检索缓存失效失败（不影响入库结果）: {e}")
+
+
+@router.post("/router/reload")
+async def reload_intent_routes(request: Request = None):
+    """重载意图路由配置（intent_routes.json）并重建语义路由 embedding
+
+    使用场景：修改关键词/语义样本后手动触发（关键词部分本身支持 mtime 热加载，
+    但语义样本变更需重新计算 embedding，必须走本端点）。
+    """
+    # RBAC：只有 admin 可以重载路由配置
+    current_user = await get_current_user_full(request)
+    check_role(current_user, [UserRole.ADMIN.value])
+
+    from app.core.intent_routes import get_intent_routes_manager
+    from app.core.semantic_router import get_semantic_router
+
+    cfg = get_intent_routes_manager().reload()
+
+    # 重建语义路由 embedding（embedding 计算是同步阻塞操作，放线程池）
+    semantic_rebuilt = False
+    try:
+        sr = get_semantic_router()
+        semantic_rebuilt = await asyncio.to_thread(sr.reload, rag_engine.embedding)
+    except Exception as e:
+        logger.warning(f"[Knowledge] 语义路由重建失败（规则层配置已生效）: {e}")
+
+    return {
+        "message": "意图路由配置已重载",
+        "config_version": cfg.version,
+        "tool_commands": len(cfg.tool_commands),
+        "entity_rules": len(cfg.entity_rules),
+        "semantic_utterances": sum(
+            len(v.get("utterances", [])) for v in cfg.semantic_routes.values()
+        ),
+        "semantic_routes_rebuilt": semantic_rebuilt,
+    }
+
+
+@router.get("/list", response_model=KnowledgeListResponse)
+async def list_documents(request: Request):
+    """获取知识库文档列表 - 按用户角色过滤（行级权限）"""
+    current_user = await get_current_user_full(request)
+    role = current_user.get("role", "purchase") if current_user else "purchase"
 
     # admin 看全部，其他角色用 array_contains 过滤
     docs = milvus_manager.list_documents(role=role)
@@ -172,8 +272,11 @@ async def delete_document(doc_id: str, request: Request = None):
     try:
         milvus_manager.delete_by_doc_id(doc_id)
         rag_engine.bm25.remove_doc(doc_id)
+        # 知识库变更 → 失效检索缓存，避免已删文档仍被缓存命中
+        await _invalidate_retrieval_caches()
         return {"message": f"文档{doc_id}已删除", "doc_id": doc_id}
     except Exception as e:
+        logger.error(f"[Knowledge] 文档删除失败 doc_id={doc_id}: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="文档删除失败，请稍后重试")
 
 
@@ -317,13 +420,34 @@ def _read_pdf(file_path: str) -> str:
     return "\n\n".join(text_parts)
 
 
+_JAVA_AVAILABLE: bool | None = None  # 模块级缓存，避免每次 PDF 上传都探测
+
+
 def _check_java() -> bool:
-    """检测 Java 11+ 是否可用（opendataloader-pdf 需要）"""
+    """检测 Java 11+ 是否可用（opendataloader-pdf 需要）
+
+    性能优化：先查 PATH（毫秒级），不存在直接返回 False。
+    缓存结果到模块级 _JAVA_AVAILABLE，避免每次 PDF 上传都触发 subprocess。
+
+    注：原实现每次调 subprocess.run，JAVA_HOME 存在但 PATH 缺失时会阻塞 10s。
+    """
+    global _JAVA_AVAILABLE
+    if _JAVA_AVAILABLE is not None:
+        return _JAVA_AVAILABLE
+
+    import shutil
     import subprocess
+    # 1. 先用 shutil.which 检查 PATH（毫秒级）
+    if not shutil.which("java"):
+        logger.info("[Java] PATH 中未找到 java，跳过版本检测")
+        _JAVA_AVAILABLE = False
+        return False
+
+    # 2. java 在 PATH 中，再检查版本（带超时）
     try:
         result = subprocess.run(
             ["java", "-version"],
-            capture_output=True, text=True, timeout=10
+            capture_output=True, text=True, timeout=2  # 从 10s 减到 2s
         )
         # java -version 输出到 stderr
         output = result.stderr or result.stdout
@@ -337,11 +461,15 @@ def _check_java() -> bool:
                 ver = int(m.group(1))
                 ok = ver >= 11
                 logger.debug(f"[Java] 检测到版本 {ver}, 可用={ok}")
+                _JAVA_AVAILABLE = ok  # 缓存结果
                 return ok
+        _JAVA_AVAILABLE = False  # 缓存结果
         return False
     except FileNotFoundError:
+        _JAVA_AVAILABLE = False
         return False
     except Exception:
+        _JAVA_AVAILABLE = False
         return False
 
 
@@ -599,31 +727,35 @@ class IngestResponse(BaseModel):
     downloaded: int = 0
 
 
-@router.post("/ingest", response_model=IngestResponse)
-async def ingest_real_pdfs():
-    """
-    一键导入大厂供应链样本库
+# ingest 任务状态 Redis key（后台任务与状态查询端点共用）
+_INGEST_STATUS_KEY = "scqa:ingest:status"
 
-    流程：
-    1. 下载 5 份真实大厂供应链公开报告（或使用本地知识库 fallback）
-    2. 解析 PDF/Markdown，提取文本和表格
-    3. 切片 + 嵌入 + 存入 Milvus
-    """
+
+async def _set_ingest_status(status: dict) -> None:
+    """写入 ingest 任务状态（Redis 不可用时降级为仅日志）"""
+    import json as _json
+    try:
+        from app.core.redis_client import redis_manager
+        if redis_manager.is_connected:
+            await redis_manager.client.set(_INGEST_STATUS_KEY, _json.dumps(status, ensure_ascii=False), ex=3600)
+    except Exception as e:
+        logger.warning(f"[Ingest] 状态写入失败: {e}")
+
+
+async def _run_ingest_job() -> None:
+    """后台执行下载 + 入库全流程，状态写入 Redis 供前端轮询"""
     import sys
-    import os
-    import asyncio
 
-    scripts_dir = os.path.join(os.path.dirname(__file__), "..", "scripts")
+    scripts_dir = os.path.join(os.path.dirname(__file__), "..", "..", "scripts")
     sys.path.insert(0, scripts_dir)
 
     try:
         from scripts.ingest_pdfs import ingest_all, PDF_DIR
         from scripts.download_real_pdfs import download_all
 
-        # 1. 下载 PDF
-        await asyncio.get_running_loop().run_in_executor(None, download_all)
+        await _set_ingest_status({"status": "downloading", "message": "正在下载报告..."})
+        await asyncio.to_thread(download_all)
 
-        # 统计下载的文件
         if os.path.exists(PDF_DIR):
             pdfs = [f for f in os.listdir(PDF_DIR) if f.lower().endswith(".pdf")]
             mds = [f for f in os.listdir(PDF_DIR) if f.lower().endswith(".md")]
@@ -631,16 +763,56 @@ async def ingest_real_pdfs():
         else:
             downloaded = 0
 
-        # 2. 入库
-        total_chunks = await asyncio.get_running_loop().run_in_executor(None, ingest_all)
+        await _set_ingest_status({"status": "indexing", "message": f"已下载 {downloaded} 份，正在入库...", "downloaded": downloaded})
+        total_chunks = await asyncio.to_thread(ingest_all)
 
-        return IngestResponse(
-            success=True,
-            message=f"下载 {downloaded} 份报告，入库 {total_chunks or 0} 个 chunk",
-            total_chunks=total_chunks or 0,
-            downloaded=downloaded,
-        )
+        # 知识库变更 → 失效检索缓存
+        await _invalidate_retrieval_caches()
 
+        await _set_ingest_status({
+            "status": "done",
+            "message": f"下载 {downloaded} 份报告，入库 {total_chunks or 0} 个 chunk",
+            "total_chunks": total_chunks or 0,
+            "downloaded": downloaded,
+        })
+        logger.info(f"[Ingest] 后台入库完成: {downloaded} 份 / {total_chunks or 0} chunks")
     except Exception as e:
-        logger.error(f"批量入库失败: {e}")
-        raise HTTPException(status_code=500, detail=f"批量入库失败: {e}")
+        logger.error(f"[Ingest] 后台入库失败: {e}", exc_info=True)
+        await _set_ingest_status({"status": "failed", "message": f"入库失败: {e}"})
+
+
+@router.post("/ingest", response_model=IngestResponse)
+async def ingest_real_pdfs(background_tasks: BackgroundTasks):
+    """
+    一键导入大厂供应链样本库（后台任务，立即返回）
+
+    流程（后台执行，通过 GET /knowledge/ingest/status 轮询进度）：
+    1. 下载 5 份真实大厂供应链公开报告（或使用本地知识库 fallback）
+    2. 解析 PDF/Markdown，提取文本和表格
+    3. 切片 + 嵌入 + 存入 Milvus
+
+    之前同步执行会让 HTTP 连接挂起数分钟且无进度反馈，现改为 BackgroundTasks。
+    """
+    await _set_ingest_status({"status": "pending", "message": "任务已提交，等待执行"})
+    background_tasks.add_task(_run_ingest_job)
+    return IngestResponse(
+        success=True,
+        message="入库任务已提交后台执行，请通过 GET /api/v1/knowledge/ingest/status 查询进度",
+        total_chunks=0,
+        downloaded=0,
+    )
+
+
+@router.get("/ingest/status")
+async def ingest_status():
+    """查询后台入库任务状态（pending/downloading/indexing/done/failed）"""
+    import json as _json
+    try:
+        from app.core.redis_client import redis_manager
+        if redis_manager.is_connected:
+            raw = await redis_manager.client.get(_INGEST_STATUS_KEY)
+            if raw:
+                return _json.loads(raw)
+    except Exception as e:
+        logger.warning(f"[Ingest] 状态读取失败: {e}")
+    return {"status": "unknown", "message": "无进行中的入库任务或状态已过期"}

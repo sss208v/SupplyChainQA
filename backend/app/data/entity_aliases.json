@@ -1,0 +1,144 @@
+{
+  "aliases": {
+    "东莞精密轴承有限公司": {
+      "entity": "东莞精密轴承有限公司",
+      "type": "Supplier"
+    },
+    "东莞精密轴承": {
+      "entity": "东莞精密轴承有限公司",
+      "type": "Supplier"
+    },
+    "广州液压器材厂": {
+      "entity": "广州液压器材厂",
+      "type": "Supplier"
+    },
+    "广州液压器": {
+      "entity": "广州液压器材厂",
+      "type": "Supplier"
+    },
+    "深圳传动设备科技": {
+      "entity": "深圳传动设备科技",
+      "type": "Supplier"
+    },
+    "深圳传动设备": {
+      "entity": "深圳传动设备科技",
+      "type": "Supplier"
+    },
+    "电机轴承 6205-2RS": {
+      "entity": "MAT-001",
+      "type": "Material"
+    },
+    "电机轴承": {
+      "entity": "MAT-001",
+      "type": "Material"
+    },
+    "液压油 32#": {
+      "entity": "MAT-002",
+      "type": "Material"
+    },
+    "液压油": {
+      "entity": "MAT-002",
+      "type": "Material"
+    },
+    "不锈钢螺栓 M10×40": {
+      "entity": "MAT-003",
+      "type": "Material"
+    },
+    "不锈钢螺栓": {
+      "entity": "MAT-003",
+      "type": "Material"
+    },
+    "传送带橡胶皮带 1200mm": {
+      "entity": "MAT-004",
+      "type": "Material"
+    },
+    "传送带橡胶皮带": {
+      "entity": "MAT-004",
+      "type": "Material"
+    },
+    "PLC 控制器模块 FM352": {
+      "entity": "MAT-005",
+      "type": "Material"
+    },
+    "PLC": {
+      "entity": "MAT-005",
+      "type": "Material"
+    },
+    "气动电磁阀 4V210-08": {
+      "entity": "MAT-006",
+      "type": "Material"
+    },
+    "气动电磁阀": {
+      "entity": "MAT-006",
+      "type": "Material"
+    },
+    "减速机轴承 30205": {
+      "entity": "MAT-007",
+      "type": "Material"
+    },
+    "减速机轴承": {
+      "entity": "MAT-007",
+      "type": "Material"
+    },
+    "润滑油 46#": {
+      "entity": "MAT-008",
+      "type": "Material"
+    },
+    "润滑油": {
+      "entity": "MAT-008",
+      "type": "Material"
+    },
+    "法兰联轴器 TL5型": {
+      "entity": "MAT-009",
+      "type": "Material"
+    },
+    "法兰联轴器": {
+      "entity": "MAT-009",
+      "type": "Material"
+    },
+    "安全继电器 G6Q-2A": {
+      "entity": "MAT-010",
+      "type": "Material"
+    },
+    "安全继电器": {
+      "entity": "MAT-010",
+      "type": "Material"
+    },
+    "压力传感器 0-1MPa": {
+      "entity": "MAT-011",
+      "type": "Material"
+    },
+    "压力传感器": {
+      "entity": "MAT-011",
+      "type": "Material"
+    },
+    "不锈钢管 φ25×3": {
+      "entity": "MAT-012",
+      "type": "Material"
+    },
+    "不锈钢管": {
+      "entity": "MAT-012",
+      "type": "Material"
+    },
+    "工业触摸屏 7寸": {
+      "entity": "MAT-013",
+      "type": "Material"
+    },
+    "工业触摸屏": {
+      "entity": "MAT-013",
+      "type": "Material"
+    },
+    "冷却泵机械密封": {
+      "entity": "MAT-014",
+      "type": "Material"
+    },
+    "控制柜空气开关 63A": {
+      "entity": "MAT-015",
+      "type": "Material"
+    },
+    "控制柜空气开关": {
+      "entity": "MAT-015",
+      "type": "Material"
+    }
+  }
+}

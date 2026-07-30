@@ -10,7 +10,6 @@
 
 import re
 import logging
-from typing import Optional
 
 from app.core.neo4j_client import neo4j_client
 
@@ -104,31 +103,6 @@ def extract_entities(query: str) -> dict:
         if matches:
             entities[key] = matches
     return entities
-
-
-def classify_graph_query(
-    query: str, entities: dict
-) -> Optional[str]:
-    """
-    判断是否应走图检索路径。
-
-    规则：
-    - 含物料/订单/工单编码 + 供应链关键词 → 图检索
-    - 纯概念问法（"什么是安全库存"）→ 不走图检索
-    """
-    graph_keywords = [
-        "哪些物料", "什么供应商", "影响的物料", "关联工单",
-        "在途", "上游供应商", "缺货影响", "影响评估",
-        "追溯", "延迟影响", "影响的订单",
-        "帮我评估", "帮我分析",
-    ]
-    has_entity = any(entities.values())
-    has_keyword = any(kw in query for kw in graph_keywords)
-    # 排除纯概念查询：含"什么是/什么叫/怎么理解"且无实体编码
-    is_concept = any(
-        kw in query for kw in ["什么是", "什么叫", "怎么理解", "原理"]
-    ) and not has_entity
-    return has_entity and has_keyword and not is_concept
 
 
 class GraphEngine:

@@ -4,9 +4,9 @@ Agent 工具调用指标收集器
 记录每次工具调用的 name / duration_ms / success，提供 per-tool 统计。
 存储：内存 + 可选 SQLite 持久化。
 """
-import time, json, logging
+import time
+import logging
 from collections import defaultdict
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

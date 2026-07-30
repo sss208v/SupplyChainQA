@@ -1,5 +1,5 @@
 """
-SmartQA Pro - 用户模型与RBAC角色
+SupplyChainRAG - 用户模型与RBAC角色
 ============================================================
 【设计说明】
 RBAC (Role-Based Access Control) 权限模型：

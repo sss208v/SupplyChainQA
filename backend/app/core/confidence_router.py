@@ -1,5 +1,5 @@
 """
-SmartQA - 三层置信度路由策略
+SupplyChainRAG - 三层置信度路由策略
 
 根据 RAG 检索置信度，动态选择不同的处理策略：
 1. 低置信度 (<0.3)：知识库覆盖不足，用 Web 搜索补充
@@ -10,9 +10,10 @@ SmartQA - 三层置信度路由策略
 只有高置信度时才直接回答。这比一刀切的 RAG 更智能。"
 """
 import logging
-import hashlib
 from typing import Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +39,10 @@ class WebSearchResult:
 class ConfidenceRouter:
     """三层置信度路由器"""
 
-    LOW_THRESHOLD = 0.3
-    HIGH_THRESHOLD = 0.7
+    def __init__(self):
+        _s = get_settings()
+        self.LOW_THRESHOLD: float = _s.CONFIDENCE_LOW
+        self.HIGH_THRESHOLD: float = _s.CONFIDENCE_HIGH
 
     def decide(self, confidence: float, query: str) -> ConfidenceDecision:
         """根据置信度决定处理策略"""

@@ -56,7 +56,7 @@ class Orchestrator:
     """跨域工作流编排器"""
 
     def __init__(self):
-        self._plan_cache = {}  # 简单内存缓存
+        pass
 
     async def plan(self, goal: str) -> dict:
         """LLM 拆解目标为执行计划（优先 fast model，不可用时回退 main，DEMO_MODE 下本地生成）"""
@@ -83,16 +83,18 @@ class Orchestrator:
             response = await llm.ainvoke(messages)
             content = response.content.strip()
 
-            # 提取 JSON
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', content)
-            if json_match:
-                plan = json.loads(json_match.group())
+            # 提取 JSON（使用统一工具函数）
+            from app.core.utils import parse_llm_json
+            try:
+                plan = parse_llm_json(content)
                 logger.info(f"[Orchestrator] 计划生成: {len(plan.get('steps', []))} 步")
                 return plan
-            else:
-                logger.warning(f"[Orchestrator] 无法解析计划 JSON: {content[:200]}")
+            except (ValueError, json.JSONDecodeError) as parse_err:
+                logger.warning(f"[Orchestrator] 无法解析计划 JSON: {parse_err}, 内容: {content[:200]}")
                 return {"goal": goal, "steps": [], "error": "无法生成执行计划"}
+        except json.JSONDecodeError as je:
+            logger.warning(f"[Orchestrator] JSON 解析失败: {je}, 内容: {content[:200]}")
+            return {"goal": goal, "steps": [], "error": "执行计划格式无效，请重试"}
         except Exception as e:
             logger.error(f"[Orchestrator] 计划生成失败: {e}")
             if settings.DEMO_MODE:
@@ -154,7 +156,7 @@ class Orchestrator:
                     "error": False,
                 })
 
-                context += f"\n步骤{i+1} ({agent_name}): {task}\n结果: {answer}\n"
+                context += f"\n步骤{i+1} ({agent_name}): {task}\n结果: {answer[:300]}{'...' if len(answer) > 300 else ''}\n"
                 logger.info(
                     f"[Orchestrator] 步骤{i+1}/{len(steps)} {agent_name}: "
                     f"耗时={_t*1000:.0f}ms tools={len(tool_calls)}"
@@ -192,17 +194,17 @@ class Orchestrator:
         if len(step_results) <= 3:
             parts = []
             for sr in step_results:
-                status = "❌" if sr.get("error") else "✅"
-                result_text = sr.get("result", "")[:600].strip()
+                status = "[失败]" if sr.get("error") else "[OK]"
+                result_text = sr.get("result", "")[:300].strip()
                 parts.append(f"{status} {sr.get('task', '')}\n{result_text}")
             return "\n\n".join(parts)
 
         # 4 步以上：LLM 汇总（用 fast model）
         results_text = ""
         for sr in step_results:
-            status = "❌ 失败" if sr.get("error") else "✅ 完成"
+            status = "[失败] 失败" if sr.get("error") else "[OK] 完成"
             results_text += f"\n步骤{sr['step']}: [{sr['agent']}] {sr['task']} — {status}\n"
-            results_text += f"结果: {sr.get('result', '无')[:500]}\n"
+            results_text += f"结果: {sr.get('result', '无')[:300]}\n"
 
         prompt = SUMMARY_PROMPT.format(goal=goal, step_results=results_text)
         llm = LLMFactory.get_llm(temperature=0.3, model="fast")

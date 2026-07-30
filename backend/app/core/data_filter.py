@@ -1,5 +1,5 @@
 """
-SmartQA Pro - PII 数据脱敏模块
+SupplyChainRAG - PII 数据脱敏模块
 ============================================================
 【功能说明】在调用公有云 LLM API 前，对敏感个人信息进行识别与屏蔽
 
@@ -35,7 +35,6 @@ logger = logging.getLogger(__name__)
 class MaskMode(str, Enum):
     """脱敏模式"""
     MASK = "mask"           # 不可逆：用*替换
-    HASH = "hash"           # 不可逆：用哈希替换
     REPLACE = "replace"     # 可逆：用占位符替换，可还原
 
 
@@ -300,40 +299,7 @@ class PIIFilter:
         return result
 
 
-# ---- 便捷函数 ----
-
-def filter_pii(text: str) -> str:
-    """快速PII脱敏（全局函数）"""
-    return PIIFilter().filter_text(text)
-
-
-def detect_pii(text: str) -> list[PIIMatch]:
-    """快速PII检测（全局函数）"""
-    return PIIFilter().detect_pii(text)
-
-
-# ---- 中间件集成 ----
-
-class PIIFilterMiddleware:
-    """
-    FastAPI 中间件：在请求发送到LLM前自动脱敏
-
-    用法：
-        from app.core.data_filter import PIIFilterMiddleware
-        app.add_middleware(PIIFilterMiddleware)
-    """
-
-    def __init__(self, app):
-        self.app = app
-        self.filter = PIIFilter()
-
-    async def __call__(self, scope, receive, send):
-        # 仅处理 HTTP 请求
-        if scope["type"] == "http":
-            # 可以在此处对请求体进行PII检测/脱敏
-            pass
-        return await self.app(scope, receive, send)
-
+# ---- 日志集成 ----
 
 class PIILogFilter(logging.Filter):
     """日志层PII脱敏过滤器

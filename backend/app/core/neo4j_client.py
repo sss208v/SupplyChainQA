@@ -8,7 +8,7 @@ Neo4j 图数据库客户端 — 供应链实体关系图谱
 """
 
 import logging
-from neo4j import AsyncGraphDatabase
+from neo4j import AsyncGraphDatabase, GraphDatabase
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,11 @@ class Neo4jClient:
     def __init__(self):
         self._driver = None
         self._connected = False
+        # 同步 driver：供同步调用栈（rag_engine.search）使用。
+        # 异步 driver 的连接池绑定创建时的 event loop，在“线程池 + 每次 asyncio.run 新 loop”
+        # 模式下复用连接会报 'NoneType' object has no attribute 'send'（实测约 50% 交替失败），
+        # 同步 driver 线程安全且无 loop 绑定，是同步链路的正确选择。
+        self._sync_driver = None
 
     # ---- 连接管理 ----
 
@@ -39,11 +44,11 @@ class Neo4jClient:
             # 验证连接
             await self._driver.verify_connectivity()
             self._connected = True
-            logger.info("✅ Neo4j 连接成功: %s", settings.NEO4J_URI)
+            logger.info("[OK] Neo4j 连接成功: %s", settings.NEO4J_URI)
             return True
         except Exception as e:
             self._connected = False
-            logger.warning("⚠️ Neo4j 连接失败: %s（图谱检索不可用）", e)
+            logger.warning("[警告] Neo4j 连接失败: %s（图谱检索不可用）", e)
             return False
 
     async def disconnect(self):
@@ -51,6 +56,9 @@ class Neo4jClient:
         if self._driver:
             await self._driver.close()
             self._driver = None
+        if self._sync_driver:
+            self._sync_driver.close()
+            self._sync_driver = None
         self._connected = False
         logger.info("Neo4j 连接已关闭")
 
@@ -408,6 +416,100 @@ class Neo4jClient:
                             statements.append(f"供应商 {entity} 有采购订单 {record['po'].get('code', '')}（状态: {record['po'].get('state', '未知')}）")
         except Exception as e:
             logger.warning(f"[GraphRAG] 2-hop 子图检索失败: {e}")
+            return ""
+
+        if statements:
+            context = "；".join(statements) + "。"
+            logger.info(f"[GraphRAG] entity={entity} type={entity_type} 召回 {len(statements)} 条关系")
+            return context
+        return ""
+
+    # ---- 同步查询（供 rag_engine.search 等同步调用栈使用）----
+
+    def _get_sync_driver(self):
+        """惰性创建同步 driver（线程安全，无 event loop 绑定）"""
+        if self._sync_driver is None:
+            settings = get_settings()
+            self._sync_driver = GraphDatabase.driver(
+                settings.NEO4J_URI,
+                auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
+                max_connection_lifetime=3600,
+            )
+        return self._sync_driver
+
+    def get_2hop_subgraph_context_sync(self, entity: str, entity_type: str | None = None) -> str:
+        """get_2hop_subgraph_context 的同步版（Cypher 模板与异步版一致）。
+
+        同步调用栈（如 rag_engine.search）直接调用，避免“线程池里 asyncio.run
+        新 loop 复用异步连接池”导致的间歇性 'NoneType' has no attribute 'send'。
+
+        Args:
+            entity: 实体标识（编码或供应商中文名）
+            entity_type: 显式实体类型（Material/PurchaseOrder/Supplier）；
+                词典链接的中文实体无法按编码前缀推断，需由调用方传入；
+                缺省 None 时按前缀推断（兼容编码实体）。
+        """
+        if entity_type is None:
+            entity = self._normalize_entity(entity)
+            entity_type = "Material"
+            if entity.upper().startswith("PO-") or entity.upper().startswith("PO"):
+                entity_type = "PurchaseOrder"
+            elif entity.upper().startswith("SUP-"):
+                entity_type = "Supplier"
+        elif entity_type != "Supplier":
+            # 编码类实体仍做拼写自愈；供应商中文名不可归一化（会被 upper/去空格破坏）
+            entity = self._normalize_entity(entity)
+
+        statements = []
+        try:
+            with self._get_sync_driver().session() as session:
+                if entity_type == "Material":
+                    result = session.run("""
+                        MATCH (m:Material {code: $entity})
+                        OPTIONAL MATCH (m)-[:HAS_MOVE]->(sm:StockMove)
+                        OPTIONAL MATCH (ol:OrderLine)-[:FOR]->(m)
+                        OPTIONAL MATCH (po:PurchaseOrder)-[:CONTAINS]->(ol)
+                        OPTIONAL MATCH (po)-[:FROM]->(s:Supplier)
+                        RETURN m, sm, ol, po, s
+                        LIMIT 5
+                    """, entity=entity)
+                    for record in result:
+                        if record["s"]:
+                            statements.append(f"物料 {entity} 由供应商 {record['s'].get('name', '未知')} 供应")
+                        if record["po"]:
+                            po_state = record["po"].get("state", "未知")
+                            statements.append(f"关联采购订单 {record['po'].get('code', '')}（状态: {po_state}）")
+                        if record["sm"]:
+                            sm_state = record["sm"].get("state", "未知")
+                            statements.append(f"在途库存移库 {record['sm'].get('code', '')}（状态: {sm_state}，预期: {record['sm'].get('expected_date', '')}）")
+
+                elif entity_type == "PurchaseOrder":
+                    result = session.run("""
+                        MATCH (po:PurchaseOrder {code: $entity})
+                        OPTIONAL MATCH (po)-[:FROM]->(s:Supplier)
+                        OPTIONAL MATCH (po)-[:CONTAINS]->(ol:OrderLine)-[:FOR]->(m:Material)
+                        RETURN po, s, ol, m
+                        LIMIT 5
+                    """, entity=entity)
+                    for record in result:
+                        if record["s"]:
+                            statements.append(f"采购订单 {entity} 来自供应商 {record['s'].get('name', '未知')}")
+                        if record["m"]:
+                            statements.append(f"包含物料 {record['m'].get('code', '')}（{record['m'].get('name', '')}），数量 {record['ol'].get('qty', '?')}")
+
+                elif entity_type == "Supplier":
+                    result = session.run("""
+                        MATCH (s:Supplier {name: $entity})
+                        OPTIONAL MATCH (po:PurchaseOrder)-[:FROM]->(s)
+                        OPTIONAL MATCH (po)-[:CONTAINS]->(ol:OrderLine)-[:FOR]->(m:Material)
+                        RETURN s, po, m
+                        LIMIT 5
+                    """, entity=entity)
+                    for record in result:
+                        if record["po"]:
+                            statements.append(f"供应商 {entity} 有采购订单 {record['po'].get('code', '')}（状态: {record['po'].get('state', '未知')}）")
+        except Exception as e:
+            logger.warning(f"[GraphRAG] 2-hop 子图同步检索失败: {e}")
             return ""
 
         if statements:

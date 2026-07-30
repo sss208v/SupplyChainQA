@@ -1,16 +1,17 @@
 """
-SmartQA Pro - LLM模型路由
-支持 DeepSeek API / MiniMax API / Ollama 本地模型
+SupplyChainRAG - LLM模型路由
+支持 DeepSeek API / MiniMax API / Ollama / local(OpenAI 兼容本地端点, 如 llama.cpp / Ollama)
 """
 import logging
 from typing import Optional, AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from app.config import get_settings
-from app.core.retry import retry_async, retry_astream
+from app.core.retry import retry_call, retry_astream
+from app.core.circuit_breaker import get_circuit_breaker, CircuitOpenError
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -143,15 +144,28 @@ class LLMFactory:
             )
             model_name = settings.OLLAMA_MODEL
 
+        elif provider == "local":
+            # 本地 OpenAI 兼容端点（llama.cpp / Ollama）——base_url/model/key 全部来自 config（读 .env）
+            llm = ChatOpenAI(
+                api_key=settings.LOCAL_LLM_API_KEY or "local",
+                base_url=settings.LOCAL_LLM_BASE_URL,
+                model=settings.LOCAL_LLM_MODEL,
+                temperature=temperature,
+                streaming=streaming,
+                stream_usage=True,
+                max_tokens=1024,
+                max_retries=3,
+            )
+            model_name = settings.LOCAL_LLM_MODEL
+
         else:
-            raise ValueError(f"不支持的LLM提供商: {provider}，可选：deepseek / minimax / ollama")
+            raise ValueError(f"不支持的LLM提供商: {provider}，可选：deepseek / minimax / ollama / local")
 
         cls._instances[cache_key] = llm
         logger.info(f"LLM实例创建: provider={provider}, model={model_name}")
         return llm
 
     @classmethod
-    @retry_async(max_attempts=3, base_delay=2.0)
     async def ainvoke(
         cls,
         messages: list[BaseMessage],
@@ -159,11 +173,30 @@ class LLMFactory:
         temperature: float = 0.7,
         callbacks: Optional[list] = None,
     ) -> tuple[BaseMessage, TokenUsage]:
-        """异步调用LLM，返回(response, token_usage)，失败时指数退避重试"""
-        llm = cls.get_llm(provider, temperature, streaming=False)
-        config = {"callbacks": callbacks} if callbacks else None
-        response = await llm.ainvoke(messages, config=config)
+        """异步调用LLM，返回(response, token_usage)
+
+        外层：熔断器（快速失败） → 内层：指数退避重试（3次）
+        """
         provider_name = provider or settings.LLM_PROVIDER
+        breaker = get_circuit_breaker(provider_name)
+
+        async def _call():
+            llm = cls.get_llm(provider, temperature, streaming=False)
+            config = {"callbacks": callbacks} if callbacks else None
+            return await llm.ainvoke(messages, config=config)
+
+        try:
+            breaker.check()
+            response = await retry_call(
+                _call, max_attempts=3, base_delay=2.0, context_name=f"LLM[{provider_name}]"
+            )
+            breaker.record_success()
+        except CircuitOpenError:
+            raise
+        except Exception:
+            breaker.record_failure()
+            raise
+
         model_name = cls._get_model_name(provider_name)
         usage = cls._extract_token_usage(response, model_name, provider_name)
         return response, usage
@@ -202,14 +235,26 @@ class LLMFactory:
 
         在第一个 token 到达之前，如果网络异常会自动重试（最多3次，2s→4s→8s）。
         如果第一个 token 已发出，后续异常不重试——避免前端收到重复内容。
+        外层包裹熔断器：连续失败 5 次后快速失败 30 秒。
         """
-        async for chunk in retry_astream(
-            lambda: cls._raw_astream(messages, provider, temperature, callbacks=callbacks),
-            max_attempts=3,
-            base_delay=2.0,
-            context_name="LLM astream",
-        ):
-            yield chunk
+        provider_name = provider or settings.LLM_PROVIDER
+        breaker = get_circuit_breaker(provider_name)
+        breaker.check()
+
+        try:
+            async for chunk in retry_astream(
+                lambda: cls._raw_astream(messages, provider, temperature, callbacks=callbacks),
+                max_attempts=3,
+                base_delay=2.0,
+                context_name="LLM astream",
+            ):
+                yield chunk
+            breaker.record_success()
+        except CircuitOpenError:
+            raise
+        except Exception:
+            breaker.record_failure()
+            raise
 
     @classmethod
     def _get_model_name(cls, provider: str) -> str:
@@ -220,6 +265,8 @@ class LLMFactory:
             return settings.MINIMAX_MODEL
         elif provider == "ollama":
             return settings.OLLAMA_MODEL
+        elif provider == "local":
+            return settings.LOCAL_LLM_MODEL
         return "unknown"
 
     @classmethod

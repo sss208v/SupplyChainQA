@@ -1,149 +1,60 @@
 """
-SmartQA Pro - 对话API路由
+SupplyChainRAG - 对话API路由（精简路由层）
 ============================================================
 1. SSE (Server-Sent Events) 是AI对话的标准传输协议
-   - 优点：单向推送、自动重连、基于HTTP、兼容代理
-   - 缺点：只能服务端→客户端（但AI对话场景只需要这个方向）
-
-2. SSE格式规范：
-   每条消息格式: "data: {json}\n\n"
-   结束标记: "data: [DONE]\n\n"
-   心跳包: "data: {"type":"heartbeat"}\n\n"（防止连接超时）
-
-3. FastAPI实现SSE的关键：
-   - 使用StreamingResponse + async generator
-   - 设置Content-Type: text/event-stream
-   - 设置Cache-Control: no-cache（防止代理缓存）
-   - 设置X-Accel-Buffering: no（防止Nginx缓冲）
-============================================================
+2. 意图处理逻辑已拆分到 handlers/ 目录下
+3. 本文件仅负责路由分发和公共前置逻辑
 """
+import hashlib
 import json
-import asyncio
 import logging
 import uuid
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 from fastapi import Request
-from app.agents.router import router_agent, IntentType
-from app.agents.rag import rag_agent
-from app.agents.tool import tool_agent
-from app.agents.agent_router import get_agent_for_tool
-from app.agents.orchestrator import orchestrator
-from app.core.llm_router import LLMFactory
-from app.core.redis_client import chat_memory
+from pydantic import BaseModel, Field
+from app.agents.router import IntentType
+from app.agents.rag import RAGAgent
+from app.agents.router import RouterAgent
+from app.agents.orchestrator import Orchestrator
+from app.core.graph_engine import GraphEngine
+from app.core.milvus_client import MilvusManager
+from app.core.neo4j_client import Neo4jClient
+from app.core.redis_client import RedisManager, ChatMemory
+from app.core.multimodal_embedding import CLIPEmbeddingEngine
+from app.core.query_analyzer import QueryComplexityAnalyzer
 from app.core.data_filter import PIIFilter
-from app.core.clarify import check_needs_clarification
-from app.core.self_rag import get_self_rag
-from app.core.faithfulness import get_faithfulness_checker
-from app.core.graph_engine import graph_engine
-from app.core.neo4j_client import neo4j_client
 from app.config import get_settings
 from app.core.auth import get_current_user_optional, get_current_user_full
-from app.core.milvus_client import milvus_manager
-from app.api.tool import _is_tool_allowed, _get_allowed_tools
-from langchain_core.messages import SystemMessage, HumanMessage
+from app.core.dependencies import (
+    get_rag_agent, get_router_agent, get_orchestrator_service,
+    get_graph_engine, get_milvus_manager, get_neo4j_client,
+    get_clip_engine, get_redis_manager, get_chat_memory,
+    get_query_analyzer,
+)
+from app.api.chat_helpers import sse_event, sse_done, ChatRequest, _AskRequest
+from app.api.handlers import (
+    handle_greeting, handle_unclear, handle_rag_answer,
+    handle_tool_call, handle_goal, handle_hybrid,
+    handle_graph_query, handle_ask,
+)
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 router = APIRouter(prefix="/chat", tags=["对话"])
-
-# PII脱敏过滤器实例（模块级单例，避免重复创建）
 _pii_filter = PIIFilter()
 
-# 内容过滤引擎（已禁用）
 
-# Faithfulness 检测器（模块级单例）
-_faithfulness_checker = get_faithfulness_checker()
-
-
-def _apply_output_guard(answer: str) -> str:
-    """输出过滤（已禁用，保留接口兼容）"""
-    return answer
-
-
-def _detect_mime(base64_data: str) -> str:
-    """根据 base64 数据头检测图片 MIME 类型"""
-    import base64 as b64
-    try:
-        raw = b64.b64decode(base64_data[:64])
-        if raw[:4] == b'\x89PNG':
-            return "image/png"
-        elif raw[:2] == b'\xff\xd8':
-            return "image/jpeg"
-        elif raw[:4] == b'RIFF':
-            return "image/webp"
-        elif raw[:4] == b'GIF8':
-            return "image/gif"
-    except Exception:
-        pass
-    return "image/jpeg"  # 默认
-
-
-# ---- 角色中文标签 ----
-ROLE_LABELS = {
-    "admin": "管理员",
-    "purchase": "采购部",
-    "warehouse": "仓库部",
-    "quality": "质量部",
-    "production": "生产部",
-    "finance": "财务部",
-    "logistics": "物流部",
-}
-
-
-def _role_label(role: str) -> str:
-    return ROLE_LABELS.get(role, role)
-
-
-# ---- 请求/响应模型 ----
-
-class ChatRequest(BaseModel):
-    """对话请求"""
-    query: str = Field(..., min_length=1, max_length=2000, description="用户问题")
-    session_id: Optional[str] = Field(None, description="会话ID（为空则新建）")
-    stream: bool = Field(True, description="是否流式输出")
-    doc_ids: Optional[list[str]] = Field(None, description="限定检索的文档ID")
-    agent_type: Optional[str] = Field(None, description="Agent类型: react（LangGraph ReAct,默认）/ langgraph（多节点循环）/ langchain（AgentExecutor备选），为空则使用配置默认值")
-    approved: bool = Field(False, description="是否已确认执行写操作")
-    approved_tool: Optional[str] = Field(None, description="已确认执行的工具名")
-    images: Optional[list[str]] = Field(None, description="图片列表（base64编码，不含data:前缀）")
-
-
-class ChatResponse(BaseModel):
-    """对话响应（非流式）"""
-    session_id: str
-    answer: str
-    intent: str
-    confidence: float = 0.0
-    sources: list = []
-    tool_calls: list = []
-    feedback_url: str = "/api/v1/feedback"  # 前端提交反馈的地址
-
-
-# ---- 辅助：Agent 类型选择 ----
-
-def _get_tool_agent(agent_type: Optional[str] = None, tool_name: Optional[str] = None):
-    """返回 Tool Agent — 支持 agent_type 显式切换，默认按工具名路由"""
-    # agent_type 显式指定时使用对应 Agent
-    if agent_type == "langgraph":
-        from app.agents.langgraph_agent import langgraph_agent
-        return langgraph_agent
-    elif agent_type == "langchain":
-        from app.agents.langchain_agent import LangChainAgent
-        return LangChainAgent()
-    # 默认：按工具名路由到专域 Agent
-    return get_agent_for_tool(tool_name)
-
-
-# ---- API接口 ----
+# ============================================================
+# 模型管理
+# ============================================================
 
 @router.get("/model/list")
 async def list_models():
     """获取可用模型列表"""
+    settings = get_settings()
     return {
         "models": [
+            {"provider": "local", "name": settings.LOCAL_LLM_MODEL, "configured": True},
             {"provider": "deepseek", "name": settings.DEEPSEEK_MODEL, "configured": bool(settings.DEEPSEEK_API_KEY)},
             {"provider": "minimax", "name": settings.MINIMAX_MODEL, "configured": bool(settings.MINIMAX_API_KEY)},
             {"provider": "ollama", "name": settings.OLLAMA_MODEL, "configured": True},
@@ -156,272 +67,130 @@ async def list_models():
 async def switch_model(body: dict):
     """切换模型"""
     provider = body.get("provider", "")
-    if provider not in ("deepseek", "minimax", "ollama"):
+    if provider not in ("deepseek", "minimax", "ollama", "local"):
         raise HTTPException(status_code=400, detail="不支持的provider")
-    # 这里只是返回确认，实际切换需要重启后端或用环境变量
     return {"message": f"已切换到 {provider}", "provider": provider}
 
 
-async def chat_completions(request: Request, body: ChatRequest):
-    """对话接口（非流式）"""
-    session_id = body.session_id or str(uuid.uuid4())
-    safe_query = _pii_filter.filter_text(body.query)
+# ============================================================
+# 缓存指标（多层缓存命中率监控，仅 admin）
+# ============================================================
 
-    # 获取用户身份
-    _user_id = ""
-    try:
-        _current_user = await get_current_user_full(request)
-        if _current_user:
-            _user_id = _current_user.get("username", "") or _current_user.get("sub", "")
-    except Exception:
-        pass
+@router.get("/cache/stats")
+async def cache_stats(request: Request):
+    """返回 L1/L2/L3 各层缓存命中率指标（L4 由 nginx 承担，不在应用层统计）"""
+    from app.core.auth import check_role
+    from app.models.user import UserRole
+    from app.core.dependencies import get_cache_manager
 
-    # Step 1: 意图路由
-    route_result = await router_agent.route(safe_query)
-    intent = route_result["intent"]
+    current_user = await get_current_user_full(request)
+    check_role(current_user, [UserRole.ADMIN.value])
 
-    logger.info(f"对话请求: query={safe_query}, intent={intent}, session={session_id}")
+    return {"layers": get_cache_manager().stats()}
 
-    # Step 2: 根据意图分发到不同Agent
-    if intent == IntentType.GREETING:
-        answer = _handle_greeting(safe_query)
-        return ChatResponse(
-            session_id=session_id,
-            answer=_apply_output_guard(answer),
-            intent=intent.value,
-            confidence=route_result.get("confidence", 0.0),
-        )
 
-    elif intent == IntentType.RAG_ANSWER:
-        result = await rag_agent.answer(
-            query=safe_query,
-            session_id=session_id,
-            doc_ids=body.doc_ids,
-        )
-        return ChatResponse(
-            session_id=session_id,
-            answer=_apply_output_guard(result["answer"]),
-            intent=intent.value,
-            confidence=result["confidence"],
-            sources=result["sources"],
-        )
+# ============================================================
+# 非流式 RAG 问答（供评估脚本 / 外部系统集成）
+# ============================================================
 
-    elif intent == IntentType.TOOL_CALL:
-        agent = _get_tool_agent(body.agent_type, route_result.get("tool_name"))
-        result = await agent.run(
-            query=safe_query,
-            tool_names=[route_result["tool_name"]] if route_result.get("tool_name") else None,
-            session_id=session_id,
-        )
-        return ChatResponse(
-            session_id=session_id,
-            answer=_apply_output_guard(result["answer"]),
-            intent=intent.value,
-            tool_calls=result["tool_calls"],
-        )
+@router.post("/ask")
+async def ask_non_streaming(request: Request, body: _AskRequest):
+    """非流式 RAG 问答端点 — 直接走 rag_agent.answer()，跳过意图路由"""
+    if get_settings().REQUIRE_AUTH_CHAT:
+        from app.core.auth import get_current_user_required
+        await get_current_user_required(request)
+    result = await handle_ask(body.question, body.doc_ids, request)
+    return result
 
-    elif intent == IntentType.GOAL:
-        # 目标型意图 → Orchestrator 多步编排
-        result = await orchestrator.run(
-            goal=safe_query,
-            session_id=session_id,
-            user_id=_user_id,
-        )
-        return ChatResponse(
-            session_id=session_id,
-            answer=_apply_output_guard(result["answer"]),
-            intent=intent.value,
-            tool_calls=result.get("execution", {}).get("step_results", []),
-        )
 
-    elif intent == IntentType.HYBRID:
-        # 混合意图：先RAG检索上下文，再用Tool处理需要实时数据的部分
-        rag_result = await rag_agent.answer(
-            query=safe_query,
-            session_id=session_id,
-            doc_ids=body.doc_ids,
-        )
-
-        # 如果RAG已经得到高置信度答案且没有指定工具，直接返回
-        tool_name = route_result.get("tool_name")
-        if not tool_name or rag_result["confidence"] >= settings.CONFIDENCE_THRESHOLD:
-            return ChatResponse(
-                session_id=session_id,
-                answer=_apply_output_guard(rag_result["answer"]),
-                intent=intent.value,
-                confidence=rag_result["confidence"],
-                sources=rag_result["sources"],
-            )
-
-        # RAG置信度低 + 指定了工具：用RAG上下文增强Tool调用
-        enhanced_query = (
-            f"背景信息：{rag_result['answer']}\n\n用户问题：{safe_query}"
-        )
-        agent = _get_tool_agent(body.agent_type, tool_name)
-        tool_result = await agent.run(
-            query=enhanced_query,
-            tool_names=[tool_name],
-            session_id=session_id,
-        )
-
-        return ChatResponse(
-            session_id=session_id,
-            answer=_apply_output_guard(tool_result["answer"]),
-            intent=intent.value,
-            confidence=rag_result["confidence"],
-            sources=rag_result["sources"],
-            tool_calls=tool_result["tool_calls"],
-        )
-
-    elif intent == IntentType.GRAPH_QUERY:
-        # 图谱检索 — 实体关系匹配
-        try:
-            graph_result = await graph_engine.query(safe_query)
-        except Exception as e:
-            logger.error(f"图谱查询异常: {e}")
-            return ChatResponse(
-                session_id=session_id,
-                answer=f"图谱查询暂时不可用，请稍后重试。您也可以尝试用文字描述您的问题。",
-                intent=intent.value,
-            )
-
-        # 优先检查 error 字段
-        if graph_result.get("error"):
-            logger.warning(f"图谱查询返回错误: {graph_result['error']}")
-            return ChatResponse(
-                session_id=session_id,
-                answer=f"图谱查询失败：{graph_result['error']}。请确认物料/订单/供应商编码是否正确，或尝试用文字描述。",
-                intent=intent.value,
-            )
-
-        graph_context = graph_engine.format_results(graph_result)
-        if graph_context:
-            # 将图谱结果注入 LLM 上下文
-            llm = LLMFactory.get_llm(temperature=0.3)
-            prompt = f"以下是一段供应链实体关系图谱的查询结果：\n\n{graph_context}\n\n请根据这些结构化数据，用中文回答用户的原始问题：{safe_query}\n\n要求：简洁、直接、有数据支撑。"
-            try:
-                response = await llm.ainvoke([HumanMessage(content=prompt)])
-                answer = _apply_output_guard(response.content.strip())
-            except Exception as e:
-                logger.error(f"图谱 LLM 生成失败: {e}")
-                answer = f"图谱查询结果如下，但 AI 生成回答时出错：\n\n{graph_context}"
-        else:
-            answer = "未在供应链图谱中找到相关实体关系，请确认物料/订单/供应商编码是否正确，或尝试用文字描述您的问题。"
-        # 保存对话记忆
-        if session_id and chat_memory:
-            try:
-                await chat_memory.add_message(session_id, "user", body.query, user_id=_user_id)
-                await chat_memory.add_message(session_id, "assistant", answer, user_id=_user_id)
-            except Exception:
-                pass
-
-        return ChatResponse(
-            session_id=session_id,
-            answer=answer,
-            intent=intent.value,
-            tool_calls=graph_result.get("rows", []),
-        )
-
-    else:
-        # unclear意图：追问澄清
-        return ChatResponse(
-            session_id=session_id,
-            answer="抱歉，我不太理解您的问题。您可以尝试：\n1. 提供更多细节\n2. 换一种表述方式\n3. 询问具体的知识点",
-            intent=intent.value,
-            confidence=route_result.get("confidence", 0.0),
-        )
-
+# ============================================================
+# 流式对话（SSE）
+# ============================================================
 
 @router.post("/stream")
-async def chat_stream(request: Request, body: ChatRequest):
+async def chat_stream(
+    request: Request,
+    body: ChatRequest,
+    rag_agent: RAGAgent = Depends(get_rag_agent),
+    router: RouterAgent = Depends(get_router_agent),
+    orchestrator: Orchestrator = Depends(get_orchestrator_service),
+    graph_engine: GraphEngine = Depends(get_graph_engine),
+    milvus: MilvusManager = Depends(get_milvus_manager),
+    neo4j: Neo4jClient = Depends(get_neo4j_client),
+    clip: CLIPEmbeddingEngine = Depends(get_clip_engine),
+    redis: RedisManager = Depends(get_redis_manager),
+    memory: ChatMemory = Depends(get_chat_memory),
+    query_analyzer: QueryComplexityAnalyzer = Depends(get_query_analyzer),
+):
     """
     对话接口（流式SSE）
 
     1. 返回StreamingResponse，content_type="text/event-stream"
-    2. 用async generator逐步yield数据
-    3. 每条数据格式: "data: {json}\\n\\n"
-    4. 结束时发送: "data: [DONE]\\n\\n"
-    5. 定期发送心跳包防止连接超时
+    2. 公共前置逻辑：DEMO_MODE → Trace → Session → CLIP入库 → Query Cache → 意图路由
+    3. 按 intent 分发给对应的 handler
     """
     import time
     _t0 = time.perf_counter()
-    _t_route = _t_gen = _t_total = 0.0
-
-    def _elapsed(label: str):
-        return f"[{label} +{(time.perf_counter() - _t0)*1000:.0f}ms]"
+    _t_route = 0.0
 
     session_id = body.session_id or str(uuid.uuid4())
-
-    # PII脱敏：在调用LLM API前过滤用户输入中的敏感信息
-    # 使用脱敏后的safe_query进行路由和推理，防止PII泄露到云端LLM
     safe_query = _pii_filter.filter_text(body.query)
-
     logger.info(f"对话开始 session={session_id} query={safe_query}")
 
-    # 获取用户角色用于权限过滤（默认finance最小权限，token无效时会被拦截）
-    _user_role = "finance"
-    _user_id = ""  # 用于对话记忆隔离
-    try:
-        _current_user = await get_current_user_full(request)
-        if _current_user:
-            _user_role = _current_user.get("role", "finance")
-            _user_id = _current_user.get("username", "") or _current_user.get("sub", "")
-            logger.info(f"[Permission] 用户: {_user_id}, 角色: {_user_role}")
-        else:
-            logger.warning("[Permission] get_current_user_full returned None")
-    except Exception as e:
-        logger.warning(f"[Permission] 获取用户角色失败: {e}")
+    # 用户角色：REQUIRE_AUTH_CHAT=True 时强制登录（未登录 401），
+    # 关闭时（演示环境）允许匿名并回退到默认角色
+    _settings = get_settings()
+    _user_role = _settings.DEFAULT_USER_ROLE
+    _user_id = ""
+    if _settings.REQUIRE_AUTH_CHAT:
+        _current_user = await get_current_user_full(request)  # 未登录直接 401
+        _user_role = _current_user.get("role", _settings.DEFAULT_USER_ROLE)
+        _user_id = _current_user.get("username", "") or _current_user.get("sub", "")
+    else:
+        try:
+            _current_user = await get_current_user_full(request)
+            if _current_user:
+                _user_role = _current_user.get("role", _settings.DEFAULT_USER_ROLE)
+                _user_id = _current_user.get("username", "") or _current_user.get("sub", "")
+        except Exception as e:
+            logger.warning(f"[Permission] 匿名会话（REQUIRE_AUTH_CHAT=false），使用默认角色: {e}")
 
     async def event_generator():
-        """SSE事件生成器"""
-        nonlocal _t_route, _t_gen, _user_id
+        """SSE事件生成器 — 公共前置 + 意图分发"""
+        nonlocal _t_route
 
-        # 检查 DEMO_MODE，提前通知前端
         settings = get_settings()
+
+        # ---- DEMO_MODE 检查 ----
         if settings.DEMO_MODE:
-            yield _sse_format({
-                "type": "demo_mode",
-                "mode": "demo",
-                "message": "当前为离线演示模式，LLM 推理结果由本地降级链路生成",
-            })
+            yield sse_event("demo_mode", mode="demo", message="当前为离线演示模式，LLM 推理结果由本地降级链路生成")
 
         try:
-            # 0. 生成全局 trace_id（Langfuse 可观测性）
+            # ---- Trace ID + Langfuse 可观测性 ----
             from app.core.observability import get_trace_id, get_langfuse_url, is_enabled, get_langfuse_callback
             trace_id = get_trace_id()
             langfuse_handler = get_langfuse_callback(trace_id=trace_id)
             langfuse_callbacks = [langfuse_handler] if langfuse_handler else None
             if is_enabled():
-                yield _sse_format({
-                    "type": "trace",
-                    "trace_id": trace_id,
-                    "langfuse_url": get_langfuse_url(trace_id),
-                })
+                yield sse_event("trace", trace_id=trace_id, langfuse_url=get_langfuse_url(trace_id))
 
-            # 1. 发送会话ID
-            yield _sse_format({
-                "type": "session",
-                "session_id": session_id,
-                "trace_id": trace_id,
-            })
+            # ---- 会话ID ----
+            yield sse_event("session", session_id=session_id, trace_id=trace_id)
 
-            # ---- 多模态：图片通过 CLIP 入库（纯本地嵌入 + 跨模态检索）----
+            # ---- 多模态：图片通过 CLIP 入库 ----
             if body.images and len(body.images) > 0:
-                # CLIP 图像嵌入入库（纯本地，始终执行）
-                clip_stored = 0
                 if settings.CLIP_ENABLED:
                     try:
-                        from app.core.multimodal_embedding import clip_engine
-                        import uuid as _uuid
+                        clip_stored = 0
                         for img_b64 in body.images:
-                            clip_vec = clip_engine.encode_image_base64(img_b64)
-                            milvus_manager.insert_image(
+                            clip_vec = clip.encode_image_base64(img_b64)
+                            milvus.insert_image(
                                 collection_name=settings.CLIP_IMAGE_COLLECTION,
-                                image_id=str(_uuid.uuid4())[:12],
+                                image_id=str(uuid.uuid4())[:12],
                                 source=f"chat_upload_{session_id}",
                                 clip_embedding=clip_vec,
                                 base64_data=img_b64,
-                                description=safe_query,  # 用用户查询作为初始描述
+                                description=safe_query,
                                 security_group=["admin"],
                             )
                             clip_stored += 1
@@ -431,769 +200,93 @@ async def chat_stream(request: Request, body: ChatRequest):
                         logger.warning(f"[CLIP] 入库失败: {e}")
 
             # ---- Query Cache 检查 ----
-            import hashlib
-            cache_key = f"query_cache:{hashlib.md5(safe_query.encode()).hexdigest()}"
+            _cache_input = f"{safe_query}:{_user_role}"
+            cache_key = f"query_cache:{hashlib.md5(_cache_input.encode()).hexdigest()}"
             try:
-                from app.core.redis_client import redis_manager
-                cached = await redis_manager.client.get(cache_key)
+                cached = await redis.client.get(cache_key)
                 if cached:
                     cached_data = json.loads(cached)
-                    yield _sse_format({
-                        "type": "cache_hit",
-                        "query": safe_query,
-                        "message": "⚡ 缓存命中（MD5匹配，零token重放）",
-                    })
-                    yield _sse_format({"type": "content", "content": cached_data["answer"]})
+                    yield sse_event("cache_hit", query=safe_query, message="⚡ 缓存命中（MD5匹配，零token重放）")
+                    yield sse_event("content", content=cached_data["answer"])
                     if cached_data.get("sources"):
-                        yield _sse_format({
-                            "type": "sources",
-                            "sources": cached_data["sources"],
-                            "confidence": cached_data.get("confidence", 0),
-                        })
+                        yield sse_event("sources", sources=cached_data["sources"], confidence=cached_data.get("confidence", 0))
                     if cached_data.get("token_usage"):
-                        yield _sse_format({"type": "token_usage", "usage": cached_data["token_usage"]})
-                    yield "data: [DONE]\n\n"
+                        yield sse_event("token_usage", usage=cached_data["token_usage"])
+                    yield sse_done()
                     logger.info(f"[QueryCache] 缓存命中: {safe_query}, key={cache_key}")
                     return
             except Exception:
-                logger.warning(f"[QueryCache] 缓存读取失败（Redis未连接或异常）")
-            # ---- 缓存检查结束 ----
+                logger.warning("[QueryCache] 缓存读取失败（Redis未连接或异常）")
 
-            # 2. 意图路由
+            # ---- 意图路由 ----
             _t1 = time.perf_counter()
-            route_query = safe_query
-            route_result = await router_agent.route(route_query)
+            route_result = await router.route(safe_query)
             intent = route_result["intent"]
             _t_route = time.perf_counter() - _t1
-            logger.info(f"{_elapsed('意图路由')} intent={intent.value} method={route_result['method']} 耗时={_t_route*1000:.0f}ms")
+            logger.info(f"[意图路由] intent={intent.value} method={route_result['method']} 耗时={_t_route*1000:.0f}ms")
 
-            yield _sse_format({
-                "type": "route",
-                "intent": intent.value,
-                "confidence": route_result.get("confidence", 0.0),
-                "method": route_result["method"],
-                "duration_ms": int(_t_route * 1000),
-            })
+            yield sse_event(
+                "route",
+                intent=intent.value,
+                confidence=route_result.get("confidence", 0.0),
+                method=route_result["method"],
+                duration_ms=int(_t_route * 1000),
+            )
 
-            # 3. 根据意图分发
-            # GREETING: 用户主动问候（你好/谢谢/再见等）
-            # UNCLEAR:  系统无法理解意图 → 不扔客套话，走 RAG 检索兜底
-            has_images = body.images and len(body.images) > 0
-
+            # ---- 按意图分发 ----
             if intent == IntentType.GREETING:
-                _t2 = time.perf_counter()
-                answer = _handle_greeting(safe_query)
-                _t_gen = time.perf_counter() - _t2
-                logger.info(f"{_elapsed('GREETING')} 耗时={_t_gen*1000:.0f}ms")
-                yield _sse_format({"type": "content", "content": _apply_output_guard(answer)})
+                async for event in handle_greeting(safe_query):
+                    yield event
 
             elif intent == IntentType.UNCLEAR:
-                # 意图不明 → RAG 检索兜底（不直接放弃）
-                yield _sse_format({
-                    "type": "route_fallback",
-                    "message": "意图不明确，正在搜索知识库...",
-                })
-                _t2 = time.perf_counter()
-                try:
-                    # 轻量检索：只用向量搜索（不触发完整 RAG pipeline）
-                    quick_results = rag_engine.search(
-                        query=safe_query,
-                        top_k=3,
-                        visibility_expr=milvus_manager.build_visibility_expr(_user_role, body.doc_ids),
-                    )
-                    found_chunks = quick_results.get("results", [])
-                    if found_chunks:
-                        # 搜到了 → 构建上下文让 LLM 回答
-                        context_str, sources = rag_agent._format_context(found_chunks, all_chunks=found_chunks)
-                        confidence = found_chunks[0].get("rerank_score", 0.0)
-                        yield _sse_format({
-                            "type": "sources",
-                            "sources": sources,
-                            "confidence": confidence,
-                        })
-
-                        messages = [
-                            SystemMessage(content=(
-                                "你是一个供应链智能助手。用户的问题意图不明确，但知识库中有相关内容。"
-                                "请根据以下上下文，友好地回答用户的问题。如果不是用户想要的，请引导用户明确需求。"
-                            )),
-                            HumanMessage(content=(
-                                f"用户问题：{safe_query}\n\n"
-                                f"知识库相关内容：\n{context_str}\n\n"
-                                "请根据以上内容回答。如果与用户问题无关，请友好地引导用户换个方式提问。"
-                            )),
-                        ]
-                        llm = LLMFactory.get_llm(temperature=0.3)
-                        full_content = ""
-                        async for chunk in LLMFactory.astream(messages, callbacks=langfuse_callbacks):
-                            content = chunk.content if hasattr(chunk, 'content') else str(chunk)
-                            full_content += content
-                            yield _sse_format({"type": "content", "content": content})
-                    else:
-                        # 没搜到 → 坦诚告知 + 给建议
-                        yield _sse_format({
-                            "type": "content",
-                            "content": (
-                                "抱歉，我不确定你具体想问什么。你可以试试：\n"
-                                "• 查库存：「MAT-001 的库存是多少」\n"
-                                "• 查制度：「新供应商准入需要什么资质」\n"
-                                "• 查订单：「PO-20250601 的状态」\n"
-                                "• 上传图片辅助说明"
-                            ),
-                        })
-                except Exception as e:
-                    logger.error(f"UNCLEAR 兜底检索失败: {e}")
-                    yield _sse_format({
-                        "type": "content",
-                        "content": "抱歉，系统暂时无法处理你的问题，请稍后重试。",
-                    })
-                _t_gen = time.perf_counter() - _t2
-                logger.info(f"{_elapsed('UNCLEAR兜底')} 耗时={_t_gen*1000:.0f}ms")
+                async for event in handle_unclear(safe_query, _user_role, body.doc_ids, langfuse_callbacks):
+                    yield event
 
             elif intent == IntentType.RAG_ANSWER:
-                # ---- DAG Progress: 意图路由完成 ----
-                _dag_nodes = [
-                    {"name": "意图路由", "status": "done", "duration_ms": int(_t_route * 1000)},
-                    {"name": "查询理解", "status": "running", "duration_ms": 0},
-                    {"name": "复杂度分析", "status": "pending", "duration_ms": 0},
-                    {"name": "向量检索", "status": "pending", "duration_ms": 0},
-                    {"name": "BM25检索", "status": "pending", "duration_ms": 0},
-                    {"name": "Reranker精排", "status": "pending", "duration_ms": 0},
-                    {"name": "答案生成", "status": "pending", "duration_ms": 0},
-                ]
-                _dag_edges = [
-                    {"from": 0, "to": 1}, {"from": 1, "to": 2}, {"from": 2, "to": 3},
-                    {"from": 3, "to": 4}, {"from": 4, "to": 5}, {"from": 5, "to": 6},
-                ]
-                yield _sse_format({"type": "dag_progress", "nodes": _dag_nodes, "edges": _dag_edges})
-
-                # 构建检索上下文
-                _t2 = time.perf_counter()
-                query_type = rag_agent._classify_query(safe_query)
-                search_queries = await rag_agent._prepare_queries(safe_query, query_type)
-                _t_query_understand = time.perf_counter() - _t2
-
-                from app.core.query_analyzer import query_analyzer
-                _llm_analysis = LLMFactory.get_llm(temperature=0, streaming=False)
-                _analysis = await query_analyzer.analyze(safe_query, llm=_llm_analysis)
-                _strategy_config = query_analyzer.get_strategy_config(_analysis.strategy)
-                yield _sse_format({
-                    "type": "query_analysis",
-                    "complexity": round(_analysis.complexity, 2),
-                    "strategy": _analysis.strategy,
-                    "entity_count": _analysis.entity_count,
-                    "needs_reasoning": _analysis.needs_reasoning,
-                    "method": _analysis.method,
-                })
-                _adaptive_top_k = _strategy_config.get("top_k", settings.RERANK_TOP_K)
-
-                # 构建可见性过滤表达式
-                _vis_expr = milvus_manager.build_visibility_expr(_user_role, body.doc_ids)
-
-                # ---- DAG Progress: 查询理解完成，复杂度分析完成，开始检索 ----
-                _dag_nodes[1]["status"] = "done"
-                _dag_nodes[1]["duration_ms"] = int(_t_query_understand * 1000)
-                _dag_nodes[2]["status"] = "done"
-                _dag_nodes[2]["duration_ms"] = 0  # 复杂度分析与查询理解同步
-                _dag_nodes[3]["status"] = "running"
-                _dag_nodes[4]["status"] = "running"
-                yield _sse_format({"type": "dag_progress", "nodes": _dag_nodes, "edges": _dag_edges})
-
-                _t3 = time.perf_counter()
-                all_results = []
-                for sq in search_queries:
-                    result = rag_agent.rag.search(sq, top_k=_adaptive_top_k, visibility_expr=_vis_expr)
-                    all_results.extend(result.get("results", []))
-                _t_search = time.perf_counter() - _t3
-
-                seen = set()
-                unique_results = []
-                for r in all_results:
-                    chunk_id = r.get("chunk_id", "")
-                    if chunk_id not in seen:
-                        seen.add(chunk_id)
-                        unique_results.append(r)
-
-                # ---- DAG Progress: 检索完成，开始精排 ----
-                _dag_nodes[3]["status"] = "done"
-                _dag_nodes[3]["duration_ms"] = int(_t_search * 1000)
-                _dag_nodes[4]["status"] = "done"
-                _dag_nodes[4]["duration_ms"] = int(_t_search * 1000)
-                _dag_nodes[5]["status"] = "running"
-                yield _sse_format({"type": "dag_progress", "nodes": _dag_nodes, "edges": _dag_edges})
-
-                # 保存所有chunk用于父子文档扩展
-                all_chunks = list(unique_results)
-
-                # ---- Self-RAG：仅在检索结果多（可能有噪音）时过滤，且策略允许 ----
-                self_rag = get_self_rag()
-                _use_self_rag = _strategy_config.get("use_self_rag", True)
-                if settings.SELF_RAG_ENABLED and _use_self_rag and len(unique_results) >= 4:
-                    unique_results, relevance_scores = await self_rag.filter_chunks(
-                        safe_query, unique_results, LLMFactory
-                    )
-                    # 发送 Self-RAG 过滤结果
-                    if relevance_scores:
-                        yield _sse_format({
-                            "type": "self_rag",
-                            "scores": [{"chunk_id": s.chunk_id, "score": round(s.score, 2), "reason": s.reason} for s in relevance_scores],
-                            "filtered_count": len(unique_results),
-                        })
-
-                # ---- 冲突检测：多源数据矛盾标记 ----
-                all_conflicts = []
-                try:
-                    all_conflicts = rag_agent.rag._detect_conflicts(unique_results)
-                except Exception:
-                    pass
-                if all_conflicts:
-                    yield _sse_format({
-                        "type": "conflicts",
-                        "conflicts": all_conflicts,
-                        "message": f"检测到 {len(all_conflicts)} 处数据冲突，已标记供参考",
-                    })
-                    conflict_text = "\n\n[数据冲突提示]\n" + "\n".join(
-                        f"- {c['entity']}: 存在 {c['values']} 等不同数值，来源不同文档，请综合判断"
-                        for c in all_conflicts
-                    )
-                    context_str = (context_str or "") + conflict_text
-
-                context_str, sources = rag_agent._format_context(unique_results, all_chunks=all_chunks)
-                confidence = unique_results[0].get("rerank_score", 0.0) if unique_results else 0.0
-
-                # ---- CLIP 多模态图像检索（架构三：图文混合召回）----
-                clip_images = []
-                if settings.CLIP_ENABLED:
-                    try:
-                        from app.core.multimodal_embedding import clip_engine
-                        _t_clip = time.perf_counter()
-                        clip_text_vec = clip_engine.encode_text(safe_query)
-                        clip_images = milvus_manager.search_images(
-                            settings.CLIP_IMAGE_COLLECTION,
-                            query_embedding=clip_text_vec,
-                            top_k=settings.CLIP_TOP_K,
-                        )
-                        if clip_images:
-                            img_context = "\n\n[相关图片]\n" + "\n".join(
-                                f"- 图片{i+1}: {img.get('description', '无描述')} (来源: {img.get('source', '未知')})"
-                                for i, img in enumerate(clip_images)
-                            )
-                            context_str += img_context
-                            _t_clip_elapsed = time.perf_counter() - _t_clip
-                            yield _sse_format({
-                                "type": "image_search",
-                                "count": len(clip_images),
-                                "duration_ms": int(_t_clip_elapsed * 1000),
-                                "images": [
-                                    {"image_id": img["image_id"], "description": img.get("description", "")[:200]}
-                                    for img in clip_images
-                                ],
-                            })
-                            logger.info(
-                                f"{_elapsed('CLIP图像检索')} 命中{len(clip_images)}张, "
-                                f"耗时={_t_clip_elapsed*1000:.0f}ms"
-                            )
-                    except Exception as e:
-                        logger.warning(f"[CLIP] 图像检索失败: {e}")
-                # ---- CLIP 检索结束 ----
-
-                _t_rerank = time.perf_counter() - _t3 - _t_search
-
-                # ---- 三层置信度路由 ----
-                from app.core.confidence_router import get_confidence_router
-                conf_router = get_confidence_router()
-                decision = conf_router.decide(confidence, safe_query)
-                logger.info(f"[置信度路由] confidence={confidence:.3f} tier={decision.tier} strategy={decision.strategy}")
-
-                # 发送置信度决策事件
-                yield _sse_format({
-                    "type": "confidence_decision",
-                    "tier": decision.tier,
-                    "strategy": decision.strategy,
-                    "confidence": confidence,
-                    "description": decision.description,
-                })
-
-                if decision.strategy == "rewrite" and 0.3 < confidence < 0.6 and _strategy_config.get("use_query_rewrite", True):
-                    # 中置信度：改写 query 重新检索
-                    rewrites = await conf_router.rewrite_query(safe_query, LLMFactory)
-                    if rewrites:
-                        for rw in rewrites[:2]:
-                            rw_result = rag_agent.rag.search(rw, top_k=3, visibility_expr=_vis_expr)
-                            for r in rw_result.get("results", []):
-                                cid = r.get("chunk_id", "")
-                                if cid not in seen:
-                                    seen.add(cid)
-                                    unique_results.append(r)
-                        # 图谱融合：有实体编码时提升匹配文档的排序权重
-                        try:
-                            from app.core.graph_engine import extract_entities
-                            entities = extract_entities(safe_query)
-                            if entities and neo4j_client.is_connected:
-                                matched = set()
-                                for v in entities.values():
-                                    matched.update(v)
-                                if matched:
-                                    unique_results = rag_agent.fuse_with_graph(
-                                        unique_results, matched,
-                                        alpha=settings.GRAPH_FUSION_ALPHA,
-                                        beta=settings.GRAPH_FUSION_BETA,
-                                    )
-                        except Exception:
-                            pass  # 图谱不可用时静默降级
-
-                        context_str, sources = rag_agent._format_context(unique_results, all_chunks=all_chunks)
-                        # 重新计算置信度
-                        if unique_results:
-                            confidence = max(r.get("rerank_score", 0) for r in unique_results)
-                        logger.info(f"[QueryRewrite] 改写后检索结果={len(unique_results)} 新confidence={confidence:.3f}")
-
-                elif decision.strategy == "web_search":
-                    # 低置信度：调用 MiniMax Web Search 补充外部信息
-                    yield _sse_format({
-                        "type": "web_search",
-                        "status": "searching",
-                        "query": safe_query,
-                        "message": "该问题超出知识库覆盖范围，正在搜索外部信息...",
-                    })
-                    web_results = await conf_router.web_search(safe_query, api_key=settings.MINIMAX_API_KEY)
-                    if web_results:
-                        web_context = conf_router.format_web_results_for_context(web_results)
-                        context_str = context_str + "\n\n" + web_context
-                        yield _sse_format({
-                            "type": "web_search",
-                            "status": "completed",
-                            "results_count": len(web_results),
-                            "message": f"已从外部搜索获取 {len(web_results)} 条补充信息",
-                        })
-                        logger.info(f"[WebSearch] 补充了 {len(web_results)} 条外部结果")
-                    else:
-                        yield _sse_format({
-                            "type": "web_search",
-                            "status": "no_results",
-                            "message": "外部搜索未找到相关信息",
-                        })
-
-                # 获取对话历史
-                chat_history_str = ""
-                if session_id and chat_memory:
-                    chat_history_str = await chat_memory.get_context_string(session_id, user_id=_user_id)
-
-                # 构建Prompt
-                system_prompt = rag_agent.RAG_SYSTEM_PROMPT.format(
-                    chat_history=chat_history_str or "（无历史对话）",
-                    context=context_str,
-                )
-                _t_rag_prep = time.perf_counter() - _t2
-                logger.info(f"{_elapsed('RAG预处理')} 检索结果={len(unique_results)} 耗时={_t_rag_prep*1000:.0f}ms")
-
-                # ---- DAG Progress: 精排完成，开始生成 ----
-                _dag_nodes[5]["status"] = "done"
-                _dag_nodes[5]["duration_ms"] = max(int(_t_rerank * 1000), 1)
-                _dag_nodes[6]["status"] = "running"
-                yield _sse_format({"type": "dag_progress", "nodes": _dag_nodes, "edges": _dag_edges})
-
-                # 真实token级流式输出
-                _t3 = time.perf_counter()
-                messages = [
-                    SystemMessage(content=system_prompt),
-                    HumanMessage(content=safe_query),
-                ]
-
-                full_content = ""
-                try:
-                    async for chunk in LLMFactory.astream(messages, callbacks=langfuse_callbacks):
-                        if chunk.content:
-                            full_content += chunk.content
-                            yield _sse_format({"type": "content", "content": chunk.content})
-                except Exception as e:
-                    logger.error(f"[Chat] LLM流式调用失败（所有retry已耗尽）: {type(e).__name__}: {e}")
-                    yield _sse_format({
-                        "type": "error",
-                        "message": "服务暂时不可用，请稍后重试",
-                        "detail": f"{type(e).__name__}",
-                    })
-                    # 仍然尝试提取已有的 token 估算
-                    chunk = None
-                # 提取token用量（最后一个chunk附带了_token_usage）
-                token_usage = None
-                if 'chunk' in locals() and hasattr(chunk, '_token_usage') and chunk._token_usage:
-                    token_usage = chunk._token_usage
-                # 如果API没返回usage，用内容长度估算（中文≈2token/字）
-                if not token_usage or token_usage.total_tokens == 0:
-                    from app.core.llm_router import TokenUsage, MODEL_PRICING
-                    est_completion = len(full_content) * 2  # 中文约2token/字
-                    est_prompt = len(system_prompt) * 2 + len(safe_query) * 2
-                    pricing = MODEL_PRICING.get(settings.DEEPSEEK_MODEL, {})
-                    est_cost = (est_prompt / 1_000_000) * pricing.get("input", 0) + (est_completion / 1_000_000) * pricing.get("output", 0)
-                    token_usage = TokenUsage(
-                        prompt_tokens=est_prompt,
-                        completion_tokens=est_completion,
-                        total_tokens=est_prompt + est_completion,
-                        cost_yuan=est_cost,
-                        model=settings.DEEPSEEK_MODEL,
-                        provider="deepseek",
-                    )
-                yield _sse_format({
-                    "type": "token_usage",
-                    "usage": token_usage.to_dict(),
-                })
-                _t_llm = time.perf_counter() - _t3
-                if token_usage:
-                    logger.info(f"{_elapsed('LLM流式生成')} tokens={token_usage.total_tokens} (in={token_usage.prompt_tokens} out={token_usage.completion_tokens}) 费用=¥{token_usage.cost_yuan:.4f} 耗时={_t_llm*1000:.0f}ms")
-                else:
-                    logger.info(f"{_elapsed('LLM流式生成')} token数≈{len(full_content)} 耗时={_t_llm*1000:.0f}ms")
-                _t_gen = _t_rag_prep + _t_llm
-
-                # Faithfulness 检测：验证回答是否有 context 支持
-                if settings.FAITHFULNESS_ENABLED and full_content and context_str:
-                    faith_result = _faithfulness_checker.check(full_content, context_str)
-                    logger.info(f"{_elapsed('Faithfulness')} score={faith_result['score']} faithful={faith_result['faithful']}")
-                    if faith_result["score"] < 0.5:
-                        yield _sse_format({
-                            "type": "faithfulness",
-                            "score": faith_result["score"],
-                            "warning": "部分回答可能未被知识库支持",
-                            "hallucinated_count": len(faith_result["hallucinated_sentences"]),
-                            "supported_count": len(faith_result["supported_sentences"]),
-                        })
-
-                # ---- 保存到 Query Cache ----
-                try:
-                    if full_content and token_usage:
-                        cache_data = json.dumps({
-                            "answer": full_content,
-                            "sources": sources,
-                            "confidence": confidence,
-                            "token_usage": token_usage.to_dict() if hasattr(token_usage, 'to_dict') else None,
-                        }, ensure_ascii=False)
-                        await redis_manager.client.setex(cache_key, 3600, cache_data)
-                        logger.info(f"[QueryCache] 已缓存: {safe_query}, TTL=3600s")
-                except Exception:
-                    pass
-                # ---- 缓存保存结束 ----
-
-                # 发送来源信息
-                if sources:
-                    yield _sse_format({
-                        "type": "sources",
-                        "sources": sources,
-                        "confidence": confidence,
-                    })
-
-                # ---- DAG Progress: 全部完成 ----
-                _dag_nodes[6]["status"] = "done"
-                _dag_nodes[6]["duration_ms"] = int(_t_llm * 1000)
-                yield _sse_format({"type": "dag_progress", "nodes": _dag_nodes, "edges": _dag_edges})
-
-                # ---- 性能指标 ----
-                _t_total = time.perf_counter() - _t0
-                yield _sse_format({
-                    "type": "performance_metrics",
-                    "metrics": {
-                        "route_ms": round(_t_route * 1000),
-                        "query_understand_ms": round(_t_query_understand * 1000),
-                        "search_ms": round(_t_search * 1000),
-                        "rag_prep_ms": round(_t_rag_prep * 1000),
-                        "llm_ms": round(_t_llm * 1000),
-                        "total_ms": round(_t_total * 1000),
-                    },
-                })
-
-                # 保存对话记忆（应用输出安全过滤）
-                if session_id and chat_memory:
-                    await chat_memory.add_message(session_id, "user", body.query, user_id=_user_id)
-                    await chat_memory.add_message(
-                        session_id, "assistant", _apply_output_guard(full_content),
-                        metadata={"confidence": confidence, "sources": sources[:3]},
-                        user_id=_user_id,
-                    )
+                async for event in handle_rag_answer(
+                    safe_query, _user_role, session_id, body,
+                    langfuse_callbacks, _t0, _t_route, _user_id,
+                    rag_agent, milvus, neo4j, memory, query_analyzer,
+                ):
+                    yield event
 
             elif intent == IntentType.TOOL_CALL:
-                _t2 = time.perf_counter()
                 tool_name = route_result.get("tool_name", "unknown")
-
-                # ---- 澄清检查：参数不足时主动问用户 ----
-                # 方法1: 规则匹配检查（工具关键词命中但缺少参数）
-                clarify = check_needs_clarification(safe_query, tool_name)
-                # 方法2: LLM 判断需要澄清（语义理解）
-                needs_clarify_by_llm = route_result.get("_needs_clarify", False)
-                if (clarify and clarify.needs_clarification) or needs_clarify_by_llm:
-                    logger.info(f"[Clarify] 需要澄清: tool={tool_name} missing={clarify.missing_params}")
-                    question = clarify.question if clarify else "请问您想查询哪个物料的库存？可以提供物料编码（如 MAT-001）或物料名称。"
-                    missing = clarify.missing_params if clarify else ["material_code"]
-                    yield _sse_format({
-                        "type": "clarify",
-                        "question": question,
-                        "tool": tool_name,
-                        "missing_params": missing,
-                    })
-                    yield _sse_format({"type": "content", "content": question})
-                    yield "data: [DONE]\n\n"
-                    logger.info(f"[Clarify] 已发送澄清提问")
-                    return
-
-                # ---- 工具权限检查（必须在发送 tool_status 之前） ----
-                if not _is_tool_allowed(tool_name, _user_role):
-                    logger.warning(f"[Permission] 用户角色 {_user_role} 无权调用工具 {tool_name}")
-                    yield _sse_format({
-                        "type": "tool_blocked",
-                        "tool": tool_name,
-                        "reason": f"您的角色「{_role_label(_user_role)}」无权执行此操作",
-                    })
-                    yield _sse_format({
-                        "type": "content",
-                        "content": f"⚠️ 无权执行 **{tool_name}** 操作。如需权限，请联系管理员。",
-                    })
-                    yield "data: [DONE]\n\n"
-                    return
-
-                # 发送工具调用状态
-                yield _sse_format({
-                    "type": "tool_status",
-                    "status": "calling",
-                    "tool": tool_name,
-                })
-
-                # ---- 写操作审批检查 ----
-                WRITE_TOOLS = {"create_ticket"}
-                if tool_name in WRITE_TOOLS and (not body.approved or body.approved_tool != tool_name):
-                    # 发送审批请求，不执行工具
-                    logger.info(f"[Approval] 写操作需要审批: tool={tool_name}")
-                    yield _sse_format({
-                        "type": "approval_request",
-                        "tool": tool_name,
-                        "query": safe_query,
-                        "message": f"即将执行写操作：{tool_name}，请确认是否继续。",
-                    })
-                    yield _sse_format({
-                        "type": "content",
-                        "content": f"⚠️ 即将执行 **{tool_name}** 操作，请点击「确认执行」继续。",
-                    })
-                    yield "data: [DONE]\n\n"
-                    return
-
-                # ---- Redis 并发锁与幂等校验 (FIX-2) ----
-                lock_key = None
-                idempotent_key = None
-                from app.core.redis_client import redis_manager
-                if redis_manager.is_connected:
-                    import hashlib
-                    query_hash = hashlib.md5(safe_query.encode("utf-8")).hexdigest()[:8]
-                    lock_key = f"lock:tool:{tool_name}:{session_id}:{query_hash}"
-                    idempotent_key = f"idempotent:tool:{tool_name}:{session_id}:{query_hash}"
-
-                    # 1. 幂等校验
-                    if await redis_manager.check_idempotent(idempotent_key):
-                        logger.warning(f"[Idempotency] 检测到重复请求并成功拦截: {idempotent_key}")
-                        yield _sse_format({
-                            "type": "error",
-                            "message": "该操作已成功执行，请勿重复提交！",
-                        })
-                        yield _sse_format({
-                            "type": "content",
-                            "content": f"⚠️ **高并发幂等拦截**：系统检测到您已成功执行 **{tool_name}** 操作（该工单已创建），已自动拦截重复请求，防止脏数据写入数据库。",
-                        })
-                        yield "data: [DONE]\n\n"
-                        return
-
-                    # 2. 分布式锁竞争
-                    lock_acquired = await redis_manager.acquire_lock(lock_key, expire=15)
-                    if not lock_acquired:
-                        logger.warning(f"[RedisLock] 抢占分布式锁失败: {lock_key}")
-                        yield _sse_format({
-                            "type": "error",
-                            "message": "系统正在处理中，请稍候...",
-                        })
-                        yield _sse_format({
-                            "type": "content",
-                            "content": f"⚠️ **并发安全拦截**：检测到 **{tool_name}** 操作正在后台处理中，请勿频繁双击或并发重试。",
-                        })
-                        yield "data: [DONE]\n\n"
-                        return
-
-                try:
-                    agent = _get_tool_agent(body.agent_type, tool_name)
-                    run_kwargs = {
-                        "query": safe_query,
-                        "tool_names": [tool_name] if tool_name else None,
-                        "session_id": session_id,
-                        "user_id": _user_id,
-                    }
-                    if langfuse_callbacks:
-                        run_kwargs["callbacks"] = langfuse_callbacks
-                    result = await agent.run(**run_kwargs)
-
-                    # 3. 标记幂等成功
-                    if idempotent_key and redis_manager.is_connected:
-                        await redis_manager.mark_idempotent(idempotent_key, ttl=300)
-                finally:
-                    # 4. 确保释放锁
-                    if lock_key and redis_manager.is_connected:
-                        await redis_manager.release_lock(lock_key)
-                _t_gen = time.perf_counter() - _t2
-
-                # 发送工具调用结果
-                for tc in result["tool_calls"]:
-                    yield _sse_format({
-                        "type": "tool_call",
-                        "tool": tc["tool"],
-                        "input": tc["input"],
-                        "observation": tc.get("observation", tc.get("result", "")),
-                    })
-
-                # 检查 DEMO_MODE 降级信息
-                demo_info = result.get("demo_info")
-                if demo_info:
-                    yield _sse_format({
-                        "type": "demo_mode",
-                        "mode": demo_info.get("mode", "demo"),
-                        "reason": demo_info.get("reason", ""),
-                        "summary": demo_info.get("summary", ""),
-                    })
-
-                # 发送最终回答（工具调用）
-                yield _sse_format({"type": "content", "content": _apply_output_guard(result["answer"])})
-                logger.info(f"{_elapsed('TOOL_CALL处理')} 耗时={_t_gen*1000:.0f}ms")
+                _needs_clarify = route_result.get("_needs_clarify", False)
+                async for event in handle_tool_call(
+                    safe_query, tool_name, session_id, _user_id,
+                    body.agent_type, body, langfuse_callbacks,
+                    redis, _user_role, _needs_clarify,
+                ):
+                    yield event
 
             elif intent == IntentType.GOAL:
-                _t2 = time.perf_counter()
+                async for event in handle_goal(safe_query, session_id, _user_id, orchestrator):
+                    yield event
 
-                # 发送编排开始事件
-                yield _sse_format({
-                    "type": "orchestrator_start",
-                    "message": f"正在分析目标并拆解任务...",
-                })
-
-                # 调用 Orchestrator
-                result = await orchestrator.run(
-                    goal=safe_query,
-                    session_id=session_id,
-                    user_id=_user_id,
-                )
-
-                # 发送执行计划
-                plan = result.get("plan", {})
-                if plan.get("steps"):
-                    plan_event = {
-                        "type": "orchestrator_plan",
-                        "goal": plan.get("goal", ""),
-                        "steps": [
-                            {"step": i+1, "agent": s.get("agent", ""), "task": s.get("task", "")}
-                            for i, s in enumerate(plan["steps"])
-                        ],
-                    }
-                    demo_info = plan.get("demo_info")
-                    if demo_info:
-                        plan_event["demo_info"] = demo_info
-                    yield _sse_format(plan_event)
-
-                # 发送每步执行结果
-                execution = result.get("execution", {})
-                for sr in execution.get("step_results", []):
-                    yield _sse_format({
-                        "type": "agent_step",
-                        "step": sr["step"],
-                        "agent": sr["agent"],
-                        "task": sr["task"],
-                        "status": "error" if sr.get("error") else "done",
-                        "duration_ms": sr.get("duration_ms", 0),
-                    })
-
-                # 发送最终回答
-                yield _sse_format({"type": "content", "content": _apply_output_guard(result["answer"])})
-                _t_gen = time.perf_counter() - _t2
-                logger.info(
-                    f"{_elapsed('GOAL编排处理')} 耗时={_t_gen*1000:.0f}ms "
-                    f"steps={execution.get('total_steps',0)} success={execution.get('success_steps',0)}"
-                )
+            elif intent == IntentType.HYBRID:
+                tool_name = route_result.get("tool_name")
+                async for event in handle_hybrid(safe_query, tool_name, _user_role, _user_id, body, rag_agent, milvus):
+                    yield event
 
             elif intent == IntentType.GRAPH_QUERY:
-                _t2 = time.perf_counter()
-
-                yield _sse_format({
-                    "type": "graph_query_start",
-                    "message": "正在查询供应链实体关系图谱...",
-                })
-
-                try:
-                    graph_result = await graph_engine.query(safe_query)
-                except Exception as e:
-                    logger.error(f"图谱查询异常: {e}")
-                    yield _sse_format({"type": "error", "message": f"图谱查询失败: {e}"})
-                    yield "data: [DONE]\n\n"
-                    return
-
-                # 优先检查 error 字段
-                if graph_result.get("error"):
-                    yield _sse_format({
-                        "type": "content",
-                        "content": f"图谱查询失败：{graph_result['error']}",
-                    })
-                    yield "data: [DONE]\n\n"
-                    return
-
-                if graph_result.get("rows"):
-                    yield _sse_format({
-                        "type": "graph_result",
-                        "pattern": graph_result.get("pattern"),
-                        "entities": graph_result.get("entities"),
-                        "row_count": len(graph_result["rows"]),
-                    })
-
-                    graph_context = graph_engine.format_results(graph_result)
-                    try:
-                        llm = LLMFactory.get_llm(temperature=0.3)
-                        prompt = f"以下是一段供应链实体关系图谱的查询结果：\n\n{graph_context}\n\n请根据这些结构化数据，用中文回答用户的原始问题：{safe_query}\n\n要求：简洁、直接、有数据支撑。"
-                        response = await llm.ainvoke([HumanMessage(content=prompt)])
-                        full_answer = _apply_output_guard(response.content.strip())
-                        yield _sse_format({"type": "content", "content": full_answer})
-                        if session_id and chat_memory:
-                            try:
-                                await chat_memory.add_message(session_id, "user", body.query, user_id=_user_id)
-                                await chat_memory.add_message(session_id, "assistant", full_answer, user_id=_user_id)
-                            except Exception:
-                                pass
-                    except Exception as e:
-                        logger.error(f"图谱 LLM 生成失败: {e}")
-                        yield _sse_format({"type": "content", "content": f"图谱查询结果如下：\n\n{graph_context}"})
-                else:
-                    yield _sse_format({
-                        "type": "content",
-                        "content": "未在供应链图谱中找到相关实体关系，请确认物料/订单/供应商编码是否正确。",
-                    })
-
-                _t_gen = time.perf_counter() - _t2
-                logger.info(
-                    f"{_elapsed('GRAPH检索处理')} 耗时={_t_gen*1000:.0f}ms "
-                    f"pattern={graph_result.get('pattern')} rows={len(graph_result.get('rows',[]))}"
-                )
+                async for event in handle_graph_query(safe_query, session_id, _user_id, graph_engine, memory):
+                    yield event
 
             else:
-                yield _sse_format({
-                    "type": "content",
-                    "content": "抱歉，我不太理解您的问题，请提供更多细节。",
-                })
+                yield sse_event("content", content="抱歉，我不太理解您的问题，请提供更多细节。")
 
-            # 4. 发送完成信号
-            yield "data: [DONE]\n\n"
+            # ---- 完成信号 ----
+            yield sse_done()
             _t_total = time.perf_counter() - _t0
-            logger.info(f"对话完成 session={session_id} 总耗时={_t_total*1000:.0f}ms (路由{_t_route*1000:.0f}ms + 生成{_t_gen*1000:.0f}ms)")
+            logger.info(f"对话完成 session={session_id} 总耗时={_t_total*1000:.0f}ms (路由{_t_route*1000:.0f}ms)")
 
         except Exception as e:
-            import traceback, os
+            import traceback
             tb = traceback.format_exc()
             logger.error(f"SSE流式输出错误: {e}\n{tb}")
-            # 写入文件便于调试
-            try:
-                with open(os.path.join(os.path.dirname(__file__), "..", "..", "error_trace.log"), "a", encoding="utf-8") as f:
-                    f.write(f"\n=== {__import__('time').strftime('%Y-%m-%d %H:%M:%S')} ===\n{tb}\n")
-            except: pass
-            yield _sse_format({
-                "type": "error",
-                "message": str(e),
-            })
-            yield "data: [DONE]\n\n"
+            yield sse_event("error", message="处理请求时出现异常，请稍后重试。")
+            yield sse_done()
 
     return StreamingResponse(
         event_generator(),
@@ -1206,22 +299,59 @@ async def chat_stream(request: Request, body: ChatRequest):
     )
 
 
-# ---- 辅助函数 ----
+# ============================================================
+# Text-to-SQL 端点
+# ============================================================
 
-def _sse_format(data: dict) -> str:
-    """格式化SSE消息"""
-    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+class SQLQueryRequest(BaseModel):
+    """Text-to-SQL 查询请求"""
+    question: str = Field(..., min_length=1, max_length=1000, description="自然语言问题")
+    user_role: str = Field(
+        "employee",
+        description="用户角色（白名单内：admin/finance/sales/developer/employee/manager）",
+    )
 
 
-def _handle_greeting(query: str) -> str:
-    """处理问候意图"""
-    greetings = {
-        "你好": "你好！我是供应链智能助手，可以帮你查询制度规范、库存订单、创建工单。",
-        "嗨": "嗨！我是供应链智能助手，有什么可以帮你的？",
-        "在吗": "在的！随时为你服务，请告诉我你想了解什么？",
-        "谢谢": "不客气！如果还有其他问题，随时问我😊",
-        "再见": "再见！祝你有美好的一天！",
+_ALLOWED_SQL_ROLES = frozenset({
+    "admin", "finance", "sales", "developer", "employee", "manager", "public",
+})
+
+
+@router.post("/sql")
+async def sql_query(request: Request, body: SQLQueryRequest):
+    """Text-to-SQL：自然语言转 SQL 查询（只允许 SELECT，自动 LIMIT 100）"""
+    from fastapi import HTTPException
+    from app.core.text_to_sql import get_text_to_sql
+
+    auth_header = request.headers.get("Authorization", "")
+    has_token = bool(auth_header and auth_header.startswith("Bearer "))
+
+    if has_token:
+        try:
+            current_user = await get_current_user_optional(request)
+        except Exception as e:
+            logger.warning(f"[Auth] /sql token 解析失败: {e}")
+            raise HTTPException(status_code=401, detail="无效的认证令牌")
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="认证令牌无效或已过期")
+        user_role = current_user.get("role", "employee")
+    else:
+        if body.user_role and body.user_role not in _ALLOWED_SQL_ROLES:
+            raise HTTPException(status_code=403, detail=f"未授权的角色：{body.user_role}")
+        if body.user_role and body.user_role != "employee":
+            logger.warning(f"[Auth] /sql 匿名用户尝试 role={body.user_role}，已被强制降级为 employee")
+        user_role = "employee"
+
+    engine = get_text_to_sql()
+    result = await engine.execute(body.question, user_role)
+
+    return {
+        "question": body.question,
+        "sql": result.sql,
+        "columns": result.columns,
+        "rows": result.rows,
+        "row_count": result.row_count,
+        "error": result.error,
+        "execution_ms": result.execution_ms,
+        "formatted": engine.format_result(result),
     }
-    for key, response in greetings.items():
-        if key in query:
-            return response

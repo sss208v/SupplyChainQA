@@ -1,17 +1,23 @@
 """
-SmartQA - Self-RAG 检索结果过滤
+LLM-based relevance filtering (借鉴 Self-RAG 思想, Asai et al. 2023).
+=============================================================
+【功能】检索后用 LLM-as-Judge 给每个 chunk 打分, 过滤低分 chunk
 
-Self-RAG 的核心思想：不让 LLM 盲目使用所有检索到的文档，
-而是先让 LLM 判断每个文档是否真正支持回答，过滤掉不相关的。
+【重要: 与论文 Self-RAG 的区别】
+- 论文 Self-RAG: 训练 LLM 输出 reflection token ([Retrieve]/[IsRel]/[IsSup])
+- 本实现: 检索后用 LLM 打分过滤, 不训练 LLM, 无 reflection token
 
-流程：
+【流程】
 1. 检索到 N 个 chunk
-2. 对每个 chunk，LLM 判断相关性（0-1 分）
+2. 对每个 chunk, LLM 判断相关性 (0-1 分)
 3. 过滤掉低于阈值的 chunk
 4. 只用相关 chunk 生成回答
 
-Self-RAG 让 LLM 自己判断哪些文档有用，过滤掉噪音，
-减少幻觉，提升答案质量。"
+【面试诚实答法】
+"借鉴 Self-RAG 思想的相关性过滤, 不是论文里的完整实现。
+论文要训练 LLM 输出 reflection token, 我没训练, 也没有 token。
+我的实现是 LLM-as-Judge 打分 + 阈值过滤, 工程化但非论文级。"
+=============================================================
 """
 import logging
 from typing import Optional
@@ -28,10 +34,12 @@ class RelevanceScore:
     reason: str   # 判断理由
 
 
-class SelfRAGFilter:
-    """Self-RAG 检索结果过滤器"""
+class LLMRelevanceFilter:
+    """LLM-based relevance filter (借鉴 Self-RAG 思想)"""
 
-    RELEVANCE_THRESHOLD = 0.3  # 低于此分数的 chunk 被过滤
+    def __init__(self):
+        from app.config import get_settings
+        self.RELEVANCE_THRESHOLD = get_settings().LLM_RELEVANCE_THRESHOLD
 
     async def filter_chunks(
         self,
@@ -94,7 +102,7 @@ class SelfRAGFilter:
             content = response.content.strip()
             json_match = re.search(r'\[.*\]', content, re.DOTALL)
             if not json_match:
-                logger.warning(f"[SelfRAG] LLM 返回格式错误: {content[:100]}")
+                logger.warning(f"[LLMRelevance] LLM 返回格式错误: {content[:100]}")
                 return chunks, []
 
             eval_results = json.loads(json_match.group())
@@ -121,27 +129,34 @@ class SelfRAGFilter:
                 if s and s.score >= self.RELEVANCE_THRESHOLD:
                     filtered.append(chunk)
                 elif s:
-                    logger.info(f"[SelfRAG] 过滤: {cid} score={s.score:.2f} reason={s.reason}")
+                    logger.info(f"[LLMRelevance] 过滤: {cid} score={s.score:.2f} reason={s.reason}")
 
             # 如果全部被过滤，保留 top-1（避免空结果）
             if not filtered and chunks:
-                logger.warning("[SelfRAG] 所有chunk被过滤，保留top-1")
+                logger.warning("[LLMRelevance] 所有chunk被过滤，保留top-1")
                 filtered = [chunks[0]]
-                scores[0].score = 0.3  # 标记为勉强可用
+                if scores:
+                    scores[0].score = 0.3  # 标记为勉强可用
+                else:
+                    scores.append(RelevanceScore(
+                        chunk_id=chunks[0].get("chunk_id", ""),
+                        score=0.3,
+                        reason="LLM未返回评估结果，保留top-1",
+                    ))
 
-            logger.info(f"[SelfRAG] {len(chunks)}→{len(filtered)} chunks (阈值={self.RELEVANCE_THRESHOLD})")
+            logger.info(f"[LLMRelevance] {len(chunks)}→{len(filtered)} chunks (阈值={self.RELEVANCE_THRESHOLD})")
             return filtered, scores
 
         except Exception as e:
-            logger.warning(f"[SelfRAG] 过滤失败，保留原始结果: {e}")
+            logger.warning(f"[LLMRelevance] 过滤失败，保留原始结果: {e}")
             return chunks, []
 
 
 # 单例
-_self_rag: Optional[SelfRAGFilter] = None
+_self_rag: Optional[LLMRelevanceFilter] = None
 
-def get_self_rag() -> SelfRAGFilter:
+def get_self_rag() -> LLMRelevanceFilter:
     global _self_rag
     if _self_rag is None:
-        _self_rag = SelfRAGFilter()
+        _self_rag = LLMRelevanceFilter()
     return _self_rag

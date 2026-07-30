@@ -1,29 +1,31 @@
 """
-SmartQA Pro - 工具调用引擎
-基于ReAct模式实现工具调用
+SupplyChainRAG - 工具注册与实现模块（核心）
+基于 ReAct 模式实现工具调用，为 Agent 层提供 8 个业务工具。
 
-【已废弃】本模块的 ToolEngine 类未被使用。
-当前工具调用由 agents/tool.py 的 ToolAgent（手写ReAct循环）实现。
-
-本文件保留作为LangChain Agent的参考实现，
-如需使用LangChain的ReAct Agent，可启用 ToolEngine.get_agent()。
+工具调用由 agents/tool.py 的 ToolAgent（手写 ReAct 循环）发起，
+通过 TOOL_REGISTRY / get_all_tools() / get_tools_by_names() 获取工具定义。
 
 业务数据来自本地 SQLite 模拟库（supply_chain.db），参考 Odoo 风格表结构：
-  - product_product    物料主数据
-  - purchase_order     采购订单头
-  - purchase_order_line 采购订单行
-  - stock_move         库存移动（在途）
-  - maintenance_ticket 工单
+  - product_product      物料主数据
+  - purchase_order       采购订单头
+  - purchase_order_line  采购订单行
+  - stock_move           库存移动（在途）
+  - maintenance_ticket   工工单
 
 所有工具均为 async，支持 I/O 并发调用。
+
+--- Legacy ---
+文件底部保留了 LangChain AgentExecutor 的旧实现，仅供参考，
+当前生产环境不使用。
 """
+import asyncio
 import json
 import os
 import logging
 from datetime import datetime
-from typing import Optional
 from langchain_core.tools import tool, BaseTool
 import aiosqlite
+from app.core.data_filter import PIIFilter
 
 # 延迟导入 rag_engine，避免循环引用（rag_engine 依赖 Milvus/Embedding 等重量级组件）
 # 实际调用时才 import，确保工具模块可在测试环境中独立加载
@@ -44,6 +46,33 @@ async def _get_conn() -> aiosqlite.Connection:
     return conn
 
 
+# ---- L3 工具查询结果缓存（只读工具 read-through，写工具成功后失效）----
+
+async def _l3_tool_cache(cache_key: str, loader) -> str:
+    """只读工具查询结果的 L3 缓存包装（错误结果不缓存，Redis 不可用时直查）"""
+    import hashlib
+    from app.core.cache_manager import cache_manager
+    from app.config import get_settings
+
+    key_hash = hashlib.md5(cache_key.encode("utf-8")).hexdigest()
+    return await cache_manager.l3_get_or_set(
+        "tool",
+        key_hash,
+        get_settings().L3_CACHE_TTL_TOOL,
+        loader,
+        cache_if=lambda v: isinstance(v, str) and '"error"' not in v,
+    )
+
+
+async def _invalidate_tool_cache() -> None:
+    """写操作成功后清空 tool 命名空间的 L3 缓存（防脏读）"""
+    try:
+        from app.core.cache_manager import cache_manager
+        await cache_manager.l3_invalidate("tool")
+    except Exception as e:
+        logger.warning(f"[Tool] L3 缓存失效失败（不影响主流程）: {e}")
+
+
 # ==========================================
 # 工具 1：query_inventory — 物料库存查询（异步）
 # ==========================================
@@ -60,7 +89,20 @@ async def query_inventory(material_code: str) -> str:
 
     返回: JSON格式的库存数据
     """
-    conn = await _get_conn()
+    return await _l3_tool_cache(
+        f"query_inventory:{material_code}",
+        lambda: _query_inventory_impl(material_code),
+    )
+
+
+async def _query_inventory_impl(material_code: str) -> str:
+    """query_inventory 实际实现（被 L3 缓存包装）"""
+    try:
+        conn = await _get_conn()
+    except Exception as e:
+        logger.error(f"[query_inventory] 数据库连接失败: {type(e).__name__}: {e}")
+        return json.dumps({"error": f"数据库连接失败，请稍后重试: {type(e).__name__}"}, ensure_ascii=False)
+
     try:
         cur = await conn.execute(
             "SELECT id, default_code, name, uom_id, standard_price, "
@@ -104,6 +146,9 @@ async def query_inventory(material_code: str) -> str:
             "status":          status,
         }
         return json.dumps(result, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"[query_inventory] 查询失败: {type(e).__name__}: {e}", exc_info=True)
+        return json.dumps({"error": f"物料查询异常: {type(e).__name__} - {e}"}, ensure_ascii=False)
     finally:
         await conn.close()
 
@@ -123,7 +168,20 @@ async def query_order(order_id: str) -> str:
 
     返回: JSON格式的订单数据
     """
-    conn = await _get_conn()
+    return await _l3_tool_cache(
+        f"query_order:{order_id}",
+        lambda: _query_order_impl(order_id),
+    )
+
+
+async def _query_order_impl(order_id: str) -> str:
+    """query_order 实际实现（被 L3 缓存包装）"""
+    try:
+        conn = await _get_conn()
+    except Exception as e:
+        logger.error(f"[query_order] 数据库连接失败: {type(e).__name__}: {e}")
+        return json.dumps({"error": f"数据库连接失败，请稍后重试: {type(e).__name__}"}, ensure_ascii=False)
+
     try:
         cur = await conn.execute(
             "SELECT id, name, partner_name, date_order, date_approve, "
@@ -179,6 +237,9 @@ async def query_order(order_id: str) -> str:
             "notes":          order_row["notes"] or "—",
         }
         return json.dumps(result, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"[query_order] 查询失败: {type(e).__name__}: {e}", exc_info=True)
+        return json.dumps({"error": f"订单查询异常: {type(e).__name__} - {e}"}, ensure_ascii=False)
     finally:
         await conn.close()
 
@@ -202,10 +263,18 @@ async def create_ticket(title: str, description: str, priority: str) -> str:
 
     返回: JSON格式的工单确认信息
     """
-    conn = await _get_conn()
     try:
-        import time
-        ticket_id = f"TK-{datetime.now().strftime('%Y%m%d%H%M%S')}{time.time_ns() % 100000:05d}"
+        conn = await _get_conn()
+    except Exception as e:
+        logger.error(f"[create_ticket] 数据库连接失败: {type(e).__name__}: {e}")
+        return json.dumps({"error": f"数据库连接失败，请稍后重试: {type(e).__name__}"}, ensure_ascii=False)
+
+    try:
+        import random
+        # 工单编码 = TK-秒级时间戳 + 7位随机后缀。
+        # 随机后缀避免高频/紧循环调用在同一时钟 tick 内碰撞（Windows time_ns 分辨率粗，
+        # 旧实现 time.time_ns()%%1e7 会重复→maintenance_ticket.name UNIQUE 冲突）。
+        ticket_id = f"TK-{datetime.now().strftime('%Y%m%d%H%M%S')}{random.randint(0, 9999999):07d}"
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         priority_map = {"低": "0", "中": "1", "高": "2", "紧急": "3"}
         priority_val = priority_map.get(priority, "1")
@@ -218,6 +287,9 @@ async def create_ticket(title: str, description: str, priority: str) -> str:
         )
         await conn.commit()
 
+        # 写操作成功 → 失效只读工具的 L3 缓存，避免后续查询读到脏数据
+        await _invalidate_tool_cache()
+
         return json.dumps({
             "ticket_id":   ticket_id,
             "title":       title,
@@ -226,6 +298,9 @@ async def create_ticket(title: str, description: str, priority: str) -> str:
             "status":      "待处理",
             "created_at":  now,
         }, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"[create_ticket] 创建失败: {type(e).__name__}: {e}", exc_info=True)
+        return json.dumps({"error": f"工单创建异常: {type(e).__name__} - {e}"}, ensure_ascii=False)
     finally:
         await conn.close()
 
@@ -259,7 +334,7 @@ async def get_knowledge(query: str) -> str:
         return json.dumps({"query": "", "answer": "Please provide a query.", "chunks": []}, ensure_ascii=False)
 
     try:
-        result = _get_rag_engine().search(query, top_k=3)
+        result = await asyncio.to_thread(_get_rag_engine().search, query, top_k=3)
         chunks = result.get("results", [])
         if not chunks:
             return json.dumps({
@@ -305,6 +380,14 @@ async def query_supplier(supplier_code: str) -> str:
     资质认证、账期条款、平均交期、合作年限等信息。
     用于供应商准入评估、合规审查等场景。
     """
+    return await _l3_tool_cache(
+        f"query_supplier:{supplier_code}",
+        lambda: _query_supplier_impl(supplier_code),
+    )
+
+
+async def _query_supplier_impl(supplier_code: str) -> str:
+    """query_supplier 实际实现（被 L3 缓存包装）"""
     try:
         conn = await _get_conn()
         try:
@@ -344,15 +427,16 @@ async def query_supplier(supplier_code: str) -> str:
                 except ValueError:
                     pass
 
+            _pii = PIIFilter()
             return json.dumps(
                 {
                     "supplier_code":    row["code"],
                     "name":             row["name"],
                     "category":         row["category"],
                     "contact":          row["contact"],
-                    "phone":            row["phone"],
-                    "email":            row["email"],
-                    "address":          row["address"],
+                    "phone":            _pii.filter_text(row["phone"]) if row["phone"] else "",
+                    "email":            _pii.filter_text(row["email"]) if row["email"] else "",
+                    "address":          _pii.filter_text(row["address"]) if row["address"] else "",
                     "credit_level":     row["credit_level"],
                     "qualification":    row["qualification"],
                     "payment_terms":    row["payment_terms"],
@@ -372,16 +456,367 @@ async def query_supplier(supplier_code: str) -> str:
 
 
 # ==========================================
+# 工具 7：track_logistics — 物流轨迹追踪
+# ==========================================
+
+@tool
+async def track_logistics(po_code: str) -> str:
+    """
+    追踪采购订单的实时物流状态、轨迹节点及预测延误风险。
+
+    参数:
+      - po_code: 采购订单号，例如 PO-20250101
+
+    返回: JSON格式的物流节点轨迹与时效预测
+    """
+    from datetime import datetime, timedelta
+
+    try:
+        # 归一化编码
+        po_code = po_code.strip().upper()
+
+        if not po_code or not po_code.startswith("PO-"):
+            return json.dumps(
+                {"error": f"无效订单号: {po_code}，请提供有效的 PO 编码（如 PO-20250101）"},
+                ensure_ascii=False,
+            )
+
+        # 模拟数据源
+        logistics_carriers = ["中远海运集运", "顺丰特快", "跨越速运", "德邦快递"]
+        nodes_template = [
+            {"node": "供应商发货完成", "location": "深圳盐田港"},
+            {"node": "干线运输中", "location": "东海海域"},
+            {"node": "到达枢纽港", "location": "上海洋山港"},
+            {"node": "清关完成", "location": "上海港海关监管区"},
+            {"node": "末端配送中", "location": "无锡分拨中心"},
+            {"node": "已签收", "location": "SupplyChainRAG 工厂智能仓"},
+        ]
+
+        # 基于订单号确定性模拟（非随机，保证相同输入相同输出）
+        seed = hash(po_code) % 1000
+        depth = (seed % 4) + 2  # 2-5 个节点
+        current_carrier = logistics_carriers[abs(hash(po_code)) % len(logistics_carriers)]
+        actual_nodes = nodes_template[:depth]
+
+        # 计算 ETA 延误率
+        delay_probability = round((abs(hash(po_code)) % 40) / 100.0, 2)
+        eta = (datetime.now() + timedelta(days=(6 - depth))).strftime("%Y-%m-%d %H:%M")
+
+        result = {
+            "po_code": po_code,
+            "carrier": current_carrier,
+            "current_status": actual_nodes[-1]["node"],
+            "current_location": actual_nodes[-1]["location"],
+            "nodes": actual_nodes,
+            "eta": eta,
+            "delay_risk_probability": f"{delay_probability * 100:.0f}%",
+            "delay_warning": (
+                "高风险延迟送达，建议安排备用物料调度！"
+                if delay_probability > 0.25
+                else "正常时效，暂无延误风险"
+            ),
+        }
+
+        return json.dumps(result, ensure_ascii=False)
+
+    except Exception as e:
+        logger.error(f"[track_logistics] 查询失败: {type(e).__name__}: {e}", exc_info=True)
+        return json.dumps({"error": f"物流追踪异常: {type(e).__name__} - {e}"}, ensure_ascii=False)
+
+
+# ==========================================
+# 工具 8：calculate_reorder_point — 再订货点计算
+# ==========================================
+
+@tool
+async def calculate_reorder_point(material_code: str) -> str:
+    """
+    根据供应链 ROP 模型，计算指定物料的再订货点（补货阈值），并提供智能补货建议。
+
+    数学模型: ROP = (日均消耗 × 采购提前期) + 安全库存
+    当当前库存低于 ROP 时，触发补货预警并建议联动 create_ticket 发起补货工单。
+
+    参数:
+      - material_code: 物料编码，例如 MAT-001
+
+    返回: JSON格式的库存分析、安全库存参数及补货决策建议
+    """
+    from datetime import datetime
+
+    # SuperPower-2: 实体拼写自愈归一化
+    from app.core.neo4j_client import Neo4jClient
+    material_code = Neo4jClient._normalize_entity(material_code)
+
+    try:
+        conn = await _get_conn()
+    except Exception as e:
+        logger.error(f"[calculate_reorder_point] 数据库连接失败: {type(e).__name__}: {e}")
+        return json.dumps({"error": f"数据库连接失败，请稍后重试: {type(e).__name__}"}, ensure_ascii=False)
+
+    try:
+        # 1. 从 product_product 表获取当前真实库存
+        cur = await conn.execute(
+            "SELECT default_code, name, qty_available, incoming_qty, "
+            "outgoing_qty, virtual_available, standard_price "
+            "FROM product_product WHERE default_code = ?",
+            (material_code,),
+        )
+        row = await cur.fetchone()
+
+        if not row:
+            await cur.execute("SELECT default_code FROM product_product ORDER BY default_code")
+            available = [r["default_code"] for r in await cur.fetchall()]
+            return json.dumps(
+                {"error": f"未找到物料编码: {material_code}，可用编码: {available}"},
+                ensure_ascii=False,
+            )
+
+        current_qty = row["qty_available"] or 0
+        incoming_qty = row["incoming_qty"] or 0
+        outgoing_qty = row["outgoing_qty"] or 0
+        virtual_available = row["virtual_available"] or 0
+        material_name = row["name"]
+
+        # 2. 供应链计算参数（基于物料编号确定性推算，保证幂等）
+        seed = abs(hash(material_code)) % 1000
+        daily_consumption = (seed % 10) + 5       # 日均消耗: 5-14 件
+        lead_time = (seed % 4) + 3                 # 采购提前期: 3-6 天
+        safety_stock = max(30, current_qty // 4)   # 安全库存: 当前库存的 25%，至少 30
+
+        # 3. ROP 计算：ROP = (日均消耗 × 提前期) + 安全库存
+        lead_time_demand = daily_consumption * lead_time
+        reorder_point = lead_time_demand + safety_stock
+
+        # 4. 补货决策
+        needs_reorder = current_qty < reorder_point
+        reorder_gap = reorder_point - current_qty if needs_reorder else 0
+        suggested_reorder_qty = max(
+            0,
+            (reorder_point * 2 - current_qty) if needs_reorder else 0,
+        )
+
+        result = {
+            "material_code": material_code,
+            "material_name": material_name,
+            "current_stock": current_qty,
+            "incoming_qty": incoming_qty,
+            "outgoing_qty": outgoing_qty,
+            "virtual_available": virtual_available,
+            "daily_consumption_pcs": daily_consumption,
+            "lead_time_days": lead_time,
+            "lead_time_demand_pcs": lead_time_demand,
+            "safety_stock_pcs": safety_stock,
+            "reorder_point_pcs": reorder_point,
+            "needs_reorder": needs_reorder,
+            "reorder_gap_pcs": reorder_gap,
+            "suggested_reorder_qty_pcs": suggested_reorder_qty,
+            "decision": (
+                f"库存告急！当前库存 {current_qty} 件 低于再订货点 {reorder_point} 件（缺口 {reorder_gap} 件）。"
+                f"建议立即通过 create_ticket 发起采购补货工单，推荐补货量 {suggested_reorder_qty} 件。"
+                if needs_reorder
+                else f"库存水位正常：当前 {current_qty} 件 >= 再订货点 {reorder_point} 件，无需补货。"
+            ),
+            "calculated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        return json.dumps(result, ensure_ascii=False)
+
+    except Exception as e:
+        logger.error(f"[calculate_reorder_point] 计算失败: {type(e).__name__}: {e}", exc_info=True)
+        return json.dumps(
+            {"error": f"ROP 计算异常: {type(e).__name__} - {e}"},
+            ensure_ascii=False,
+        )
+    finally:
+        await conn.close()
+
+
+# ==========================================
+# 通用工具
+# ==========================================
+
+@tool
+async def web_search(query: str) -> str:
+    """搜索互联网获取最新信息。用于知识库中没有的问题、实时数据查询。"""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://api.duckduckgo.com/",
+                params={"q": query, "format": "json", "no_html": 1},
+            )
+            data = resp.json()
+            results = []
+            if data.get("AbstractText"):
+                results.append(f"摘要: {data['AbstractText']}")
+            for item in data.get("RelatedTopics", [])[:5]:
+                if "Text" in item:
+                    results.append(f"- {item['Text']}")
+            if results:
+                return "\n".join(results)
+            return f"未找到关于「{query}」的搜索结果"
+    except Exception as e:
+        return f"搜索失败: {e}"
+
+
+@tool
+async def calculator(expression: str) -> str:
+    """计算数学表达式。支持加减乘除、幂运算、括号。例: '1200 * 0.85 + 500'"""
+    import ast
+    import operator
+    import math
+
+    ALLOWED_OPS = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod,
+        ast.Pow: operator.pow,
+        ast.USub: operator.neg,
+    }
+
+    ALLOWED_NAMES = {
+        "pi": math.pi,
+        "e": math.e,
+        "sqrt": math.sqrt,
+        "abs": abs,
+        "round": round,
+        "min": min,
+        "max": max,
+    }
+
+    def _eval(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return node.value
+        elif isinstance(node, ast.BinOp) and type(node.op) in ALLOWED_OPS:
+            return ALLOWED_OPS[type(node.op)](_eval(node.left), _eval(node.right))
+        elif isinstance(node, ast.UnaryOp) and type(node.op) in ALLOWED_OPS:
+            return ALLOWED_OPS[type(node.op)](_eval(node.operand))
+        elif isinstance(node, ast.Name) and node.id in ALLOWED_NAMES:
+            return ALLOWED_NAMES[node.id]
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ALLOWED_NAMES:
+            fn = ALLOWED_NAMES[node.func.id]
+            if callable(fn):
+                return fn(*[_eval(a) for a in node.args])
+        raise ValueError(f"不支持的表达式: {ast.dump(node)}")
+
+    try:
+        tree = ast.parse(expression.strip(), mode="eval")
+        result = _eval(tree.body)
+        return str(result)
+    except Exception as e:
+        return f"计算失败: {e}"
+
+
+@tool
+async def code_interpreter(code: str) -> str:
+    """在安全沙箱中执行 Python 代码。只允许 math/statistics/datetime/json/re/collections 模块，禁止文件/网络/进程操作。"""
+    import io
+    import contextlib
+    import ast
+
+    ALLOWED_MODULES = {"math", "statistics", "datetime", "json", "re", "collections"}
+
+    # ---- AST 白名单预检查：拒绝危险节点 ----
+    class _SafetyChecker(ast.NodeVisitor):
+        """遍历 AST，拒绝 Import / Attribute（getattr 等）/ Global / Delete 节点"""
+
+        def visit_Import(self, node):
+            raise ValueError("安全限制: 禁止 import 语句，请在代码中直接使用已授权模块")
+
+        def visit_ImportFrom(self, node):
+            raise ValueError("安全限制: 禁止 from...import 语句，请在代码中直接使用已授权模块")
+
+        _DANGEROUS_ATTRS = {
+            "__import__", "__builtins__", "__subclasses__", "__globals__",
+            "__code__", "__class__", "__bases__", "__mro__",
+            "__init__", "__init_subclass__", "__reduce__", "__getattribute__",
+            "system", "popen", "exec", "eval", "compile",
+            "open", "read", "write", "remove", "unlink",
+        }
+
+        def visit_Attribute(self, node):
+            # 只拦截危险属性访问，允许 math.sqrt 等安全调用
+            if node.attr in self._DANGEROUS_ATTRS:
+                raise ValueError(f"安全限制: 禁止访问危险属性 '{node.attr}'")
+            self.generic_visit(node)
+
+        def visit_Global(self, node):
+            raise ValueError("安全限制: 禁止 global 声明")
+
+        def visit_Delete(self, node):
+            raise ValueError("安全限制: 禁止 del 操作")
+
+    try:
+        tree = ast.parse(code, mode="exec")
+        _SafetyChecker().visit(tree)
+    except (SyntaxError, ValueError) as e:
+        return f"安全限制: {e}"
+
+    # ---- 受限的 __import__：只允许白名单模块 ----
+    def _safe_import(name, *args, **kwargs):
+        if name in ALLOWED_MODULES:
+            return __import__(name, *args, **kwargs)
+        raise ImportError(f"安全限制: 禁止导入 {name}，只允许 {ALLOWED_MODULES}")
+
+    # ---- 沙箱 builtins：只暴露安全的内置函数 ----
+    import math
+    import statistics
+    import datetime as _dt
+    import re as _re_mod
+    import collections as _collections
+
+    safe_builtins = {
+        "__import__": _safe_import,
+        "range": range, "len": len, "int": int, "float": float, "str": str,
+        "list": list, "dict": dict, "tuple": tuple, "set": set,
+        "bool": bool,
+        "print": lambda *a, **kw: print(*a, file=output, **kw),
+        "sorted": sorted, "enumerate": enumerate, "zip": zip,
+        "sum": sum, "min": min, "max": max, "abs": abs, "round": round,
+        "map": map, "filter": filter, "any": any, "all": all,
+        "True": True, "False": False, "None": None,
+    }
+
+    # 预注入白名单模块，避免代码中需要 import
+    local_vars = {
+        "__builtins__": safe_builtins,
+        "math": math,
+        "statistics": statistics,
+        "datetime": _dt,
+        "json": json,
+        "re": _re_mod,
+        "collections": _collections,
+    }
+
+    output = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(output):
+            exec(code, local_vars)
+        result = output.getvalue()
+        return result if result else "代码执行成功（无输出）"
+    except Exception as e:
+        return f"执行失败: {type(e).__name__}: {e}"
+
+
+# ==========================================
 # 工具注册表
 # ==========================================
 
 TOOL_REGISTRY: dict[str, BaseTool] = {
-    "query_inventory": query_inventory,
-    "query_order":     query_order,
-    "create_ticket":   create_ticket,
-    "get_datetime":    get_datetime,
-    "get_knowledge":   get_knowledge,
-    "query_supplier":  query_supplier,
+    "query_inventory":          query_inventory,
+    "query_order":              query_order,
+    "create_ticket":            create_ticket,
+    "get_datetime":             get_datetime,
+    "get_knowledge":            get_knowledge,
+    "query_supplier":           query_supplier,
+    "track_logistics":          track_logistics,
+    "calculate_reorder_point":  calculate_reorder_point,
+    "web_search":               web_search,
+    "calculator":               calculator,
+    "code_interpreter":         code_interpreter,
 }
 
 # ==========================================
@@ -404,8 +839,16 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
 
 
 def get_all_tools() -> list[BaseTool]:
-    """获取所有已注册工具"""
-    return list(TOOL_REGISTRY.values())
+    """获取所有已注册工具（含 MCP 工具）"""
+    tools = list(TOOL_REGISTRY.values())
+    # 合并 MCP 工具
+    try:
+        from app.core.mcp_client import get_mcp_client
+        mcp_tools = get_mcp_client().get_langchain_tools()
+        tools.extend(mcp_tools)
+    except Exception as e:
+        logger.debug(f"[Tool] MCP工具加载失败: {e}")
+    return tools
 
 
 def get_tools_by_names(names: list[str]) -> list[BaseTool]:
@@ -423,6 +866,3 @@ except ImportError:
     AgentExecutor = None
     create_react_agent = None
 
-from langchain_core.prompts import PromptTemplate
-from langchain_core.agents import AgentFinish
-from app.core.llm_router import LLMFactory

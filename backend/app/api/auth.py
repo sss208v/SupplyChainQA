@@ -1,20 +1,20 @@
 """
-SmartQA Pro - 认证API路由
+SupplyChainRAG - 认证API路由
 ============================================================
-1. Token认证 vs JWT：
-   - JWT：无状态，自包含，但无法主动失效
-   - UUID Token + Redis：有状态，可主动登出，更灵活
-   本项目采用UUID Token方案，简单可靠
+1. JWT认证方案：
+   - 签发：HS256签名JWT，自包含user_id/username/exp，本地验签无需查存储
+   - 登出：Redis黑名单（jti），TTL=token剩余有效期
+   - 优势：无状态验证 + 可主动登出
 
 2. 接口设计：
-   - POST /login：用户名密码 → token
+   - POST /login：用户名密码 → JWT token
    - POST /register：注册新用户
-   - POST /logout：登出（删除token）
+   - POST /logout：登出（jti加入Redis黑名单）
    - GET /me：获取当前用户信息
 ============================================================
 """
 import logging
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 

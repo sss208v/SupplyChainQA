@@ -1,0 +1,137 @@
+{
+  "_comment": "意图路由配置 — 规则层关键词 + 语义路由样本。修改后无需重启：文件 mtime 变化时自动热加载；语义样本变更需调用 POST /api/v1/knowledge/router/reload 重建 embedding。",
+  "tool_commands": {
+    "查库存": "query_inventory",
+    "库存查询": "query_inventory",
+    "查一下物料": "query_inventory",
+    "查物料": "query_inventory",
+    "库存不够": "query_inventory",
+    "库存不足": "query_inventory",
+    "库存预警": "query_inventory",
+    "补货": "query_inventory",
+    "查订单": "query_order",
+    "订单查询": "query_order",
+    "采购单": "query_order",
+    "到货了吗": "query_order",
+    "建工单": "create_ticket",
+    "创建工单": "create_ticket",
+    "提工单": "create_ticket",
+    "申请工单": "create_ticket",
+    "几点": "get_datetime",
+    "今天几号": "get_datetime",
+    "现在几点": "get_datetime",
+    "星期几": "get_datetime",
+    "几月几号": "get_datetime",
+    "今天日期": "get_datetime",
+    "现在时间": "get_datetime",
+    "当前时间": "get_datetime",
+    "今天星期": "get_datetime",
+    "供应商信息": "query_supplier",
+    "查供应商": "query_supplier",
+    "查物流": "track_logistics",
+    "物流跟踪": "track_logistics"
+  },
+  "entity_rules": [
+    {
+      "prefix": "MAT-",
+      "tool": "query_inventory",
+      "hints": ["库存", "缺货", "补货", "剩多少", "还有多少", "够不够", "余量", "数量"]
+    },
+    {
+      "prefix": "PO-",
+      "tool": "query_order",
+      "hints": ["订单", "采购单", "到货", "状态", "进度", "交期", "发货"]
+    }
+  ],
+  "graph_keywords": [
+    "哪些物料", "什么供应商", "影响的物料", "关联工单",
+    "在途", "上游供应商", "缺货影响",
+    "追溯", "延迟影响", "影响的订单"
+  ],
+  "goal_keywords": [
+    "帮我评估", "帮我分析", "帮我看看", "帮我判断",
+    "要不要", "需不需要", "是否需要", "该不该",
+    "怎么办", "怎么处理", "怎么应对",
+    "影响评估", "风险评估", "缺口分析"
+  ],
+  "rag_patterns": [
+    "^(什么是|什么叫|啥是)",
+    "(是什么|指的是|是指)",
+    "(有什么区别|有何区别|的区别|区别在哪|差异|对比)",
+    "(计算公式|怎么计算|如何计算|怎么算)",
+    "(需要什么|需要哪些|有哪些|都有什么)",
+    "^(如何|怎样|为什么|为何)"
+  ],
+  "semantic_routes": {
+    "rag_answer": {
+      "threshold": null,
+      "utterances": [
+        "供应商准入需要什么资质",
+        "安全库存的计算公式是什么",
+        "库存管理制度有哪些规定",
+        "来料检验的标准流程",
+        "采购审批的权限怎么划分",
+        "物流时效是多少天",
+        "供应商绩效怎么评估",
+        "呆滞料怎么处理",
+        "物料编码规则是什么",
+        "跨部门协作流程是怎样的",
+        "成本核算的方法有哪些",
+        "供应链风险怎么管控",
+        "什么是ABC分类法",
+        "盘点差异怎么处理",
+        "采购比价的规则",
+        "不合格品的处理流程",
+        "IQC抽检的标准是什么",
+        "紧急采购怎么走审批"
+      ]
+    },
+    "tool_call": {
+      "threshold": null,
+      "utterances": [
+        "帮我查一下物料MAT-001的库存",
+        "采购单PO-20250101到货了吗",
+        "帮我建个补货工单",
+        "查一下MAT-002还有多少库存",
+        "MAT-003的库存够不够",
+        "采购单状态查询",
+        "创建一个紧急采购工单",
+        "现在几点了",
+        "今天日期是什么",
+        "查一下这批货的物流到哪了"
+      ]
+    },
+    "greeting": {
+      "threshold": null,
+      "utterances": [
+        "你好",
+        "你是谁",
+        "早上好",
+        "嗨",
+        "谢谢",
+        "再见"
+      ]
+    },
+    "goal": {
+      "threshold": null,
+      "utterances": [
+        "帮我评估库存短缺的风险",
+        "分析供应商延迟交货的影响",
+        "这批物料缺货了该怎么应对",
+        "帮我看看要不要补货",
+        "评估一下这个供应商还能不能合作",
+        "排查最近的质量异常"
+      ]
+    },
+    "graph_query": {
+      "threshold": null,
+      "utterances": [
+        "MAT-001缺货会影响哪些物料",
+        "PO-001延迟会影响什么订单",
+        "这个物料的上游供应商是谁",
+        "追溯一下TK-100关联的工单",
+        "MAT-002有哪些在途订单"
+      ]
+    }
+  }
+}
