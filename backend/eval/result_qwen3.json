@@ -1,0 +1,30 @@
+{
+  "date": "2026-07-27 15:16:27",
+  "gen_model": "Qwen3-14B",
+  "judge_model": "Qwen3-14B",
+  "samples": 56,
+  "valid_samples": 56,
+  "proxy_metrics": {
+    "context_precision": 0.6984,
+    "coverage": 0.699,
+    "answer_relevance": 0.5506,
+    "context_recall": 0.7815,
+    "overall": 0.6824
+  },
+  "ragas_metrics": {},
+  "final_metrics": {
+    "answer_relevancy": 0.5506,
+    "coverage": 0.699,
+    "context_precision": 0.6984,
+    "context_recall": 0.7815
+  },
+  "config": {
+    "RERANK_TOP_K": 8,
+    "RRF_K": 90,
+    "VECTOR_TOP_K": 100,
+    "BM25_TOP_K": 100,
+    "RERANKER_ENABLED": false,
+    "CRAG_ENABLED": true,
+    "CHUNK_SIZE": 256
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "date": "2026-07-27 22:08:40",
+  "gen_model": "Qwen3-14B",
+  "judge_model": "deepseek-v4-flash",
+  "samples": 12,
+  "valid_samples": 12,
+  "proxy_metrics": {
+    "context_precision": 0.8457,
+    "coverage": 0.9376,
+    "answer_relevance": 0.6658,
+    "context_recall": 0.9444,
+    "overall": 0.8484
+  },
+  "ragas_metrics": {
+    "faithfulness": 0.8058,
+    "answer_relevancy": 0.7367,
+    "context_precision": 0.5727,
+    "context_recall": 0.7861
+  },
+  "final_metrics": {
+    "answer_relevancy": 0.7367,
+    "coverage": 0.9376,
+    "context_precision": 0.8457,
+    "context_recall": 0.9444
+  },
+  "config": {
+    "RERANK_TOP_K": 8,
+    "RRF_K": 90,
+    "VECTOR_TOP_K": 100,
+    "BM25_TOP_K": 100,
+    "RERANKER_ENABLED": true,
+    "CRAG_ENABLED": true,
+    "CHUNK_SIZE": 256
+  }
+}

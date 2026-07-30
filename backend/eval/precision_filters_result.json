@@ -1,0 +1,42 @@
+{
+  "judge_model": "deepseek-v4-flash",
+  "n": 20,
+  "sweep": [
+    {
+      "label": "baseline(0.0/5)",
+      "rerank_threshold": 0.0,
+      "max_sub_queries": 5,
+      "avg_contexts": 8.6,
+      "gen_seconds": 260.4,
+      "faithfulness": 0.7799,
+      "answer_relevancy": 0.8372,
+      "context_precision": 0.6258,
+      "context_recall": 0.75,
+      "overall": 0.7482
+    },
+    {
+      "label": "thr0.3/sub3",
+      "rerank_threshold": 0.3,
+      "max_sub_queries": 3,
+      "avg_contexts": 7.95,
+      "gen_seconds": 250.5,
+      "faithfulness": 0.7778,
+      "answer_relevancy": 0.8152,
+      "context_precision": 0.648,
+      "context_recall": 0.85,
+      "overall": 0.7728
+    },
+    {
+      "label": "thr0.5/sub3",
+      "rerank_threshold": 0.5,
+      "max_sub_queries": 3,
+      "avg_contexts": 7.6,
+      "gen_seconds": 274.1,
+      "faithfulness": 0.6989,
+      "answer_relevancy": 0.8161,
+      "context_precision": 0.6395,
+      "context_recall": 0.775,
+      "overall": 0.7324
+    }
+  ]
+}

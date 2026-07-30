@@ -1,0 +1,23 @@
+{
+  "date": "2026-07-28 19:06:04",
+  "gen_model": "Qwen3-14B",
+  "judge_model": "deepseek-v4-flash",
+  "samples": 20,
+  "valid_samples": 20,
+  "ragas_metrics": {
+    "faithfulness": 0.7419,
+    "answer_relevancy": 0.8406,
+    "context_precision": 0.6312,
+    "context_recall": 0.7917
+  },
+  "overall": 0.7514,
+  "config": {
+    "RERANK_TOP_K": 8,
+    "RRF_K": 90,
+    "VECTOR_TOP_K": 50,
+    "BM25_TOP_K": 50,
+    "RERANKER_ENABLED": true,
+    "CRAG_ENABLED": true,
+    "CHUNK_SIZE": 256
+  }
+}

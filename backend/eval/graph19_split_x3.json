@@ -1,0 +1,58 @@
+{
+  "judge_model": "deepseek-v4-flash",
+  "gen_model": "Qwen3-14B",
+  "n": 19,
+  "repeats": 3,
+  "dataset": "eval\\eval_set_graph.json",
+  "runs": [
+    {
+      "faithfulness": 0.6386,
+      "answer_relevancy": 0.6712,
+      "context_precision": 0.8421,
+      "context_recall": 0.6842,
+      "overall": 0.709,
+      "avg_contexts": 9.63,
+      "gen_seconds": 231.2
+    },
+    {
+      "faithfulness": 0.6368,
+      "answer_relevancy": 0.6832,
+      "context_precision": 0.8421,
+      "context_recall": 0.7368,
+      "overall": 0.7247,
+      "avg_contexts": 9.63,
+      "gen_seconds": 230.8
+    },
+    {
+      "faithfulness": 0.7044,
+      "answer_relevancy": 0.6831,
+      "context_precision": 0.8421,
+      "context_recall": 0.7895,
+      "overall": 0.7548,
+      "avg_contexts": 9.79,
+      "gen_seconds": 190.6
+    }
+  ],
+  "summary": {
+    "faithfulness": {
+      "mean": 0.6599,
+      "std": 0.0315
+    },
+    "answer_relevancy": {
+      "mean": 0.6792,
+      "std": 0.0056
+    },
+    "context_precision": {
+      "mean": 0.8421,
+      "std": 0.0
+    },
+    "context_recall": {
+      "mean": 0.7368,
+      "std": 0.043
+    },
+    "overall": {
+      "mean": 0.7295,
+      "std": 0.019
+    }
+  }
+}

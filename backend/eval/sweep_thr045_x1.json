@@ -1,0 +1,40 @@
+{
+  "judge_model": "deepseek-v4-flash",
+  "gen_model": "Qwen3-14B",
+  "n": 45,
+  "repeats": 1,
+  "dataset": "eval\\eval_set_clean.json",
+  "runs": [
+    {
+      "faithfulness": 0.7307,
+      "answer_relevancy": 0.8341,
+      "context_precision": 0.737,
+      "context_recall": 0.9556,
+      "overall": 0.8144,
+      "avg_contexts": 7.04,
+      "gen_seconds": 879.2
+    }
+  ],
+  "summary": {
+    "faithfulness": {
+      "mean": 0.7307,
+      "std": 0.0
+    },
+    "answer_relevancy": {
+      "mean": 0.8341,
+      "std": 0.0
+    },
+    "context_precision": {
+      "mean": 0.737,
+      "std": 0.0
+    },
+    "context_recall": {
+      "mean": 0.9556,
+      "std": 0.0
+    },
+    "overall": {
+      "mean": 0.8144,
+      "std": 0.0
+    }
+  }
+}

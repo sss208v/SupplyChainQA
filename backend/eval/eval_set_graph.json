@@ -1,0 +1,116 @@
+[
+  {
+    "question": "物料 MAT-001 由哪个供应商供应？",
+    "reference_answer": "物料 MAT-001（电机轴承 6205-2RS）由供应商 东莞精密轴承有限公司 供应。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "物料 MAT-001 关联哪些采购订单？",
+    "reference_answer": "物料 MAT-001 关联采购订单 PO-20250601。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "物料 MAT-002 由哪个供应商供应？",
+    "reference_answer": "物料 MAT-002（液压油 32#）由供应商 广州液压器材厂 供应。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "物料 MAT-002 关联哪些采购订单？",
+    "reference_answer": "物料 MAT-002 关联采购订单 PO-20250602。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "物料 MAT-004 由哪个供应商供应？",
+    "reference_answer": "物料 MAT-004（传送带橡胶皮带 1200mm）由供应商 深圳传动设备科技 供应。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "物料 MAT-004 关联哪些采购订单？",
+    "reference_answer": "物料 MAT-004 关联采购订单 PO-20250603。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "物料 MAT-005 由哪个供应商供应？",
+    "reference_answer": "物料 MAT-005（PLC 控制器模块 FM352）由供应商 深圳传动设备科技 供应。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "物料 MAT-005 关联哪些采购订单？",
+    "reference_answer": "物料 MAT-005 关联采购订单 PO-20250603。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "物料 MAT-006 由哪个供应商供应？",
+    "reference_answer": "物料 MAT-006（气动电磁阀 4V210-08）由供应商 东莞精密轴承有限公司 供应。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "物料 MAT-006 关联哪些采购订单？",
+    "reference_answer": "物料 MAT-006 关联采购订单 PO-20250601。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "采购订单 PO-20250601 来自哪个供应商？包含哪些物料？",
+    "reference_answer": "采购订单 PO-20250601 来自供应商 东莞精密轴承有限公司，包含物料 MAT-001、MAT-006。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "采购订单 PO-20250602 来自哪个供应商？包含哪些物料？",
+    "reference_answer": "采购订单 PO-20250602 来自供应商 广州液压器材厂，包含物料 MAT-002。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "采购订单 PO-20250603 来自哪个供应商？包含哪些物料？",
+    "reference_answer": "采购订单 PO-20250603 来自供应商 深圳传动设备科技，包含物料 MAT-004、MAT-005。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "供应商 东莞精密轴承有限公司 有哪些采购订单？",
+    "reference_answer": "供应商 东莞精密轴承有限公司 有采购订单 PO-20250601。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "供应商 东莞精密轴承有限公司 供应哪些物料？",
+    "reference_answer": "供应商 东莞精密轴承有限公司 供应物料 MAT-001、MAT-006。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "供应商 广州液压器材厂 有哪些采购订单？",
+    "reference_answer": "供应商 广州液压器材厂 有采购订单 PO-20250602。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "供应商 广州液压器材厂 供应哪些物料？",
+    "reference_answer": "供应商 广州液压器材厂 供应物料 MAT-002。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "供应商 深圳传动设备科技 有哪些采购订单？",
+    "reference_answer": "供应商 深圳传动设备科技 有采购订单 PO-20250603。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  },
+  {
+    "question": "供应商 深圳传动设备科技 供应哪些物料？",
+    "reference_answer": "供应商 深圳传动设备科技 供应物料 MAT-004、MAT-005。",
+    "source_file": "neo4j_graph",
+    "type": "graph"
+  }
+]

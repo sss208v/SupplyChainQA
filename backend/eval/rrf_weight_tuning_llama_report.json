@@ -1,0 +1,269 @@
+{
+  "timestamp": "2026-07-02T22:08:00.267499",
+  "llm_provider": "deepseek",
+  "llm_base_url": "http://localhost:18080/v1",
+  "llm_model": "qwen25",
+  "dataset": "C:\\Users\\sss208\\Desktop\\agent\\supply-chain-qa\\backend\\scripts\\..\\eval\\eval_raw_data_comprehensive.json",
+  "dataset_size": 11,
+  "top_k": 5,
+  "candidates": [
+    1.0,
+    1.5,
+    2.0
+  ],
+  "best_weights": {
+    "precise_bm25": 1.5,
+    "semantic_vector": 1.5,
+    "combined_score": 0.76998
+  },
+  "all_results": [
+    {
+      "precise_bm25": 1.5,
+      "semantic_vector": 1.5,
+      "avg_mrr": 0.7985,
+      "avg_ndcg": 0.8537,
+      "avg_precision": 0.5455,
+      "combined_score": 0.77,
+      "queries": 11
+    },
+    {
+      "precise_bm25": 2.0,
+      "semantic_vector": 1.5,
+      "avg_mrr": 0.7985,
+      "avg_ndcg": 0.8432,
+      "avg_precision": 0.5455,
+      "combined_score": 0.7658,
+      "queries": 11
+    },
+    {
+      "precise_bm25": 1.0,
+      "semantic_vector": 1.5,
+      "avg_mrr": 0.7303,
+      "avg_ndcg": 0.8448,
+      "avg_precision": 0.6182,
+      "combined_score": 0.7537,
+      "queries": 11
+    },
+    {
+      "precise_bm25": 1.5,
+      "semantic_vector": 1.0,
+      "avg_mrr": 0.7379,
+      "avg_ndcg": 0.8355,
+      "avg_precision": 0.5455,
+      "combined_score": 0.7385,
+      "queries": 11
+    },
+    {
+      "precise_bm25": 1.5,
+      "semantic_vector": 2.0,
+      "avg_mrr": 0.7682,
+      "avg_ndcg": 0.8083,
+      "avg_precision": 0.5273,
+      "combined_score": 0.7361,
+      "queries": 11
+    },
+    {
+      "precise_bm25": 2.0,
+      "semantic_vector": 1.0,
+      "avg_mrr": 0.7379,
+      "avg_ndcg": 0.8249,
+      "avg_precision": 0.5455,
+      "combined_score": 0.7342,
+      "queries": 11
+    },
+    {
+      "precise_bm25": 2.0,
+      "semantic_vector": 2.0,
+      "avg_mrr": 0.7682,
+      "avg_ndcg": 0.7977,
+      "avg_precision": 0.5273,
+      "combined_score": 0.7318,
+      "queries": 11
+    },
+    {
+      "precise_bm25": 1.0,
+      "semantic_vector": 1.0,
+      "avg_mrr": 0.6697,
+      "avg_ndcg": 0.8266,
+      "avg_precision": 0.6182,
+      "combined_score": 0.7222,
+      "queries": 11
+    },
+    {
+      "precise_bm25": 1.0,
+      "semantic_vector": 2.0,
+      "avg_mrr": 0.7,
+      "avg_ndcg": 0.7994,
+      "avg_precision": 0.6,
+      "combined_score": 0.7198,
+      "queries": 11
+    }
+  ],
+  "top_result_details": [
+    {
+      "query": "供应商准入需要提供哪些资质文件？",
+      "query_type": "semantic",
+      "top_k": 5,
+      "mrr": 1.0,
+      "ndcg": 0.994,
+      "precision": 1.0,
+      "relevances": [
+        1.0,
+        0.9,
+        0.9,
+        0.6,
+        0.9
+      ]
+    },
+    {
+      "query": "供应商准入流程分哪几步？每步由谁负责，要多久？",
+      "query_type": "default",
+      "top_k": 5,
+      "mrr": 0.2,
+      "ndcg": 0.7442,
+      "precision": 0.2,
+      "relevances": [
+        0.4,
+        0.4,
+        0.4,
+        0.0,
+        0.9
+      ]
+    },
+    {
+      "query": "供应商绩效评估的指标和权重是什么？",
+      "query_type": "semantic",
+      "top_k": 5,
+      "mrr": 1.0,
+      "ndcg": 0.8945,
+      "precision": 1.0,
+      "relevances": [
+        0.6,
+        0.9,
+        0.6,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "query": "供应商评级A级和B级有什么区别？",
+      "query_type": "semantic",
+      "top_k": 5,
+      "mrr": 1.0,
+      "ndcg": 0.8744,
+      "precision": 0.6,
+      "relevances": [
+        0.7,
+        0.0,
+        0.3,
+        0.7,
+        0.7
+      ]
+    },
+    {
+      "query": "供应商被淘汰后多久可以重新申请准入？",
+      "query_type": "default",
+      "top_k": 5,
+      "mrr": 1.0,
+      "ndcg": 0.9738,
+      "precision": 0.8,
+      "relevances": [
+        0.9,
+        0.9,
+        0.3,
+        0.9,
+        0.6
+      ]
+    },
+    {
+      "query": "C级供应商被要求整改，整改期多久？",
+      "query_type": "default",
+      "top_k": 5,
+      "mrr": 1.0,
+      "ndcg": 0.942,
+      "precision": 0.8,
+      "relevances": [
+        0.9,
+        0.4,
+        0.7,
+        0.9,
+        0.7
+      ]
+    },
+    {
+      "query": "A类物料和B类物料的抽检比例分别是多少？",
+      "query_type": "default",
+      "top_k": 5,
+      "mrr": 1.0,
+      "ndcg": 1.0,
+      "precision": 0.6,
+      "relevances": [
+        0.9,
+        0.7,
+        0.6,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "query": "常规检验的时效要求是什么？需要送实验室要多久？",
+      "query_type": "semantic",
+      "top_k": 5,
+      "mrr": 0.3333,
+      "ndcg": 0.5,
+      "precision": 0.2,
+      "relevances": [
+        0.0,
+        0.0,
+        0.7,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "query": "查询 PO-20250101 的审批状态",
+      "query_type": "precise",
+      "top_k": 5,
+      "mrr": 1.0,
+      "ndcg": 1.0,
+      "precision": 0.4,
+      "relevances": [
+        0.7,
+        0.7,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "query": "MAT-001 当前库存还有多少件？",
+      "query_type": "precise",
+      "top_k": 5,
+      "mrr": 1.0,
+      "ndcg": 0.9595,
+      "precision": 0.2,
+      "relevances": [
+        0.6,
+        0.3,
+        0.0,
+        0.4,
+        0.0
+      ]
+    },
+    {
+      "query": "SUP-2025-001 供应商最近一季度绩效评分是多少？",
+      "query_type": "precise",
+      "top_k": 5,
+      "mrr": 0.25,
+      "ndcg": 0.5087,
+      "precision": 0.2,
+      "relevances": [
+        0.1,
+        0.0,
+        0.0,
+        0.7,
+        0.0
+      ]
+    }
+  ]
+}

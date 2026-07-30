@@ -1,6 +1,0 @@
-[0.0s] Starting test...
-[0.1s] Milvus connected
-[10.1s] Embedding model loaded
-[11.2s] Testing AnswerRelevancy strictness=1...
-[13.6s] Score: 0.7472333079548903
-[13.6s] Done!

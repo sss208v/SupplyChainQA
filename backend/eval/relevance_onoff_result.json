@@ -1,0 +1,26 @@
+{
+  "judge_model": "deepseek-v4-flash",
+  "n": 20,
+  "sweep": [
+    {
+      "filter": "ON(0.15)",
+      "avg_contexts": 8.7,
+      "gen_seconds": 303.1,
+      "faithfulness": 0.7571,
+      "answer_relevancy": 0.804,
+      "context_precision": 0.6377,
+      "context_recall": 0.775,
+      "overall": 0.7435
+    },
+    {
+      "filter": "OFF",
+      "avg_contexts": 8.9,
+      "gen_seconds": 315.2,
+      "faithfulness": 0.7225,
+      "answer_relevancy": 0.8225,
+      "context_precision": 0.6218,
+      "context_recall": 0.725,
+      "overall": 0.723
+    }
+  ]
+}
