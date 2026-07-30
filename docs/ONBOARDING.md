@@ -199,8 +199,6 @@ BGE-Reranker 精排
 
 ## 8. 配套资源
 
-- `docs/INTERVIEW_STUDY_GUIDE.html` — 面试学习手册(64 条 Q&A，含项目上手启动检查清单与报错速查)
-- `docs/QA_AUDIT.md` — Q&A 审计报告
 - `scripts/sync_doc_snippets.py` — 代码-文档同步脚本
 - `scripts/verify_doc_integrity.py` — 文档完整性验证
 - `scripts/check_doc_drift.py` — 引用漂移检测

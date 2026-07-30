@@ -325,7 +325,6 @@ cd frontend && npm run test:unit
 | `backend/app/config.py`              | 全局配置                          | 低         |
 | `backend/app/main.py`                | 应用启动 + 生命周期               | 低         |
 | `CLAUDE.md`                          | AI 编码规则文件（30+ 条踩坑规则） | 高         |
-| `docs/PROJECT_METRICS.md`            | 项目指标                          | 中         |
 
 > **面试资料已独立存放至 `D:\2026\面试准备\`**（25 个文件），包括面试指南、速查手册、演示脚本、AI 编码话术、学习路径等，不与项目代码混在一起。
 
