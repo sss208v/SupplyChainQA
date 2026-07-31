@@ -223,7 +223,6 @@ class TestAskStreamConsistency:
         # ---- 流式 handler：同一 agent（DEMO_MODE 跳过 LLM 流式）----
         settings = get_settings()
         monkeypatch.setattr(settings, "DEMO_MODE", True)
-        monkeypatch.setattr(settings, "CLIP_ENABLED", False)
         monkeypatch.setattr(settings, "COVERAGE_ENABLED", False)
 
         agent.RAG_SYSTEM_PROMPT = RAGAgent.RAG_SYSTEM_PROMPT

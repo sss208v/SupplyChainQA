@@ -63,7 +63,6 @@ async def _run_handler(rag_agent, memory=None, monkeypatch=None):
     from app.config import get_settings
     settings = get_settings()
     monkeypatch.setattr(settings, "DEMO_MODE", True)
-    monkeypatch.setattr(settings, "CLIP_ENABLED", False)
     monkeypatch.setattr(settings, "COVERAGE_ENABLED", False)
 
     milvus = MagicMock()

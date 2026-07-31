@@ -120,7 +120,7 @@ DEEPSEEK_API_KEY=sk-your-api-key
 
 Ollama is also supported (`LLM_PROVIDER=ollama`, default `http://localhost:11434`).
 
-See [.env.example](.env.example) for the full list of options (RAG parameters, feature flags, Langfuse, CLIP multimodal, etc.). Tuning parameters treat `backend/app/config.py` as the single source of truth.
+See [.env.example](.env.example) for the full list of options (RAG parameters, feature flags, Langfuse, etc.). Tuning parameters treat `backend/app/config.py` as the single source of truth.
 
 ### One-Click Startup
 

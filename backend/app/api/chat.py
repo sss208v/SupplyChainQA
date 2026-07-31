@@ -21,7 +21,6 @@ from app.core.graph_engine import GraphEngine
 from app.core.milvus_client import MilvusManager
 from app.core.neo4j_client import Neo4jClient
 from app.core.redis_client import RedisManager, ChatMemory
-from app.core.multimodal_embedding import CLIPEmbeddingEngine
 from app.core.query_analyzer import QueryComplexityAnalyzer
 from app.core.data_filter import PIIFilter
 from app.config import get_settings
@@ -29,7 +28,7 @@ from app.core.auth import get_current_user_optional, get_current_user_full
 from app.core.dependencies import (
     get_rag_agent, get_router_agent, get_orchestrator_service,
     get_graph_engine, get_milvus_manager, get_neo4j_client,
-    get_clip_engine, get_redis_manager, get_chat_memory,
+    get_redis_manager, get_chat_memory,
     get_query_analyzer,
 )
 from app.api.chat_helpers import sse_event, sse_done, ChatRequest, _AskRequest
@@ -117,7 +116,6 @@ async def chat_stream(
     graph_engine: GraphEngine = Depends(get_graph_engine),
     milvus: MilvusManager = Depends(get_milvus_manager),
     neo4j: Neo4jClient = Depends(get_neo4j_client),
-    clip: CLIPEmbeddingEngine = Depends(get_clip_engine),
     redis: RedisManager = Depends(get_redis_manager),
     memory: ChatMemory = Depends(get_chat_memory),
     query_analyzer: QueryComplexityAnalyzer = Depends(get_query_analyzer),
@@ -126,7 +124,7 @@ async def chat_stream(
     对话接口（流式SSE）
 
     1. 返回StreamingResponse，content_type="text/event-stream"
-    2. 公共前置逻辑：DEMO_MODE → Trace → Session → CLIP入库 → Query Cache → 意图路由
+    2. 公共前置逻辑：DEMO_MODE → Trace → Session → Query Cache → 意图路由
     3. 按 intent 分发给对应的 handler
     """
     import time
@@ -176,28 +174,6 @@ async def chat_stream(
 
             # ---- 会话ID ----
             yield sse_event("session", session_id=session_id, trace_id=trace_id)
-
-            # ---- 多模态：图片通过 CLIP 入库 ----
-            if body.images and len(body.images) > 0:
-                if settings.CLIP_ENABLED:
-                    try:
-                        clip_stored = 0
-                        for img_b64 in body.images:
-                            clip_vec = clip.encode_image_base64(img_b64)
-                            milvus.insert_image(
-                                collection_name=settings.CLIP_IMAGE_COLLECTION,
-                                image_id=str(uuid.uuid4())[:12],
-                                source=f"chat_upload_{session_id}",
-                                clip_embedding=clip_vec,
-                                base64_data=img_b64,
-                                description=safe_query,
-                                security_group=["admin"],
-                            )
-                            clip_stored += 1
-                        if clip_stored:
-                            logger.info(f"[CLIP] {clip_stored}张图片已入库（纯本地）")
-                    except Exception as e:
-                        logger.warning(f"[CLIP] 入库失败: {e}")
 
             # ---- Query Cache 检查 ----
             _cache_input = f"{safe_query}:{_user_role}"

@@ -1,139 +1,122 @@
 <template>
   <div class="chat-container">
-      <!-- 顶部操作栏 -->
-      <div class="chat-header">
-        <el-button
-          text
-          size="small"
-          :icon="Plus"
-          @click="handleNewConversation"
-          :disabled="chatStore.streaming"
+    <!-- 顶部操作栏 -->
+    <div class="chat-header">
+      <el-button
+        text
+        size="small"
+        :icon="Plus"
+        @click="handleNewConversation"
+        :disabled="chatStore.streaming"
+      >
+        新对话
+      </el-button>
+    </div>
+    <!-- 连接状态指示器 -->
+    <div
+      v-if="chatStore.connectionStatus !== 'connected'"
+      :class="['connection-bar', chatStore.connectionStatus]"
+    >
+      <span class="status-dot"></span>
+      <span class="status-text">
+        <template v-if="chatStore.connectionStatus === 'connecting'"
+          >正在连接...</template
         >
-          新对话
-        </el-button>
-      </div>
-      <!-- 连接状态指示器 -->
-      <div v-if="chatStore.connectionStatus !== 'connected'" :class="['connection-bar', chatStore.connectionStatus]">
-        <span class="status-dot"></span>
-        <span class="status-text">
-          <template v-if="chatStore.connectionStatus === 'connecting'">正在连接...</template>
-          <template v-else-if="chatStore.connectionStatus === 'error'">连接异常：{{ chatStore.connectionError || '请检查后端服务' }}</template>
-          <template v-else-if="chatStore.connectionStatus === 'disconnected'">未连接</template>
-        </span>
-        <el-button
-          v-if="chatStore.connectionStatus === 'error' && chatStore.lastQuery"
-          size="small"
+        <template v-else-if="chatStore.connectionStatus === 'error'"
+          >连接异常：{{
+            chatStore.connectionError || "请检查后端服务"
+          }}</template
+        >
+        <template v-else-if="chatStore.connectionStatus === 'disconnected'"
+          >未连接</template
+        >
+      </span>
+      <el-button
+        v-if="chatStore.connectionStatus === 'error' && chatStore.lastQuery"
+        size="small"
+        type="warning"
+        plain
+        @click="chatStore.retryLastMessage()"
+        :loading="chatStore.streaming"
+      >
+        重试
+      </el-button>
+    </div>
+    <!-- 消息列表 -->
+    <div class="message-list" ref="messageListRef">
+      <!-- 欢迎消息 -->
+      <div v-if="chatStore.messages.length === 0" class="welcome">
+        <el-icon :size="48" color="#2563eb"><ChatDotRound /></el-icon>
+        <h2>供应链智能助手</h2>
+        <p>我可以帮你查询制度规范、库存订单、创建工单</p>
+        <!-- 演示模式横幅 -->
+        <el-alert
+          v-if="chatStore.demoMode.active"
+          title="演示模式"
           type="warning"
-          plain
-          @click="chatStore.retryLastMessage()"
-          :loading="chatStore.streaming"
-        >
-          重试
-        </el-button>
-      </div>
-      <!-- 消息列表 -->
-      <div class="message-list" ref="messageListRef">
-        <!-- 欢迎消息 -->
-        <div v-if="chatStore.messages.length === 0" class="welcome">
-          <el-icon :size="48" color="#2563eb"><ChatDotRound /></el-icon>
-          <h2>供应链智能助手</h2>
-          <p>我可以帮你查询制度规范、库存订单、创建工单</p>
-          <!-- 演示模式横幅 -->
-          <el-alert
-            v-if="chatStore.demoMode.active"
-            title="演示模式"
-            type="warning"
-            :description="chatStore.demoMode.message || 'LLM 未连接，当前为离线降级链路'"
-            show-icon
-            :closable="false"
-            style="margin-bottom: 12px"
-          />
-          <div class="quick-actions">
-            <el-button
-              v-for="item in quickActions"
-              :key="item.text"
-              round
-              @click="handleQuickAction(item.text)"
-            >
-              <el-icon><component :is="item.icon" /></el-icon>
-              {{ item.text }}
-            </el-button>
-          </div>
-        </div>
-
-        <!-- 消息气泡 -->
-        <ChatMessage
-          v-for="msg in chatStore.messages"
-          :key="msg.id"
-          :message="msg"
+          :description="
+            chatStore.demoMode.message || 'LLM 未连接，当前为离线降级链路'
+          "
+          show-icon
+          :closable="false"
+          style="margin-bottom: 12px"
         />
+        <div class="quick-actions">
+          <el-button
+            v-for="item in quickActions"
+            :key="item.text"
+            round
+            @click="handleQuickAction(item.text)"
+          >
+            <el-icon><component :is="item.icon" /></el-icon>
+            {{ item.text }}
+          </el-button>
+        </div>
       </div>
 
-      <!-- 输入区域 -->
-      <div class="input-area">
-        <!-- 图片预览 -->
-        <div v-if="chatStore.uploadingImages.length > 0" class="image-preview-bar">
-          <div
-            v-for="(img, idx) in chatStore.uploadingImages"
-            :key="idx"
-            class="image-preview-item"
+      <!-- 消息气泡 -->
+      <ChatMessage
+        v-for="msg in chatStore.messages"
+        :key="msg.id"
+        :message="msg"
+      />
+    </div>
+
+    <!-- 输入区域 -->
+    <div class="input-area">
+      <div class="input-wrapper">
+        <el-input
+          v-model="inputText"
+          type="textarea"
+          :rows="2"
+          :placeholder="
+            chatStore.streaming ? '正在回复中...' : '输入你的问题...'
+          "
+          :disabled="chatStore.streaming"
+          resize="none"
+          @keydown.enter.exact.prevent="handleSend"
+        />
+        <div class="input-actions">
+          <el-button
+            type="primary"
+            :icon="Promotion"
+            :loading="chatStore.streaming"
+            :disabled="!inputText.trim() || chatStore.streaming"
+            @click="handleSend"
           >
-            <img :src="'data:image/jpeg;base64,' + img" class="preview-thumb" />
-            <el-button
-              class="preview-remove"
-              :icon="Close"
-              circle
-              size="small"
-              @click="chatStore.removeImage(idx)"
-            />
-          </div>
-        </div>
-        <div class="input-wrapper">
-          <el-input
-            v-model="inputText"
-            type="textarea"
-            :rows="2"
-            :placeholder="chatStore.streaming ? '正在回复中...' : '输入你的问题...'"
+            发送
+          </el-button>
+          <el-button
+            :icon="Delete"
+            @click="handleClear"
             :disabled="chatStore.streaming"
-            resize="none"
-            @keydown.enter.exact.prevent="handleSend"
-            @paste="handlePaste"
-          />
-          <div class="input-actions">
-            <input
-              ref="fileInputRef"
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-              @change="handleFileSelect"
-            />
-            <el-button
-              :icon="PictureFilled"
-              :disabled="chatStore.streaming"
-              @click="$refs.fileInputRef.click()"
-              title="上传图片"
-            />
-            <el-button
-              type="primary"
-              :icon="Promotion"
-              :loading="chatStore.streaming"
-              :disabled="!inputText.trim() || chatStore.streaming"
-              @click="handleSend"
-            >
-              发送
-            </el-button>
-            <el-button
-              :icon="Delete"
-              @click="handleClear"
-              :disabled="chatStore.streaming"
-            >
-              清空
-            </el-button>
-          </div>
+          >
+            清空
+          </el-button>
         </div>
       </div>
     </div>
+  </div>
 </template>
 
 <script setup>
@@ -144,119 +127,97 @@
  * 2. 自动滚动到底部：每次消息更新后，smooth scroll 到最新消息
  * 3. Enter 发送 / Shift+Enter 换行：通过 @keydown.enter.exact 捕获
  */
-import { ref, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { Promotion, Delete, Plus, PictureFilled, Close } from '@element-plus/icons-vue'
-import { useChatStore } from '@/stores/chat'
-import ChatMessage from './components/ChatMessage.vue'
+import { ref, nextTick, watch } from "vue";
+import { useRoute } from "vue-router";
+import { Promotion, Delete, Plus } from "@element-plus/icons-vue";
+import { useChatStore } from "@/stores/chat";
+import ChatMessage from "./components/ChatMessage.vue";
 
-const chatStore = useChatStore()
-const route = useRoute()
-const inputText = ref('')
-const messageListRef = ref(null)
+const chatStore = useChatStore();
+const route = useRoute();
+const inputText = ref("");
+const messageListRef = ref(null);
 
 // 监听路由 query 中的 session 参数（从侧边栏历史记录点击进入）
 watch(
   () => route.query.session,
   (newSession) => {
     if (newSession && newSession !== chatStore.sessionId) {
-      chatStore.sessionId = newSession
+      chatStore.sessionId = newSession;
     }
   },
   { immediate: true }
-)
+);
 
 // 当流式回复结束时，保存对话历史
 watch(
   () => chatStore.streaming,
   (isStreaming, wasStreaming) => {
     if (wasStreaming && !isStreaming && chatStore.sessionId) {
-      const userMsgs = chatStore.messages.filter(m => m.role === 'user')
-      const lastQuery = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].content : ''
+      const userMsgs = chatStore.messages.filter((m) => m.role === "user");
+      const lastQuery =
+        userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].content : "";
       if (window.__scqa_addHistory) {
-        window.__scqa_addHistory(chatStore.sessionId, lastQuery)
+        window.__scqa_addHistory(chatStore.sessionId, lastQuery);
       }
     }
   }
-)
+);
 
 function handleNewConversation() {
-  chatStore.clearChat()
+  chatStore.clearChat();
 }
 
 // 快捷操作（供应链场景）
 const quickActions = [
-  { text: '新供应商准入需要什么资质？', icon: 'OfficeBuilding' },
-  { text: '帮我查一下物料MAT-001的库存', icon: 'Box' },
-  { text: '安全库存的计算公式是什么？', icon: 'DataAnalysis' },
-]
+  { text: "新供应商准入需要什么资质？", icon: "OfficeBuilding" },
+  { text: "帮我查一下物料MAT-001的库存", icon: "Box" },
+  { text: "安全库存的计算公式是什么？", icon: "DataAnalysis" },
+];
 
 async function handleSend() {
-  const query = inputText.value.trim()
-  if (!query || chatStore.streaming) return
-  inputText.value = ''
+  const query = inputText.value.trim();
+  if (!query || chatStore.streaming) return;
+  inputText.value = "";
   try {
-    await chatStore.sendMessage(query)
+    await chatStore.sendMessage(query);
   } finally {
     // 发送后清除图片（无论成功失败都执行）
-    chatStore.clearImages()
+    chatStore.clearImages();
   }
 }
 
 function handleQuickAction(text) {
-  inputText.value = text
-  handleSend()
+  inputText.value = text;
+  handleSend();
 }
 
 function handleClear() {
-  chatStore.clearChat()
-  chatStore.clearImages()
-}
-
-function handleFileSelect(e) {
-  const files = e.target.files
-  if (files && files.length > 0) {
-    chatStore.addImages(files)
-    e.target.value = '' // 重置 input，允许重复选同一文件
-  }
-}
-
-function handlePaste(e) {
-  const items = e.clipboardData?.items
-  if (!items) return
-  const imageFiles = []
-  for (const item of items) {
-    if (item.type.startsWith('image/')) {
-      imageFiles.push(item.getAsFile())
-    }
-  }
-  if (imageFiles.length > 0) {
-    chatStore.addImages(imageFiles)
-  }
+  chatStore.clearChat();
 }
 
 // 自动滚动到底部（使用 requestAnimationFrame 节流，避免频繁 DOM 操作）
-let scrollRAF = null
+let scrollRAF = null;
 function scrollToBottom() {
-  if (scrollRAF) cancelAnimationFrame(scrollRAF)
+  if (scrollRAF) cancelAnimationFrame(scrollRAF);
   scrollRAF = requestAnimationFrame(() => {
     if (messageListRef.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+      messageListRef.value.scrollTop = messageListRef.value.scrollHeight;
     }
-    scrollRAF = null
-  })
+    scrollRAF = null;
+  });
 }
 
 watch(
   () => chatStore.messages.length,
   () => nextTick(scrollToBottom)
-)
+);
 
 // 流式内容更新也滚动
 watch(
   () => chatStore.currentContent,
   () => nextTick(scrollToBottom)
-)
+);
 </script>
 
 <style scoped>
@@ -339,35 +300,6 @@ watch(
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
-.image-preview-bar {
-  display: flex;
-  gap: 8px;
-  padding: 0 0 8px 0;
-  overflow-x: auto;
-}
-
-.image-preview-item {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.preview-thumb {
-  width: 64px;
-  height: 64px;
-  object-fit: cover;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-light);
-}
-
-.preview-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 18px;
-  height: 18px;
-  font-size: 10px;
-}
-
 .input-wrapper {
   max-width: 860px;
   margin: 0 auto;
@@ -419,8 +351,13 @@ watch(
   background: var(--color-text-placeholder);
 }
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 .status-text {
   flex: 1;
@@ -488,11 +425,6 @@ watch(
   .input-actions .el-button {
     font-size: 12px;
     padding: 6px 12px;
-  }
-
-  .preview-thumb {
-    width: 48px;
-    height: 48px;
   }
 }
 

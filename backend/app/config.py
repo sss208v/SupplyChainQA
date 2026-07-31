@@ -166,13 +166,6 @@ class Settings(BaseSettings):
     # ---- 认证边界 ----
     REQUIRE_AUTH_CHAT: bool = True     # 对话接口是否强制登录（演示环境可关）
 
-    # ---- CLIP 多模态嵌入（图文混合检索）----
-    CLIP_ENABLED: bool = False  # 默认关闭，避免 HuggingFace 下载阻塞演示
-    CLIP_MODEL: str = "openai/clip-vit-base-patch32"
-    CLIP_IMAGE_COLLECTION: str = "supply_chain_qa_images"
-    CLIP_TOP_K: int = 3
-    CLIP_DEVICE: str = "cpu"
-
     # ---- Demo 模式（面试安全路径）----
     DEMO_MODE: bool = False          # 无LLM时返回本地fallback，不抛 Connection error
     DEMO_SEED_USERS: bool = True     # 启动时自动创建演示账户
@@ -186,11 +179,6 @@ class Settings(BaseSettings):
     JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_SECONDS: int = 86400  # 24小时
-
-    VISION_ENABLED: bool = False
-    VISION_PROVIDER: str = "minimax"
-    VISION_MODEL: str = "MiniMax-Vision-01"
-    VISION_MAX_IMAGES: int = 5
 
     # ---- Neo4j 图数据库（实体关系图谱检索）----
     NEO4J_URI: str = "bolt://localhost:17687"

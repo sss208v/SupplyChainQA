@@ -12,7 +12,6 @@ from app.core.graph_engine import GraphEngine, graph_engine
 from app.core.milvus_client import MilvusManager, milvus_manager
 from app.core.neo4j_client import Neo4jClient, neo4j_client
 from app.core.redis_client import RedisManager, ChatMemory, redis_manager, chat_memory
-from app.core.multimodal_embedding import CLIPEmbeddingEngine, clip_engine
 from app.core.rag.engine import RAGEngine, rag_engine as rag_engine_impl
 from app.core.data_filter import PIIFilter
 from app.core.query_analyzer import QueryComplexityAnalyzer, query_analyzer
@@ -66,11 +65,6 @@ def get_redis_manager() -> RedisManager:
 def get_chat_memory() -> Optional[ChatMemory]:
     """返回对话记忆管理器（可能为 None，当 Redis 未连接时）"""
     return chat_memory
-
-
-def get_clip_engine() -> Optional[CLIPEmbeddingEngine]:
-    """返回 CLIP 多模态嵌入引擎单例"""
-    return clip_engine
 
 
 def get_pii_filter() -> PIIFilter:

@@ -120,7 +120,7 @@ DEEPSEEK_API_KEY=sk-your-api-key
 
 也支持 Ollama（`LLM_PROVIDER=ollama`，默认 `http://localhost:11434`）。
 
-完整配置项（RAG 参数、功能开关、Langfuse、CLIP 多模态等）见 [.env.example](.env.example)，调优参数以 `backend/app/config.py` 为唯一真相来源。
+完整配置项（RAG 参数、功能开关、Langfuse 等）见 [.env.example](.env.example)，调优参数以 `backend/app/config.py` 为唯一真相来源。
 
 ### 一键启动
 

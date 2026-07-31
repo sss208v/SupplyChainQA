@@ -4,15 +4,6 @@
     <template v-if="message.role === 'user'">
       <div class="message-content user-content">
         <p>{{ message.content }}</p>
-        <!-- 用户上传的图片 -->
-        <div v-if="message.images && message.images.length > 0" class="user-images">
-          <img
-            v-for="(img, idx) in message.images"
-            :key="idx"
-            :src="'data:image/jpeg;base64,' + img"
-            class="user-image"
-          />
-        </div>
       </div>
       <el-avatar :size="36" class="avatar user-avatar">
         <el-icon><User /></el-icon>
@@ -37,12 +28,7 @@
         </el-button>
         <!-- 意图标签 + 置信度决策 -->
         <div v-if="message.intent && message.content" class="intent-tag">
-          <el-tag
-            :type="intentTagType"
-            size="small"
-            effect="plain"
-            round
-          >
+          <el-tag :type="intentTagType" size="small" effect="plain" round>
             {{ intentLabel }}
           </el-tag>
           <!-- 路由方式标签 -->
@@ -64,16 +50,6 @@
             round
           >
             缓存命中
-          </el-tag>
-          <!-- CLIP 图像检索结果 -->
-          <el-tag
-            v-if="message.imageSearch"
-            type="info"
-            size="small"
-            effect="plain"
-            round
-          >
-            图像检索: {{ message.imageSearch.count }}张 ({{ message.imageSearch.duration_ms }}ms)
           </el-tag>
           <el-tag
             v-if="message.confidence > 0"
@@ -132,15 +108,19 @@
             effect="plain"
             round
           >
-            {{ message.performanceMetrics.total_ms }}ms
-            (路由{{ message.performanceMetrics.route_ms }}ms
-            / 检索{{ message.performanceMetrics.search_ms }}ms
-            / 生成{{ message.performanceMetrics.llm_ms }}ms)
+            {{ message.performanceMetrics.total_ms }}ms (路由{{
+              message.performanceMetrics.route_ms
+            }}ms / 检索{{ message.performanceMetrics.search_ms }}ms / 生成{{
+              message.performanceMetrics.llm_ms
+            }}ms)
           </el-tag>
         </div>
 
         <!-- 工具调用展示（默认折叠，只显示一行摘要） -->
-        <div v-if="message.toolCalls && message.toolCalls.length" class="tool-calls">
+        <div
+          v-if="message.toolCalls && message.toolCalls.length"
+          class="tool-calls"
+        >
           <el-collapse v-model="expandedTools">
             <div
               v-for="(tc, idx) in message.toolCalls"
@@ -165,7 +145,10 @@
         </div>
 
         <!-- 消息正文（支持Markdown） -->
-        <div :class="['message-text', { 'is-error': isErrorMessage }]" v-html="renderedContent"></div>
+        <div
+          :class="['message-text', { 'is-error': isErrorMessage }]"
+          v-html="renderedContent"
+        ></div>
 
         <!-- 参考来源 -->
         <div v-if="message.sources && message.sources.length" class="sources">
@@ -177,13 +160,23 @@
             :key="idx"
             class="source-item"
           >
-            <el-tag type="info" size="small">{{ src.source || `来源 ${idx + 1}` }}</el-tag>
+            <el-tag type="info" size="small">{{
+              src.source || `来源 ${idx + 1}`
+            }}</el-tag>
             <span class="source-text">{{ src.content?.slice(0, 100) }}...</span>
           </div>
         </div>
 
         <!-- 空来源提示：有回答但未检索到相关文档 -->
-        <div v-if="message.content && !message.streaming && (!message.sources || message.sources.length === 0) && !isErrorMessage" class="empty-sources">
+        <div
+          v-if="
+            message.content &&
+            !message.streaming &&
+            (!message.sources || message.sources.length === 0) &&
+            !isErrorMessage
+          "
+          class="empty-sources"
+        >
           <el-alert type="info" :closable="false" show-icon>
             <template #title>未检索到相关文档，回答基于通用知识生成</template>
           </el-alert>
@@ -198,7 +191,7 @@
             type="warning"
             :closable="false"
             show-icon
-            style="margin-bottom: 8px;"
+            style="margin-bottom: 8px"
           >
             <template #title>
               即将执行写操作：{{ message.approvalRequest.tool }}
@@ -208,9 +201,7 @@
             <el-button type="primary" size="small" @click="handleApprove">
               确认执行
             </el-button>
-            <el-button size="small" @click="handleDeny">
-              取消
-            </el-button>
+            <el-button size="small" @click="handleDeny"> 取消 </el-button>
           </div>
         </div>
 
@@ -223,11 +214,7 @@
 
         <!-- 多源数据冲突提示 -->
         <div v-if="message.conflicts?.length" class="conflict-bar">
-          <el-alert
-            type="warning"
-            :closable="false"
-            show-icon
-          >
+          <el-alert type="warning" :closable="false" show-icon>
             <template #title>
               检测到 {{ message.conflicts.length }} 处数据矛盾，已标注供参考
             </template>
@@ -237,15 +224,21 @@
                 :key="idx"
                 class="conflict-item"
               >
-                <strong>{{ c.entity }}</strong>：
-                <span class="conflict-values">{{ c.values?.join(' vs ') }}</span>
+                <strong>{{ c.entity }}</strong
+                >：
+                <span class="conflict-values">{{
+                  c.values?.join(" vs ")
+                }}</span>
               </div>
             </template>
           </el-alert>
         </div>
 
         <!-- 反馈按钮（仅AI消息显示） -->
-        <div v-if="!message.streaming && !message.approvalRequest" class="feedback-bar">
+        <div
+          v-if="!message.streaming && !message.approvalRequest"
+          class="feedback-bar"
+        >
           <el-button
             text
             size="small"
@@ -264,7 +257,9 @@
           >
             <el-icon><CircleClose /></el-icon>
           </el-button>
-          <span v-if="feedbackGiven !== null" class="feedback-thanks">感谢反馈</span>
+          <span v-if="feedbackGiven !== null" class="feedback-thanks"
+            >感谢反馈</span
+          >
         </div>
 
         <!-- 加载动画 -->
@@ -273,10 +268,17 @@
         </div>
 
         <!-- Token用量标签 -->
-        <div v-if="message.tokenUsage && !message.streaming" class="token-usage">
+        <div
+          v-if="message.tokenUsage && !message.streaming"
+          class="token-usage"
+        >
           <span>{{ message.tokenUsage.total_tokens }} tokens</span>
-          <span v-if="message.tokenUsage.cost_yuan > 0">· ¥{{ message.tokenUsage.cost_yuan.toFixed(4) }}</span>
-          <span v-if="message.tokenUsage.model">· {{ message.tokenUsage.model }}</span>
+          <span v-if="message.tokenUsage.cost_yuan > 0"
+            >· ¥{{ message.tokenUsage.cost_yuan.toFixed(4) }}</span
+          >
+          <span v-if="message.tokenUsage.model"
+            >· {{ message.tokenUsage.model }}</span
+          >
         </div>
       </div>
     </template>
@@ -293,51 +295,59 @@
  * 4. 参考来源卡片：展示 RAG 检索命中的文档片段
  * 5. 用户反馈：+1/-1 按钮收集用户满意度，支持优雅降级
  */
-import { computed, ref } from 'vue'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { computed, ref } from "vue";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 
-import { ElMessage } from 'element-plus'
-import { User, Monitor, CircleCheck, CircleClose } from '@element-plus/icons-vue'
-import { submitFeedback as apiSubmitFeedback } from '@/api/chat'
-import { useChatStore } from '@/stores/chat'
-import RagDag from './RagDag.vue'
+import { ElMessage } from "element-plus";
+import {
+  User,
+  Monitor,
+  CircleCheck,
+  CircleClose,
+} from "@element-plus/icons-vue";
+import { submitFeedback as apiSubmitFeedback } from "@/api/chat";
+import { useChatStore } from "@/stores/chat";
+import RagDag from "./RagDag.vue";
 
-const chatStore = useChatStore()
+const chatStore = useChatStore();
 
 const props = defineProps({
   message: {
     type: Object,
     required: true,
   },
-})
+});
 
 /**
  * 复制消息内容到剪贴板
  */
 function handleCopy() {
-  if (!props.message.content) return
-  navigator.clipboard.writeText(props.message.content).then(() => {
-    ElMessage.success('已复制')
-  }).catch(() => {
-    ElMessage.error('复制失败')
-  })
+  if (!props.message.content) return;
+  navigator.clipboard
+    .writeText(props.message.content)
+    .then(() => {
+      ElMessage.success("已复制");
+    })
+    .catch(() => {
+      ElMessage.error("复制失败");
+    });
 }
 
 /**
  * 反馈状态追踪
  * null = 未反馈, 1 = 好评, -1 = 差评
  */
-const feedbackGiven = ref(null)
+const feedbackGiven = ref(null);
 
 // 是否为错误消息（与 chat.js store 中的错误前缀一致）
 const isErrorMessage = computed(() => {
-  const content = props.message.content || ''
-  return content.startsWith('出错了：') || content.startsWith('请求失败：')
-})
+  const content = props.message.content || "";
+  return content.startsWith("出错了：") || content.startsWith("请求失败：");
+});
 
 // 工具调用折叠状态（空数组 = 全部折叠，点击展开）
-const expandedTools = ref([])
+const expandedTools = ref([]);
 
 /**
  * 提交用户反馈
@@ -348,144 +358,162 @@ const expandedTools = ref([])
  * @param {number} rating - 评分：1=好评，-1=差评
  */
 const submitFeedback = async (rating) => {
-  if (feedbackGiven.value !== null) return
+  if (feedbackGiven.value !== null) return;
 
   // 立即设置反馈状态，防止重复点击
-  feedbackGiven.value = rating
+  feedbackGiven.value = rating;
 
   // 从 chatStore 中找到当前 AI 消息之前的最后一条用户消息作为 query
-  const messages = chatStore.messages
-  const currentIdx = messages.findIndex(m => m.id === props.message.id)
-  let userQuery = ''
+  const messages = chatStore.messages;
+  const currentIdx = messages.findIndex((m) => m.id === props.message.id);
+  let userQuery = "";
   for (let i = currentIdx - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') {
-      userQuery = messages[i].content || ''
-      break
+    if (messages[i].role === "user") {
+      userQuery = messages[i].content || "";
+      break;
     }
   }
 
   try {
     await apiSubmitFeedback({
-      session_id: props.message.sessionId || '',
+      session_id: props.message.sessionId || "",
       query: userQuery,
-      answer: props.message.content || '',
+      answer: props.message.content || "",
       rating,
-    })
-    ElMessage.success('感谢您的反馈！')
+    });
+    ElMessage.success("感谢您的反馈！");
   } catch (error) {
     // 优雅降级：API失败时仍然记录反馈，提示用户
-    console.warn('[Feedback] API调用失败，已本地记录:', error)
-    ElMessage.warning('反馈已记录（网络异常）')
+    console.warn("[Feedback] API调用失败，已本地记录:", error);
+    ElMessage.warning("反馈已记录（网络异常）");
   }
-}
+};
 
 // Markdown渲染（DOMPurify 防 XSS）
 const renderedContent = computed(() => {
-  if (!props.message.content) return ''
+  if (!props.message.content) return "";
   try {
-    const rawHtml = marked(props.message.content)
+    const rawHtml = marked(props.message.content);
     return DOMPurify.sanitize(rawHtml, {
-      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'a', 'span'],
-      ALLOWED_ATTR: ['href', 'class', 'target'],
-      ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-    })
+      ALLOWED_TAGS: [
+        "p",
+        "br",
+        "strong",
+        "em",
+        "code",
+        "pre",
+        "ul",
+        "ol",
+        "li",
+        "blockquote",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "a",
+        "span",
+      ],
+      ALLOWED_ATTR: ["href", "class", "target"],
+      ALLOWED_URI_REGEXP:
+        /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    });
   } catch {
-    return props.message.content
+    return props.message.content;
   }
-})
+});
 
 // 意图标签
 const intentLabel = computed(() => {
   const map = {
-    greeting: '问候',
-    rag_answer: '知识库问答',
-    tool_call: '工具调用',
-    graph_query: '图谱检索',
-    goal: '目标编排',
-    hybrid: '混合',
-    unclear: '意图不明',
-  }
-  return map[props.message.intent] || props.message.intent
-})
+    greeting: "问候",
+    rag_answer: "知识库问答",
+    tool_call: "工具调用",
+    graph_query: "图谱检索",
+    goal: "目标编排",
+    hybrid: "混合",
+    unclear: "意图不明",
+  };
+  return map[props.message.intent] || props.message.intent;
+});
 
 // 路由方式标签（含耗时）
 const routeLabel = computed(() => {
-  const ri = props.message.routeInfo
-  if (!ri) return ''
+  const ri = props.message.routeInfo;
+  if (!ri) return "";
   const methodLabels = {
-    rule: '规则路由',
-    semantic: '语义路由',
-    llm: 'LLM路由',
-  }
-  const label = methodLabels[ri.method] || ri.method
-  const time = ri.duration_ms ? `${ri.duration_ms}ms` : ''
-  return time ? `${label} ${time}` : label
-})
+    rule: "规则路由",
+    semantic: "语义路由",
+    llm: "LLM路由",
+  };
+  const label = methodLabels[ri.method] || ri.method;
+  const time = ri.duration_ms ? `${ri.duration_ms}ms` : "";
+  return time ? `${label} ${time}` : label;
+});
 
 const intentTagType = computed(() => {
   const map = {
-    greeting: '',
-    rag_answer: 'success',
-    tool_call: 'warning',
-    graph_query: 'primary',
-    goal: 'danger',
-    hybrid: 'danger',
-    unclear: 'info',
-  }
-  return map[props.message.intent] || 'info'
-})
+    greeting: "",
+    rag_answer: "success",
+    tool_call: "warning",
+    graph_query: "primary",
+    goal: "danger",
+    hybrid: "danger",
+    unclear: "info",
+  };
+  return map[props.message.intent] || "info";
+});
 
 function handleApprove() {
-  chatStore.approveAction()
+  chatStore.approveAction();
 }
 
 function handleDeny() {
-  chatStore.denyAction()
+  chatStore.denyAction();
 }
 
 const confidenceTagType = computed(() => {
-  const c = props.message.confidence
-  if (c >= 0.8) return 'success'
-  if (c >= 0.5) return 'warning'
-  return 'danger'
-})
+  const c = props.message.confidence;
+  if (c >= 0.8) return "success";
+  if (c >= 0.5) return "warning";
+  return "danger";
+});
 
 const decisionLabel = computed(() => {
-  const d = props.message.confidenceDecision
-  if (!d) return ''
+  const d = props.message.confidenceDecision;
+  if (!d) return "";
   const labels = {
-    direct: '直接回答',
-    rewrite: '改写重试',
-    web_search: 'Web搜索',
-  }
-  return labels[d.strategy] || d.strategy
-})
+    direct: "直接回答",
+    rewrite: "改写重试",
+    web_search: "Web搜索",
+  };
+  return labels[d.strategy] || d.strategy;
+});
 
 const decisionTagType = computed(() => {
-  const d = props.message.confidenceDecision
-  if (!d) return 'info'
-  const types = { direct: 'success', rewrite: 'warning', web_search: 'danger' }
-  return types[d.strategy] || 'info'
-})
+  const d = props.message.confidenceDecision;
+  if (!d) return "info";
+  const types = { direct: "success", rewrite: "warning", web_search: "danger" };
+  return types[d.strategy] || "info";
+});
 
 const queryAnalysisLabel = computed(() => {
-  const a = props.message.queryAnalysis
-  if (!a) return ''
+  const a = props.message.queryAnalysis;
+  if (!a) return "";
   const strategyLabels = {
-    light: '轻量检索',
-    standard: '标准检索',
-    full: '深度检索',
-  }
-  const base = strategyLabels[a.strategy] || a.strategy
-  return `${base} (${a.complexity.toFixed(2)})`
-})
+    light: "轻量检索",
+    standard: "标准检索",
+    full: "深度检索",
+  };
+  const base = strategyLabels[a.strategy] || a.strategy;
+  return `${base} (${a.complexity.toFixed(2)})`;
+});
 
 const queryAnalysisTagType = computed(() => {
-  const a = props.message.queryAnalysis
-  if (!a) return 'info'
-  const types = { light: 'success', standard: '', full: 'warning' }
-  return types[a.strategy] || 'info'
-})
+  const a = props.message.queryAnalysis;
+  if (!a) return "info";
+  const types = { light: "success", standard: "", full: "warning" };
+  return types[a.strategy] || "info";
+});
 </script>
 
 <style scoped>
@@ -559,22 +587,6 @@ const queryAnalysisTagType = computed(() => {
 
 .copy-btn:hover {
   opacity: 1 !important;
-}
-
-/* 用户上传图片 */
-.user-images {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.user-image {
-  width: 80px;
-  height: 80px;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 1px solid var(--color-border-light);
 }
 
 /* 意图标签 */
@@ -727,13 +739,25 @@ const queryAnalysisTagType = computed(() => {
   animation: bounce 1.4s infinite ease-in-out both;
 }
 
-.loading-dots span:nth-child(1) { animation-delay: 0s; }
-.loading-dots span:nth-child(2) { animation-delay: 0.16s; }
-.loading-dots span:nth-child(3) { animation-delay: 0.32s; }
+.loading-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.32s;
+}
 
 @keyframes bounce {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
 }
 
 /* 审批栏 */

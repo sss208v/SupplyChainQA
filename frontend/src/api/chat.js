@@ -24,28 +24,28 @@
  *   - {"type":"error", "message":"xxx"}           → 错误
  *    - [DONE]                                      → 流式结束
  */
-import request from './request'
+import request from "./request";
 
-const API_PREFIX = '/api/v1'
+const API_PREFIX = "/api/v1";
 const debugLog = (...args) => {
-  if (import.meta.env.DEV) console.log(...args)
-}
+  if (import.meta.env.DEV) console.log(...args);
+};
 const debugWarn = (...args) => {
-  if (import.meta.env.DEV) console.warn(...args)
-}
+  if (import.meta.env.DEV) console.warn(...args);
+};
 
 /**
  * 获取模型列表
  */
 export function listModels() {
-  return request.get(`${API_PREFIX}/chat/model/list`)
+  return request.get(`${API_PREFIX}/chat/model/list`);
 }
 
 /**
  * 切换模型
  */
 export function switchModel(provider) {
-  return request.post(`${API_PREFIX}/chat/model/switch`, { provider })
+  return request.post(`${API_PREFIX}/chat/model/switch`, { provider });
 }
 
 /**
@@ -61,14 +61,14 @@ export function switchModel(provider) {
  * @param {string} [data.intent] - 意图类型
  */
 export function submitFeedback(data) {
-  return request.post(`${API_PREFIX}/feedback`, data)
+  return request.post(`${API_PREFIX}/feedback`, data);
 }
 
 /**
  * 获取反馈统计数据
  */
 export function getFeedbackStats() {
-  return request.get(`${API_PREFIX}/feedback/stats`)
+  return request.get(`${API_PREFIX}/feedback/stats`);
 }
 
 /**
@@ -94,179 +94,204 @@ export function getFeedbackStats() {
 /**
  * 当前进行中的 AbortController（用于取消流式请求）
  */
-let currentController = null
+let currentController = null;
 
 /**
  * 取消当前进行中的流式请求
  */
 export function cancelStream() {
   if (currentController) {
-    currentController.abort()
-    currentController = null
+    currentController.abort();
+    currentController = null;
   }
 }
 
 export async function chatStream(data, callbacks = {}) {
-  const url = `${API_PREFIX}/chat/stream`
-  const t0 = performance.now()
-  debugLog(`[ChatStream +0ms] 请求发送:`, { url, data })
-  const headers = { 'Content-Type': 'application/json' }
-  const token = localStorage.getItem('token')
+  const url = `${API_PREFIX}/chat/stream`;
+  const t0 = performance.now();
+  debugLog(`[ChatStream +0ms] 请求发送:`, { url, data });
+  const headers = { "Content-Type": "application/json" };
+  const token = localStorage.getItem("token");
   if (token) {
-    headers.Authorization = `Bearer ${token}`
+    headers.Authorization = `Bearer ${token}`;
   }
 
   // 创建 AbortController 用于取消请求
-  currentController = new AbortController()
-  let response
+  currentController = new AbortController();
+  let response;
   try {
     response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: JSON.stringify(data),
       signal: currentController.signal,
-    })
-    debugLog(`[ChatStream +${(performance.now()-t0).toFixed(0)}ms] HTTP状态:`, response.status, response.statusText)
+    });
+    debugLog(
+      `[ChatStream +${(performance.now() - t0).toFixed(0)}ms] HTTP状态:`,
+      response.status,
+      response.statusText
+    );
   } catch (err) {
-    console.error(`[ChatStream +${(performance.now()-t0).toFixed(0)}ms] fetch失败:`, err)
-    if (err.name === 'AbortError') {
-      debugLog(`[ChatStream] 请求被用户取消`)
+    console.error(
+      `[ChatStream +${(performance.now() - t0).toFixed(0)}ms] fetch失败:`,
+      err
+    );
+    if (err.name === "AbortError") {
+      debugLog(`[ChatStream] 请求被用户取消`);
     } else {
-      callbacks.onError?.(`网络请求失败: ${err.message}。请确认后端已启动且端口为 8001。`)
+      callbacks.onError?.(
+        `网络请求失败: ${err.message}。请确认后端已启动且端口为 8001。`
+      );
     }
-    callbacks.onDone?.()
-    return
+    callbacks.onDone?.();
+    return;
   } finally {
-    currentController = null
+    currentController = null;
   }
 
   if (!response.ok) {
-    let detail = ''
+    let detail = "";
     try {
-      const body = await response.json()
-      detail = body.detail || ''
+      const body = await response.json();
+      detail = body.detail || "";
     } catch {}
-    console.error(`[ChatStream +${(performance.now()-t0).toFixed(0)}ms] HTTP错误:`, response.status, detail)
-    callbacks.onError?.(`HTTP ${response.status}: ${detail || response.statusText}`)
-    callbacks.onDone?.()
-    return
+    console.error(
+      `[ChatStream +${(performance.now() - t0).toFixed(0)}ms] HTTP错误:`,
+      response.status,
+      detail
+    );
+    callbacks.onError?.(
+      `HTTP ${response.status}: ${detail || response.statusText}`
+    );
+    callbacks.onDone?.();
+    return;
   }
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let eventCount = 0
-  let lastContentTime = t0
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventCount = 0;
+  let lastContentTime = t0;
 
-  debugLog(`[ChatStream +${(performance.now()-t0).toFixed(0)}ms] 开始读取SSE流...`)
+  debugLog(
+    `[ChatStream +${(performance.now() - t0).toFixed(0)}ms] 开始读取SSE流...`
+  );
 
   while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+    const { done, value } = await reader.read();
+    if (done) break;
 
     // 解码二进制数据为文本
-    buffer += decoder.decode(value, { stream: true })
+    buffer += decoder.decode(value, { stream: true });
 
     // 按行解析SSE消息
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || '' // 最后一行可能不完整，保留到下次
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || ""; // 最后一行可能不完整，保留到下次
 
     for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith('data:')) continue
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith("data:")) continue;
 
-      const dataStr = trimmed.slice(5).trim()
+      const dataStr = trimmed.slice(5).trim();
 
       // 结束标记
-      if (dataStr === '[DONE]') {
-        const totalMs = (performance.now() - t0).toFixed(0)
-        debugLog(`[ChatStream +${totalMs}ms] === 流结束 === 共${eventCount}个事件，前端总耗时=${totalMs}ms`)
-        callbacks.onDone?.()
-        return
+      if (dataStr === "[DONE]") {
+        const totalMs = (performance.now() - t0).toFixed(0);
+        debugLog(
+          `[ChatStream +${totalMs}ms] === 流结束 === 共${eventCount}个事件，前端总耗时=${totalMs}ms`
+        );
+        callbacks.onDone?.();
+        return;
       }
 
       try {
-        const parsed = JSON.parse(dataStr)
-        eventCount++
-        const eventMs = (performance.now() - t0).toFixed(0)
-        debugLog(`[ChatStream +${eventMs}ms 事件#${eventCount}]`, parsed.type, parsed)
+        const parsed = JSON.parse(dataStr);
+        eventCount++;
+        const eventMs = (performance.now() - t0).toFixed(0);
+        debugLog(
+          `[ChatStream +${eventMs}ms 事件#${eventCount}]`,
+          parsed.type,
+          parsed
+        );
 
         switch (parsed.type) {
-          case 'session':
-            callbacks.onSession?.(parsed.session_id)
-            break
-          case 'route':
-            callbacks.onRoute?.(parsed)
-            break
-          case 'dag_progress':
-            callbacks.onDagProgress?.(parsed)
-            break
-          case 'content':
-            lastContentTime = performance.now()
-            callbacks.onContent?.(parsed.content)
-            break
-          case 'sources':
-            callbacks.onSources?.(parsed)
-            break
-          case 'tool_status':
-            callbacks.onToolStatus?.(parsed)
-            break
-          case 'tool_call':
-            callbacks.onToolCall?.(parsed)
-            break
-          case 'token_usage':
-            callbacks.onTokenUsage?.(parsed.usage)
-            break
-          case 'confidence_decision':
-            callbacks.onConfidenceDecision?.(parsed)
-            break
-          case 'web_search':
-            callbacks.onWebSearch?.(parsed)
-            break
-          case 'clarify':
-            callbacks.onClarify?.(parsed)
-            break
-          case 'self_rag':
-            callbacks.onSelfRag?.(parsed)
-            break
-          case 'query_analysis':
-            callbacks.onQueryAnalysis?.(parsed)
-            break
-          case 'performance_metrics':
-            callbacks.onPerformanceMetrics?.(parsed.metrics)
-            break
-          case 'cache_hit':
-            callbacks.onCacheHit?.(parsed)
-            break
-          case 'image_search':
-            callbacks.onImageSearch?.(parsed)
-            break
-          case 'approval_request':
-            callbacks.onApprovalRequest?.(parsed)
-            break
-          case 'conflicts':
-            callbacks.onConflicts?.(parsed)
-            break
-          case 'demo_mode':
-            callbacks.onDemoMode?.(parsed)
-            break
-          case 'orchestrator_plan':
-            callbacks.onOrchestratorPlan?.(parsed)
-            break
-          case 'error':
-            console.error(`[ChatStream +${eventMs}ms] 后端error事件:`, parsed.message)
-            callbacks.onError?.(parsed.message)
-            break
+          case "session":
+            callbacks.onSession?.(parsed.session_id);
+            break;
+          case "route":
+            callbacks.onRoute?.(parsed);
+            break;
+          case "dag_progress":
+            callbacks.onDagProgress?.(parsed);
+            break;
+          case "content":
+            lastContentTime = performance.now();
+            callbacks.onContent?.(parsed.content);
+            break;
+          case "sources":
+            callbacks.onSources?.(parsed);
+            break;
+          case "tool_status":
+            callbacks.onToolStatus?.(parsed);
+            break;
+          case "tool_call":
+            callbacks.onToolCall?.(parsed);
+            break;
+          case "token_usage":
+            callbacks.onTokenUsage?.(parsed.usage);
+            break;
+          case "confidence_decision":
+            callbacks.onConfidenceDecision?.(parsed);
+            break;
+          case "web_search":
+            callbacks.onWebSearch?.(parsed);
+            break;
+          case "clarify":
+            callbacks.onClarify?.(parsed);
+            break;
+          case "self_rag":
+            callbacks.onSelfRag?.(parsed);
+            break;
+          case "query_analysis":
+            callbacks.onQueryAnalysis?.(parsed);
+            break;
+          case "performance_metrics":
+            callbacks.onPerformanceMetrics?.(parsed.metrics);
+            break;
+          case "cache_hit":
+            callbacks.onCacheHit?.(parsed);
+            break;
+          case "approval_request":
+            callbacks.onApprovalRequest?.(parsed);
+            break;
+          case "conflicts":
+            callbacks.onConflicts?.(parsed);
+            break;
+          case "demo_mode":
+            callbacks.onDemoMode?.(parsed);
+            break;
+          case "orchestrator_plan":
+            callbacks.onOrchestratorPlan?.(parsed);
+            break;
+          case "error":
+            console.error(
+              `[ChatStream +${eventMs}ms] 后端error事件:`,
+              parsed.message
+            );
+            callbacks.onError?.(parsed.message);
+            break;
         }
       } catch (e) {
         // 解析失败的行跳过
-        debugWarn(`[ChatStream] SSE解析失败:`, e, '原始数据:', dataStr)
+        debugWarn(`[ChatStream] SSE解析失败:`, e, "原始数据:", dataStr);
       }
     }
   }
 
   // 流正常结束但没收到 [DONE]
-  const totalMs = (performance.now() - t0).toFixed(0)
-  debugWarn(`[ChatStream +${totalMs}ms] 流结束但未收到[DONE]，共${eventCount}个事件`)
-  callbacks.onDone?.()
+  const totalMs = (performance.now() - t0).toFixed(0);
+  debugWarn(
+    `[ChatStream +${totalMs}ms] 流结束但未收到[DONE]，共${eventCount}个事件`
+  );
+  callbacks.onDone?.();
 }

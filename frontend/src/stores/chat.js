@@ -9,42 +9,41 @@
  *    - streaming 标记是否正在流式接收
  *    - currentContent 拼接流式内容片段
  */
-import { defineStore } from 'pinia'
-import { chatStream, cancelStream } from '@/api/chat'
-import { ref, computed } from 'vue'
+import { defineStore } from "pinia";
+import { chatStream, cancelStream } from "@/api/chat";
+import { ref, computed } from "vue";
 
 const debugLog = (...args) => {
-  if (import.meta.env.DEV) console.log(...args)
-}
+  if (import.meta.env.DEV) console.log(...args);
+};
 
 // 递增计数器，用于生成唯一消息 ID（替代 Date.now() 避免碰撞）
-let nextMessageId = 1
+let nextMessageId = 1;
 
-export const useChatStore = defineStore('chat', () => {
+export const useChatStore = defineStore("chat", () => {
   // ---- 状态 ----
-  const messages = ref([])          // 消息列表
-  const sessionId = ref('')         // 当前会话ID
-  const streaming = ref(false)      // 是否正在流式输出
-  const connectionStatus = ref('disconnected') // 连接状态
-  const connectionError = ref('')   // 连接错误信息
-  const lastQuery = ref('')         // 最后一次查询（用于重试）
-  const lastQueryOptions = ref({})  // 最后一次查询选项
-  const currentContent = ref('')    // 当前流式拼接的内容
-  const currentSources = ref([])    // 当前回答的参考来源
-  const currentToolCalls = ref([])  // 当前回答的工具调用
-  const currentIntent = ref('')     // 当前意图
-  const currentConfidence = ref(0)  // 当前置信度
-  const currentTokenUsage = ref(null) // 当前token用量
-  const currentConfidenceDecision = ref(null) // 当前置信度决策
-  const currentWebSearch = ref(null) // 当前Web搜索状态
-  const pendingApproval = ref(null) // 待审批操作
-  const currentDagProgress = ref(null) // 当前RAG DAG进度
-  const currentRouteInfo = ref(null) // 当前路由信息（method + 耗时）
-  const uploadingImages = ref([])      // 待上传图片（base64列表）
-  const demoMode = ref({ active: false }) // 演示模式状态
+  const messages = ref([]); // 消息列表
+  const sessionId = ref(""); // 当前会话ID
+  const streaming = ref(false); // 是否正在流式输出
+  const connectionStatus = ref("disconnected"); // 连接状态
+  const connectionError = ref(""); // 连接错误信息
+  const lastQuery = ref(""); // 最后一次查询（用于重试）
+  const lastQueryOptions = ref({}); // 最后一次查询选项
+  const currentContent = ref(""); // 当前流式拼接的内容
+  const currentSources = ref([]); // 当前回答的参考来源
+  const currentToolCalls = ref([]); // 当前回答的工具调用
+  const currentIntent = ref(""); // 当前意图
+  const currentConfidence = ref(0); // 当前置信度
+  const currentTokenUsage = ref(null); // 当前token用量
+  const currentConfidenceDecision = ref(null); // 当前置信度决策
+  const currentWebSearch = ref(null); // 当前Web搜索状态
+  const pendingApproval = ref(null); // 待审批操作
+  const currentDagProgress = ref(null); // 当前RAG DAG进度
+  const currentRouteInfo = ref(null); // 当前路由信息（method + 耗时）
+  const demoMode = ref({ active: false }); // 演示模式状态
 
   // ---- 计算属性 ----
-  const messageCount = computed(() => messages.value.length)
+  const messageCount = computed(() => messages.value.length);
 
   // ---- Actions ----
 
@@ -59,57 +58,47 @@ export const useChatStore = defineStore('chat', () => {
    * 6. 收到[DONE]，标记流式结束
    */
   async function sendMessage(query, options = {}) {
-    if (!query.trim() || streaming.value) return
-    const displayQuery = options.approved ? `确认执行：${query}` : query
+    if (!query.trim() || streaming.value) return;
+    const displayQuery = options.approved ? `确认执行：${query}` : query;
 
     // 1. 添加用户消息
     messages.value.push({
       id: nextMessageId++,
-      role: 'user',
+      role: "user",
       content: displayQuery,
-      images: uploadingImages.value.length > 0 ? [...uploadingImages.value] : undefined,
       timestamp: new Date().toLocaleTimeString(),
-    })
-
-    // 释放历史消息中的图片base64数据，防止内存泄漏
-    if (messages.value.length > 50) {
-      const oldMsg = messages.value[0]
-      if (oldMsg.images) {
-        oldMsg.images = undefined
-      }
-    }
+    });
 
     // 2. 创建AI消息占位
     messages.value.push({
       id: nextMessageId++,
-      role: 'assistant',
-      content: '',
+      role: "assistant",
+      content: "",
       sources: [],
       toolCalls: [],
-      intent: '',
+      intent: "",
       confidence: 0,
       tokenUsage: null,
       dagProgress: null,
       timestamp: new Date().toLocaleTimeString(),
       streaming: true,
-    })
+    });
     // 通过数组下标获取响应式代理（直接push的对象引用不是proxy）
-    const aiIdx = messages.value.length - 1
+    const aiIdx = messages.value.length - 1;
 
     // 3. 开始流式接收
-    streaming.value = true
-    connectionStatus.value = 'connecting'
-    connectionError.value = ''
-    lastQuery.value = query
-    lastQueryOptions.value = options
-    currentContent.value = ''
-    currentSources.value = []
-    currentToolCalls.value = []
-    currentTokenUsage.value = null
-    currentDagProgress.value = null
-    uploadingImages.value = []
+    streaming.value = true;
+    connectionStatus.value = "connecting";
+    connectionError.value = "";
+    lastQuery.value = query;
+    lastQueryOptions.value = options;
+    currentContent.value = "";
+    currentSources.value = [];
+    currentToolCalls.value = [];
+    currentTokenUsage.value = null;
+    currentDagProgress.value = null;
     try {
-      debugLog('[ChatStore] 开始 chatStream，streaming=true')
+      debugLog("[ChatStore] 开始 chatStream，streaming=true");
       await chatStream(
         {
           query,
@@ -117,156 +106,167 @@ export const useChatStore = defineStore('chat', () => {
           stream: true,
           approved: options.approved || false,
           approved_tool: options.approved_tool,
-          images: uploadingImages.value.length > 0 ? [...uploadingImages.value] : undefined,
         },
         // SSE 事件回调
         {
           onSession: (id) => {
-            debugLog('[ChatStore] onSession:', id)
-            sessionId.value = id
-            connectionStatus.value = 'connected'
+            debugLog("[ChatStore] onSession:", id);
+            sessionId.value = id;
+            connectionStatus.value = "connected";
           },
           onRoute: (data) => {
-            debugLog('[ChatStore] onRoute:', data)
-            currentIntent.value = data.intent
-            currentConfidence.value = data.confidence
-            messages.value[aiIdx].intent = data.intent
-            messages.value[aiIdx].confidence = data.confidence
+            debugLog("[ChatStore] onRoute:", data);
+            currentIntent.value = data.intent;
+            currentConfidence.value = data.confidence;
+            messages.value[aiIdx].intent = data.intent;
+            messages.value[aiIdx].confidence = data.confidence;
             // 保存路由方式 + 耗时
             const routeInfo = {
-              method: data.method || 'unknown',
+              method: data.method || "unknown",
               confidence: data.confidence || 0,
               duration_ms: data.duration_ms || 0,
-            }
-            currentRouteInfo.value = routeInfo
-            messages.value[aiIdx].routeInfo = routeInfo
+            };
+            currentRouteInfo.value = routeInfo;
+            messages.value[aiIdx].routeInfo = routeInfo;
           },
           onTokenUsage: (usage) => {
-            currentTokenUsage.value = usage
-            messages.value[aiIdx].tokenUsage = usage
-            debugLog('[ChatStore] onTokenUsage:', usage)
+            currentTokenUsage.value = usage;
+            messages.value[aiIdx].tokenUsage = usage;
+            debugLog("[ChatStore] onTokenUsage:", usage);
           },
           onConfidenceDecision: (data) => {
-            currentConfidenceDecision.value = data
-            messages.value[aiIdx].confidenceDecision = data
-            debugLog('[ChatStore] onConfidenceDecision:', data)
+            currentConfidenceDecision.value = data;
+            messages.value[aiIdx].confidenceDecision = data;
+            debugLog("[ChatStore] onConfidenceDecision:", data);
           },
           onWebSearch: (data) => {
-            currentWebSearch.value = data
-            messages.value[aiIdx].webSearch = data
-            debugLog('[ChatStore] onWebSearch:', data)
+            currentWebSearch.value = data;
+            messages.value[aiIdx].webSearch = data;
+            debugLog("[ChatStore] onWebSearch:", data);
           },
           onSelfRag: (data) => {
             // Self-RAG 过滤结果
-            messages.value[aiIdx].selfRag = data
-            debugLog('[ChatStore] onSelfRag:', data)
+            messages.value[aiIdx].selfRag = data;
+            debugLog("[ChatStore] onSelfRag:", data);
           },
           onQueryAnalysis: (data) => {
-            messages.value[aiIdx].queryAnalysis = data
-            debugLog('[ChatStore] onQueryAnalysis:', data)
+            messages.value[aiIdx].queryAnalysis = data;
+            debugLog("[ChatStore] onQueryAnalysis:", data);
           },
           onPerformanceMetrics: (metrics) => {
-            messages.value[aiIdx].performanceMetrics = metrics
-            debugLog('[ChatStore] onPerformanceMetrics:', metrics)
+            messages.value[aiIdx].performanceMetrics = metrics;
+            debugLog("[ChatStore] onPerformanceMetrics:", metrics);
           },
           onClarify: (data) => {
             // 澄清提问：系统主动问用户补充信息
-            messages.value[aiIdx].content = data.question
-            messages.value[aiIdx].clarify = data
-            messages.value[aiIdx].streaming = false
-            streaming.value = false
-            debugLog('[ChatStore] onClarify:', data)
+            messages.value[aiIdx].content = data.question;
+            messages.value[aiIdx].clarify = data;
+            messages.value[aiIdx].streaming = false;
+            streaming.value = false;
+            debugLog("[ChatStore] onClarify:", data);
           },
           onApprovalRequest: (data) => {
             // 写操作审批请求
-            pendingApproval.value = data
-            messages.value[aiIdx].approvalRequest = data
-            messages.value[aiIdx].streaming = false
-            streaming.value = false
-            debugLog('[ChatStore] onApprovalRequest:', data)
+            pendingApproval.value = data;
+            messages.value[aiIdx].approvalRequest = data;
+            messages.value[aiIdx].streaming = false;
+            streaming.value = false;
+            debugLog("[ChatStore] onApprovalRequest:", data);
           },
           onConflicts: (data) => {
             // 多源数据冲突检测
-            messages.value[aiIdx].conflicts = data.conflicts || []
-            debugLog('[ChatStore] onConflicts:', data.conflicts?.length, '处冲突')
+            messages.value[aiIdx].conflicts = data.conflicts || [];
+            debugLog(
+              "[ChatStore] onConflicts:",
+              data.conflicts?.length,
+              "处冲突"
+            );
           },
           onDemoMode: (data) => {
             // 演示模式降级提示
-            demoMode.value = { active: true, ...data }
-            messages.value[aiIdx].demoMode = data
-            debugLog('[ChatStore] onDemoMode:', data.mode, data.reason)
+            demoMode.value = { active: true, ...data };
+            messages.value[aiIdx].demoMode = data;
+            debugLog("[ChatStore] onDemoMode:", data.mode, data.reason);
           },
           onOrchestratorPlan: (data) => {
             // 编排计划（含 demo_info）
-            messages.value[aiIdx].orchestratorPlan = data
+            messages.value[aiIdx].orchestratorPlan = data;
             if (data.demo_info) {
-              demoMode.value = { active: true, ...data.demo_info }
+              demoMode.value = { active: true, ...data.demo_info };
             }
-            debugLog('[ChatStore] onOrchestratorPlan:', data.steps?.length, 'steps')
+            debugLog(
+              "[ChatStore] onOrchestratorPlan:",
+              data.steps?.length,
+              "steps"
+            );
           },
           onDagProgress: (data) => {
-            currentDagProgress.value = data
-            messages.value[aiIdx].dagProgress = { ...data }
-            debugLog('[ChatStore] onDagProgress:', data)
+            currentDagProgress.value = data;
+            messages.value[aiIdx].dagProgress = { ...data };
+            debugLog("[ChatStore] onDagProgress:", data);
           },
           onCacheHit: (data) => {
-            debugLog('[ChatStore] onCacheHit:', data)
-            messages.value[aiIdx].cacheHit = true
-            messages.value[aiIdx].intent = 'rag_answer'
-          },
-          onImageSearch: (data) => {
-            debugLog('[ChatStore] onImageSearch:', data)
-            messages.value[aiIdx].imageSearch = data
+            debugLog("[ChatStore] onCacheHit:", data);
+            messages.value[aiIdx].cacheHit = true;
+            messages.value[aiIdx].intent = "rag_answer";
           },
           onContent: (content) => {
             // 拼接内容 → 打字机效果
-            currentContent.value += content
-            messages.value[aiIdx].content = currentContent.value
+            currentContent.value += content;
+            messages.value[aiIdx].content = currentContent.value;
           },
           onSources: (data) => {
-            currentSources.value = data.sources || []
-            messages.value[aiIdx].sources = data.sources || []
-            messages.value[aiIdx].confidence = data.confidence || 0
+            currentSources.value = data.sources || [];
+            messages.value[aiIdx].sources = data.sources || [];
+            messages.value[aiIdx].confidence = data.confidence || 0;
           },
           onToolStatus: (data) => {
             // 工具调用中状态
             currentToolCalls.value.push({
               tool: data.tool,
               status: data.status,
-            })
+            });
             // 同步到 messages 数组，触发 Vue 响应式更新
-            messages.value[aiIdx].toolCalls = [...currentToolCalls.value]
+            messages.value[aiIdx].toolCalls = [...currentToolCalls.value];
           },
           onToolCall: (data) => {
             // 更新已有条目（onToolStatus 先 push 了 calling 状态）
-            const idx = currentToolCalls.value.findIndex(t => t.tool === data.tool && t.status === 'calling')
+            const idx = currentToolCalls.value.findIndex(
+              (t) => t.tool === data.tool && t.status === "calling"
+            );
             if (idx !== -1) {
-              currentToolCalls.value[idx] = { ...currentToolCalls.value[idx], ...data, status: 'done' }
+              currentToolCalls.value[idx] = {
+                ...currentToolCalls.value[idx],
+                ...data,
+                status: "done",
+              };
             } else {
-              currentToolCalls.value.push({ ...data, status: 'done' })
+              currentToolCalls.value.push({ ...data, status: "done" });
             }
-            messages.value[aiIdx].toolCalls = [...currentToolCalls.value]
+            messages.value[aiIdx].toolCalls = [...currentToolCalls.value];
           },
           onError: (msg) => {
-            console.error('[ChatStore] onError:', msg)
-            messages.value[aiIdx].content = `出错了：${msg}`
-            messages.value[aiIdx].streaming = false
-            connectionStatus.value = 'error'
-            connectionError.value = msg
+            console.error("[ChatStore] onError:", msg);
+            messages.value[aiIdx].content = `出错了：${msg}`;
+            messages.value[aiIdx].streaming = false;
+            connectionStatus.value = "error";
+            connectionError.value = msg;
           },
           onDone: () => {
-            debugLog(`[ChatStore] onDone — streaming关闭，currentContent长度=${currentContent.value.length}`)
-            messages.value[aiIdx].streaming = false
-            streaming.value = false
+            debugLog(
+              `[ChatStore] onDone — streaming关闭，currentContent长度=${currentContent.value.length}`
+            );
+            messages.value[aiIdx].streaming = false;
+            streaming.value = false;
           },
         }
-      )
-      debugLog('[ChatStore] chatStream 返回，streaming=', streaming.value)
+      );
+      debugLog("[ChatStore] chatStream 返回，streaming=", streaming.value);
     } catch (err) {
-      console.error('[ChatStore] chatStream 抛出异常:', err)
-      messages.value[aiIdx].content = `请求失败：${err.message}`
-      messages.value[aiIdx].streaming = false
-      streaming.value = false
+      console.error("[ChatStore] chatStream 抛出异常:", err);
+      messages.value[aiIdx].content = `请求失败：${err.message}`;
+      messages.value[aiIdx].streaming = false;
+      streaming.value = false;
     }
   }
 
@@ -275,68 +275,54 @@ export const useChatStore = defineStore('chat', () => {
    */
   function clearChat() {
     // 取消正在进行的 SSE 流
-    cancelStream()
-    messages.value = []
-    sessionId.value = ''
-    currentContent.value = ''
-    currentSources.value = []
-    currentToolCalls.value = []
-    currentTokenUsage.value = null
-    currentDagProgress.value = null
-    streaming.value = false
-    connectionStatus.value = 'disconnected'
-    connectionError.value = ''
-    demoMode.value = { active: false }
+    cancelStream();
+    messages.value = [];
+    sessionId.value = "";
+    currentContent.value = "";
+    currentSources.value = [];
+    currentToolCalls.value = [];
+    currentTokenUsage.value = null;
+    currentDagProgress.value = null;
+    streaming.value = false;
+    connectionStatus.value = "disconnected";
+    connectionError.value = "";
+    demoMode.value = { active: false };
   }
 
   async function approveAction() {
-    if (!pendingApproval.value) return
-    const { query, tool } = pendingApproval.value
-    pendingApproval.value = null
-    await sendMessage(query, { approved: true, approved_tool: tool })
+    if (!pendingApproval.value) return;
+    const { query, tool } = pendingApproval.value;
+    pendingApproval.value = null;
+    await sendMessage(query, { approved: true, approved_tool: tool });
   }
 
   function denyAction() {
-    if (!pendingApproval.value) return
-    const tool = pendingApproval.value.tool
-    pendingApproval.value = null
+    if (!pendingApproval.value) return;
+    const tool = pendingApproval.value.tool;
+    pendingApproval.value = null;
     messages.value.push({
       id: nextMessageId++,
-      role: 'assistant',
+      role: "assistant",
       content: `已取消 ${tool} 操作。`,
       timestamp: new Date().toLocaleTimeString(),
-    })
+    });
   }
 
   /**
    * 重试最后一条消息（断线重连）
    */
   async function retryLastMessage() {
-    if (!lastQuery.value) return
+    if (!lastQuery.value) return;
     // 移除最后一条失败的 AI 消息
-    const lastMsg = messages.value[messages.value.length - 1]
-    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.streaming !== false) {
-      messages.value.pop()
+    const lastMsg = messages.value[messages.value.length - 1];
+    if (
+      lastMsg &&
+      lastMsg.role === "assistant" &&
+      lastMsg.streaming !== false
+    ) {
+      messages.value.pop();
     }
-    await sendMessage(lastQuery.value, lastQueryOptions.value)
-  }
-
-  /** 图片管理 */
-  function addImages(files) {
-    for (const file of files) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const base64 = e.target.result.split(',')[1] // 去掉 data:xxx;base64, 前缀
-        uploadingImages.value.push(base64)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-  function removeImage(index) {
-    uploadingImages.value.splice(index, 1)
-  }
-  function clearImages() {
-    uploadingImages.value = []
+    await sendMessage(lastQuery.value, lastQueryOptions.value);
   }
 
   return {
@@ -357,11 +343,6 @@ export const useChatStore = defineStore('chat', () => {
     clearChat,
     retryLastMessage,
     lastQuery,
-    // 图片管理
-    uploadingImages,
     demoMode,
-    addImages,
-    removeImage,
-    clearImages,
-  }
-})
+  };
+});

@@ -1,7 +1,7 @@
 """
 RAG_ANSWER intent handler — 完整 RAG Pipeline
 
-涵盖了查询理解、多路检索、LLM相关性过滤、CLIP多模态检索、
+涵盖了查询理解、多路检索、LLM相关性过滤、
 置信度路由、LLM生成、缓存保存等完整逻辑。
 """
 import json
@@ -50,7 +50,7 @@ async def handle_rag_answer(
 ) -> AsyncGenerator[str, None]:
     """处理 RAG 问答意图 — 完整 RAG Pipeline
 
-    包含: 查询理解 → 多路检索 → LLM相关性过滤 → CLIP → 置信度路由 → LLM生成 → 缓存
+    包含: 查询理解 → 多路检索 → LLM相关性过滤 → 置信度路由 → LLM生成 → 缓存
     """
     settings = get_settings()
 
@@ -152,40 +152,6 @@ async def handle_rag_answer(
             for c in all_conflicts
         )
         context_str = (context_str or "") + conflict_text
-
-    # ---- CLIP 多模态图像检索 ----
-    clip_images = []
-    if settings.CLIP_ENABLED:
-        try:
-            from app.core.multimodal_embedding import clip_engine
-            _t_clip = time.perf_counter()
-            clip_text_vec = clip_engine.encode_text(safe_query)
-            clip_images = milvus.search_images(
-                settings.CLIP_IMAGE_COLLECTION,
-                query_embedding=clip_text_vec,
-                top_k=settings.CLIP_TOP_K,
-            )
-            if clip_images:
-                img_context = "\n\n[相关图片]\n" + "\n".join(
-                    f"- 图片{i+1}: {img.get('description', '无描述')} (来源: {img.get('source', '未知')})"
-                    for i, img in enumerate(clip_images)
-                )
-                context_str += img_context
-                _t_clip_elapsed = time.perf_counter() - _t_clip
-                yield sse_event(
-                    "image_search",
-                    count=len(clip_images),
-                    duration_ms=int(_t_clip_elapsed * 1000),
-                    images=[
-                        {"image_id": img["image_id"], "description": img.get("description", "")[:200]}
-                        for img in clip_images
-                    ],
-                )
-                logger.info(
-                    f"[CLIP图像检索] 命中{len(clip_images)}张, 耗时={_t_clip_elapsed*1000:.0f}ms"
-                )
-        except Exception as e:
-            logger.warning(f"[CLIP] 图像检索失败: {e}")
 
     _t_rerank = time.perf_counter() - _t3 - _t_search
 
