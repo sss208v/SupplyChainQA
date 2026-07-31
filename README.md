@@ -12,7 +12,7 @@ Supply Chain QA 是一个面向制造业供应链场景的 **RAG + Multi-Agent �
 
 - **三级级联意图路由**：规则匹配 <1ms（实体编码优先 + 命令词，零 token）→ 语义路由 <10ms（embedding 余弦相似度 + margin 判据，零 token）→ LLM 分类 ~2.5s 兜底，绝大多数请求不消耗 LLM 调用；路由关键词与语义样本外置到 `intent_routes.json` 配置热加载，新增工具只改配置不改代码。
 
-- **多路混合检索 + 自适应 RRF 融合**：Milvus 向量 + BM25 关键词 + Graph RAG 实体关系三路召回，按查询类型自适应加权（精确编码类 BM25 ×1.5，语义提问类向量 ×1.5），再经四层后处理与 BGE-Reranker 精排。
+- **多路混合检索 + 自适应 RRF 融合**：Milvus 向量 + BM25 关键词双路召回经 RRF 融合，按查询类型自适应加权（精确编码类 BM25 ×1.5，语义提问类向量 ×1.5）；Neo4j 图谱实体命中为二值信号，在 RRF 分数上按 α/β 加权叠加（final = α·RRF + β·graph），再经四层后处理与 BGE-Reranker 精排。
 
 - **Agent 工具调用**：LangChain `bind_tools` + LangGraph `StateGraph`，6 个业务工具，agent↔tools 最多 5 轮收敛，内置 ReAct 死循环熔断器。
 
@@ -22,7 +22,7 @@ Supply Chain QA 是一个面向制造业供应链场景的 **RAG + Multi-Agent �
 
 - **Graph RAG 知识图谱**：Neo4j 存储供应商→物料→订单→仓库实体关系，模板化 Cypher 生成（不让 LLM 直接写 Cypher），支持多跳关联查询。
 
-- **两层语义缓存**：L1 MD5 精确匹配（0ms）+ L2 embedding 相似度 >0.92 语义复用，节省 90%+ API 成本；知识库变更时 L2 通过版本号 INCR 实现 O(1) 主动失效，避免脏缓存与 SCAN 全清。
+- **三层缓存体系**：L1 进程内 MD5 精确匹配（0ms）→ L2 Redis 语义缓存（embedding 相似度 >0.92 复用）→ L3 数据查询结果缓存（Text-to-SQL / 只读工具 read-through），节省 90%+ API 成本；知识库变更时语义层通过版本号 INCR 实现 O(1) 主动失效，避免脏缓存与 SCAN 全清。
 
 - **可信度护栏与冲突检测**：生成后校验答案是否忠实于检索上下文；多部门文档对同一指标定义不一致时主动推送冲突提示。
 
@@ -40,10 +40,10 @@ Supply Chain QA 是一个面向制造业供应链场景的 **RAG + Multi-Agent �
   -> 限流中间件（Redis 滑动窗口，故障降级内存）
   -> 三级意图路由（规则 -> 语义 -> LLM 兜底）
   -> RAG 链路:
-       查询理解 -> 多路召回（向量 + BM25 + Graph RAG）
-       -> 自适应 RRF 融合 -> 四层后处理 -> Reranker 精排
-       -> Self-RAG 相关性过滤 -> LLM 流式生成
-       -> 可信度护栏 / 冲突检测 / Query 缓存回写
+       查询理解 -> 双路召回（向量 + BM25）-> 自适应 RRF 融合
+       -> 图谱实体 α/β 加权叠加 -> 四层后处理 -> Reranker 精排
+       -> Self-RAG 相关性过滤（中置信度触发查询改写重检）
+       -> LLM 流式生成 -> 可信度护栏 / 冲突检测 / Query 缓存回写
   -> Agent 链路:
        澄清检查 -> RBAC 权限 -> 写操作审批
        -> Redis 幂等抢占 + 分布式锁
@@ -70,7 +70,7 @@ supply-chain-qa/
 ├── frontend/                  # Vue3 + Element Plus + Pinia（JavaScript，非 TS）
 │   └── src/                   # views / stores / api / router
 ├── knowledge/                 # 知识库文档（7 部门，90+ 篇管理制度与业务数据）
-├── models/                    # 本地 GGUF 模型（Qwen3-14B / Qwen2.5 系列）
+├── models/                    # 本地 GGUF 模型（Qwen3-14B）
 ├── llama.cpp-cuda13/          # llama.cpp CUDA 13 运行时（llama-server.exe）
 ├── docs/                      # 设计、验证、上手文档
 ├── docker-compose.yml         # 基础设施容器编排
@@ -90,7 +90,7 @@ supply-chain-qa/
 
 - Docker Desktop（Milvus / Redis / PostgreSQL / Neo4j）
 
-- 一个 LLM 接口：DeepSeek API、Ollama，或本地 llama.cpp（OpenAI-compatible，端口 8080）
+- 一个 LLM 接口：本地 llama.cpp（OpenAI-compatible，端口 18080，项目默认）、DeepSeek API 或 Ollama
 
 ### 配置 .env
 
@@ -100,21 +100,25 @@ supply-chain-qa/
 cd backend && cp ../.env.example .env
 ```
 
-最小可用配置：
+最小可用配置（本地 llama.cpp，项目默认）：
+
+```Plain Text
+LLM_PROVIDER=local
+LOCAL_LLM_BASE_URL=http://localhost:18080/v1
+LOCAL_LLM_MODEL=Qwen3-14B
+JWT_SECRET=change-me-in-production
+```
+
+本地模型服务用 `backend\scripts\start-llama-server.bat` 启动（CUDA 加载 `models\Qwen3-14B-Q4_K_M.gguf`，端口 18080）。
+
+使用云端 API（DeepSeek 示例）：
 
 ```Plain Text
 LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=sk-your-api-key
-JWT_SECRET=change-me-in-production
 ```
 
-使用本地模型（Ollama 示例）：
-
-```Plain Text
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:7b
-```
+也支持 Ollama（`LLM_PROVIDER=ollama`，默认 `http://localhost:11434`）。
 
 完整配置项（RAG 参数、功能开关、Langfuse、CLIP 多模态等）见 [.env.example](.env.example)，调优参数以 `backend/app/config.py` 为唯一真相来源。
 
@@ -171,10 +175,12 @@ Supply Chain QA 的核心特色是 **RAG 检索与 Agent 工具调用的双链�
 ```Plain Text
 "采购订单审批流程是什么？"
   -> 意图路由判定 KNOWLEDGE
-  -> 多路召回: Milvus 向量 + BM25 + Neo4j 图谱实体
+  -> 双路召回: Milvus 向量 + BM25
   -> 自适应 RRF 融合（含编码/编号 -> BM25 加权；含"怎么/如何" -> 向量加权）
+  -> Neo4j 图谱实体命中按 α/β 加权叠加重排
   -> 四层后处理: 低分过滤 -> Jaccard 去重 -> 冲突检测 -> 可信度护栏
   -> BGE-Reranker 精排 -> Self-RAG 相关性过滤（阈值 0.15，0 命中回退 top-1）
+  -> 中置信度（0.3~0.6）时查询改写重新检索
   -> LLM 流式生成 + 来源引用
 ```
 
@@ -230,7 +236,7 @@ backend/app/core/redis_client.py       # 连接管理 / 对话记忆 / 锁 / 幂
 
 ### 测试状态
 
-单元测试约 1051 个用例全部通过（覆盖率 71%+，门槛 70%）。运行前确保 `.env` 中已配置 `JWT_SECRET`；本地匿名演示需设 `REQUIRE_AUTH_CHAT=false`。
+单元测试 1069 个用例全部通过（另有 2 个跳过）。覆盖率门禁（70%）仅在 CI 生效，本地运行默认不带覆盖率参数。运行前确保 `.env` 中已配置 `JWT_SECRET`；本地匿名演示需设 `REQUIRE_AUTH_CHAT=false`。
 
 ## API
 
@@ -248,11 +254,11 @@ backend/app/core/redis_client.py       # 连接管理 / 对话记忆 / 锁 / 幂
 
 ## RAG 与 Agent 的分工
 
-| 类型        | 处理内容                             | 数据来源                                                                        |
-| ----------- | ------------------------------------ | ------------------------------------------------------------------------------- |
-| RAG 链路    | 制度、流程、规范类知识问答           | knowledge/ 文档库（Milvus + BM25 + Neo4j）                                      |
-| Agent 链路  | 库存、订单、供应商实时查询与工单创建 | PostgreSQL 业务库（工具调用）                                                   |
-| Text-to-SQL | 自然语言统计分析                     | PostgreSQL（五层安全防护：仅 SELECT / 表白名单 / 禁用关键词 / 行数限制 / 超时） |
+| 类型        | 处理内容                             | 数据来源                                                                                     |
+| ----------- | ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| RAG 链路    | 制度、流程、规范类知识问答           | knowledge/ 文档库（Milvus + BM25 + Neo4j）                                                   |
+| Agent 链路  | 库存、订单、供应商实时查询与工单创建 | PostgreSQL 业务库（工具调用）                                                                |
+| Text-to-SQL | 自然语言统计分析                     | PostgreSQL（六层安全防护：仅 SELECT / 表白名单 / 禁用关键词 / 参数化执行 / 行数限制 / 超时） |
 
 ## Docker 运行
 

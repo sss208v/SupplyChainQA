@@ -12,7 +12,7 @@ The core of this project is **dual-pathway routing**: employees ask questions in
 
 - **Three-tier cascading intent routing**: rule matching <1ms (entity-code-first rules + command keywords, zero tokens) → semantic routing <10ms (embedding cosine similarity with a top1-top2 margin check, zero tokens) → LLM classification ~2.5s as fallback. The vast majority of requests consume no LLM calls. Routing keywords and semantic utterances are externalized to `intent_routes.json` with hot reload — adding a tool only requires a config change, not code.
 
-- **Multi-way hybrid retrieval + adaptive RRF fusion**: three-way recall from Milvus vectors + BM25 keywords + Graph RAG entity relations, adaptively weighted by query type (exact code queries → BM25 ×1.5, semantic questions → vector ×1.5), followed by four-layer post-processing and BGE-Reranker re-ranking.
+- **Multi-way hybrid retrieval + adaptive RRF fusion**: Milvus vector + BM25 keyword two-way recall fused via RRF, adaptively weighted by query type (exact code queries → BM25 ×1.5, semantic questions → vector ×1.5); Neo4j graph entity hits are binary signals overlaid onto RRF scores with α/β weighting (final = α·RRF + β·graph), followed by four-layer post-processing and BGE-Reranker re-ranking.
 
 - **Agent tool calling**: LangChain `bind_tools` + LangGraph `StateGraph`, 6 business tools, agent↔tools convergence within 5 rounds, with a built-in ReAct infinite-loop circuit breaker.
 
@@ -22,7 +22,7 @@ The core of this project is **dual-pathway routing**: employees ask questions in
 
 - **Graph RAG knowledge graph**: Neo4j stores supplier→material→order→warehouse entity relations with templated Cypher generation (LLM never writes Cypher directly), supporting multi-hop relational queries.
 
-- **Two-layer semantic cache**: L1 MD5 exact match (0ms) + L2 embedding similarity >0.92 for semantic reuse, saving 90%+ of API costs. On knowledge-base changes, L2 is actively invalidated via an O(1) version-counter INCR (epoch invalidation), avoiding stale cache entries and full SCAN sweeps.
+- **Three-layer cache system**: L1 in-process MD5 exact match (0ms) → L2 Redis semantic cache (embedding similarity >0.92 reuse) → L3 data query result cache (read-through for Text-to-SQL / read-only tools), saving 90%+ of API costs. On knowledge-base changes, the semantic layer is actively invalidated via an O(1) version-counter INCR (epoch invalidation), avoiding stale cache entries and full SCAN sweeps.
 
 - **Faithfulness guardrails and conflict detection**: post-generation verification that answers are faithful to the retrieved context; proactive conflict alerts when documents from different departments define the same metric differently.
 
@@ -40,10 +40,10 @@ User question (Vue3 frontend)
   -> Rate-limit middleware (Redis sliding window, degrades to in-memory)
   -> Three-tier intent routing (rules -> semantic -> LLM fallback)
   -> RAG pathway:
-       Query understanding -> multi-way recall (vector + BM25 + Graph RAG)
-       -> adaptive RRF fusion -> four-layer post-processing -> reranker
-       -> Self-RAG relevance filtering -> LLM streaming generation
-       -> faithfulness guardrails / conflict detection / query-cache writeback
+       Query understanding -> two-way recall (vector + BM25) -> adaptive RRF fusion
+       -> graph entity α/β weighted overlay -> four-layer post-processing -> reranker
+       -> Self-RAG relevance filtering (query rewrite & re-retrieval on medium confidence)
+       -> LLM streaming generation -> faithfulness guardrails / conflict detection / query-cache writeback
   -> Agent pathway:
        Clarification check -> RBAC permission -> write-operation approval
        -> Redis idempotency claim + distributed lock
@@ -70,7 +70,7 @@ supply-chain-qa/
 ├── frontend/                  # Vue3 + Element Plus + Pinia (JavaScript, not TS)
 │   └── src/                   # views / stores / api / router
 ├── knowledge/                 # Knowledge base docs (7 departments, 90+ policies & business data)
-├── models/                    # Local GGUF models (Qwen3-14B / Qwen2.5 series)
+├── models/                    # Local GGUF models (Qwen3-14B)
 ├── llama.cpp-cuda13/          # llama.cpp CUDA 13 runtime (llama-server.exe)
 ├── docs/                      # Design, verification, onboarding docs
 ├── docker-compose.yml         # Infrastructure container orchestration
@@ -90,7 +90,7 @@ Recommended environment:
 
 - Docker Desktop (Milvus / Redis / PostgreSQL / Neo4j)
 
-- An LLM endpoint: DeepSeek API, Ollama, or local llama.cpp (OpenAI-compatible, port 8080)
+- An LLM endpoint: local llama.cpp (OpenAI-compatible, port 18080, project default), DeepSeek API, or Ollama
 
 ### Configure .env
 
@@ -100,21 +100,25 @@ Copy the template and fill in real values:
 cd backend && cp ../.env.example .env
 ```
 
-Minimal working configuration:
+Minimal working configuration (local llama.cpp, project default):
+
+```Plain Text
+LLM_PROVIDER=local
+LOCAL_LLM_BASE_URL=http://localhost:18080/v1
+LOCAL_LLM_MODEL=Qwen3-14B
+JWT_SECRET=change-me-in-production
+```
+
+Start the local model server with `backend\scripts\start-llama-server.bat` (loads `models\Qwen3-14B-Q4_K_M.gguf` on CUDA, port 18080).
+
+Using a cloud API (DeepSeek example):
 
 ```Plain Text
 LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=sk-your-api-key
-JWT_SECRET=change-me-in-production
 ```
 
-Using a local model (Ollama example):
-
-```Plain Text
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:7b
-```
+Ollama is also supported (`LLM_PROVIDER=ollama`, default `http://localhost:11434`).
 
 See [.env.example](.env.example) for the full list of options (RAG parameters, feature flags, Langfuse, CLIP multimodal, etc.). Tuning parameters treat `backend/app/config.py` as the single source of truth.
 
@@ -171,12 +175,14 @@ The core feature of Supply Chain QA is **automatic routing between RAG retrieval
 ```Plain Text
 "What is the purchase order approval process?"
   -> Intent routed to KNOWLEDGE
-  -> Multi-way recall: Milvus vectors + BM25 + Neo4j graph entities
+  -> Two-way recall: Milvus vectors + BM25
   -> Adaptive RRF fusion (codes/IDs -> boost BM25; "how"/"what" -> boost vectors)
+  -> Neo4j graph entity hits overlaid with α/β weighting and re-ranked
   -> Four-layer post-processing: low-score filter -> Jaccard dedup
      -> conflict detection -> faithfulness guardrails
   -> BGE-Reranker re-ranking -> Self-RAG relevance filter (threshold 0.15,
      falls back to top-1 on zero hits)
+  -> Query rewrite & re-retrieval on medium confidence (0.3~0.6)
   -> LLM streaming generation with source citations
 ```
 
@@ -232,7 +238,7 @@ backend/app/core/redis_client.py       # Connection mgmt / memory / locks / idem
 
 ### Test Status
 
-About 1051 unit test cases, all passing (coverage 71%+, gate 70%). Make sure `JWT_SECRET` is configured in `.env` before running; set `REQUIRE_AUTH_CHAT=false` for local anonymous demo.
+1069 unit test cases, all passing (plus 2 skipped). The coverage gate (70%) is enforced in CI only; local runs carry no coverage flags by default. Make sure `JWT_SECRET` is configured in `.env` before running; set `REQUIRE_AUTH_CHAT=false` for local anonymous demo.
 
 ## API
 
@@ -250,11 +256,11 @@ Interactive docs: http://localhost:8001/docs after startup.
 
 ## Division of Labor: RAG vs Agent
 
-| Type          | Handles                                                        | Data Source                                                                                            |
-| ------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| RAG pathway   | Policies, processes, and standards Q&A                         | knowledge/ document base (Milvus + BM25 + Neo4j)                                                       |
-| Agent pathway | Real-time inventory/order/supplier queries and ticket creation | PostgreSQL business database (tool calls)                                                              |
-| Text-to-SQL   | Natural-language statistical analysis                          | PostgreSQL (five-layer safety: SELECT-only / table allowlist / keyword denylist / row limit / timeout) |
+| Type          | Handles                                                        | Data Source                                                                                                                     |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| RAG pathway   | Policies, processes, and standards Q&A                         | knowledge/ document base (Milvus + BM25 + Neo4j)                                                                                |
+| Agent pathway | Real-time inventory/order/supplier queries and ticket creation | PostgreSQL business database (tool calls)                                                                                       |
+| Text-to-SQL   | Natural-language statistical analysis                          | PostgreSQL (six-layer safety: SELECT-only / table allowlist / keyword denylist / parameterized execution / row limit / timeout) |
 
 ## Running with Docker
 
