@@ -182,6 +182,7 @@ cd frontend; npm run test:unit
 ### 合入门禁
 
 - PR 必须通过 CI 全部检查后才能合入
+- lint（`ruff check`）目前为**告警不阻断**（渐进引入中）：CI 的 lint 步骤带 `--exit-zero`，违规只输出告警、不会使 CI 变红，也不拦截合入；待存量违规清零后再移除 `--exit-zero` 升级为硬门禁
 - 至少需要 1 名 reviewer 批准
 - 合入前确认所有对话已 resolved
 

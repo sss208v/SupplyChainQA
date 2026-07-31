@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        # 项目仅支持 Python 3.11（权威声明见 AGENTS.md “技术栈版本”，部署镜像为 python:3.11-slim）
+        python-version: ["3.11"]
 
     services:
       redis:
@@ -73,7 +74,9 @@ jobs:
       - name: Install ruff
         run: pip install ruff
 
-      - name: Lint backend
+      - name: Lint backend (warning only, not a merge gate)
+        # lint 目前为告警不阻断（渐进引入中）：--exit-zero 使违规只输出告警、不使 CI 变红。
+        # 存量违规清零后再移除 --exit-zero 升级为硬门禁（见 AGENTS.md “合入门禁”）
         run: |
           cd backend
           ruff check app/ --ignore=E501,F841 --exit-zero

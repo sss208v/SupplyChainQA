@@ -84,49 +84,7 @@ backend/eval/_archive/
 llama.cpp-cuda13/
 models/
 
-# ---- Goal tracking / AI tool artifacts ----
-.workbuddy/
-.codegraph/
-.claude/
-.qoder/
-.understand-anything/
-.hermes/
-.pytest_cache/
-.agents/
-.clawhub/
-.hf_home/
-skills/
-plan/
-docs/.agents/
-docs/.codebuddy/
-docs/.trae/
-docs/.uploads/
-docs/.workbuddy/
-docs/skills-lock.json
-GOAL_HERMES*.md
-PROJECT_SUMMARY.md
-TECHNICAL_DOCUMENTATION.md
-DEMO_SCRIPT.md
-
-# ---- Screenshots & misc ----
-*.png
-supply_chain_qa_cheatsheet.html
-skills-lock.json
-
 # ---- Misc exclusions ----
 *.tmp
 *.bak
 *.cache
-fix_chat*.py
-demo_queries.json
-scqa_e2e.js
-test_permissions.ps1
-rebuild_collection.py
-
-# ---- One-off scratch scripts (underscore convention & dead codemods) ----
-scripts/_*
-backend/eval/_*
-scripts/fix_dam_tfbs*.py
-scripts/update_java_docs.py
-scripts/rename_smartqa.py
-scripts/integrate_onboarding_tab.py
