@@ -782,17 +782,21 @@ async def _run_ingest_job() -> None:
 
 
 @router.post("/ingest", response_model=IngestResponse)
-async def ingest_real_pdfs(background_tasks: BackgroundTasks):
+async def ingest_real_pdfs(background_tasks: BackgroundTasks, request: Request = None):
     """
-    一键导入大厂供应链样本库（后台任务，立即返回）
+    一键导入内置知识库（admin，后台任务，立即返回）
 
     流程（后台执行，通过 GET /knowledge/ingest/status 轮询进度）：
-    1. 下载 5 份真实大厂供应链公开报告（或使用本地知识库 fallback）
+    1. 下载 5 份供应链公开报告（或使用本地知识库 fallback）
     2. 解析 PDF/Markdown，提取文本和表格
-    3. 切片 + 嵌入 + 存入 Milvus
+    3. 切片 + 嵌入 + 存入 Milvus（同 doc_id 先删后插，重复导入不会累积重复 chunk）
 
     之前同步执行会让 HTTP 连接挂起数分钟且无进度反馈，现改为 BackgroundTasks。
     """
+    # RBAC：全量入库会改写知识库并触发缓存失效，仅限 admin
+    current_user = await get_current_user_full(request)
+    check_role(current_user, [UserRole.ADMIN.value])
+
     await _set_ingest_status({"status": "pending", "message": "任务已提交，等待执行"})
     background_tasks.add_task(_run_ingest_job)
     return IngestResponse(
@@ -804,8 +808,12 @@ async def ingest_real_pdfs(background_tasks: BackgroundTasks):
 
 
 @router.get("/ingest/status")
-async def ingest_status():
-    """查询后台入库任务状态（pending/downloading/indexing/done/failed）"""
+async def ingest_status(request: Request = None):
+    """查询后台入库任务状态（pending/downloading/indexing/done/failed，admin）"""
+    # RBAC：与 POST /ingest 同一 UI 流程，同样仅限 admin
+    current_user = await get_current_user_full(request)
+    check_role(current_user, [UserRole.ADMIN.value])
+
     import json as _json
     try:
         from app.core.redis_client import redis_manager

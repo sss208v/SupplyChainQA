@@ -1,5 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""面试前一键验证脚本"""
+"""演示前一键环境自检脚本"""
 import sys, os, asyncio
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

@@ -87,6 +87,13 @@ class RAGEngine:
         if security_group is None:
             security_group = ["admin"]
 
+        # 0. 幂等：同 doc_id 重复入库先删旧 chunk（与 BM25 的 _remove_doc_by_id 对齐，
+        #    否则 /ingest 重复触发会在 Milvus 里不断累积重复数据）
+        try:
+            milvus_manager.delete_by_doc_id(doc_id)
+        except Exception as e:
+            logger.warning(f"[RAG] 入库前清理旧 doc_id={doc_id} 失败（继续插入）: {e}")
+
         # 1. 生成嵌入向量
         texts = [chunk["content"] for chunk in chunks]
         embeddings = self.embedding.embed_documents(texts)

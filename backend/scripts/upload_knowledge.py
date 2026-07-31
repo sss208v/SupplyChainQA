@@ -17,7 +17,7 @@ settings = get_settings()
 PROJECT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 KNOWLEDGE_DIR = os.path.join(PROJECT_DIR, "..", "knowledge")
 
-# 部门 → 可见角色列表（与 scripts/upload_knowledge_base.py 保持一致）
+# 部门 → 可见角色列表
 DEPT_GROUPS = {
     "purchase":   ["admin", "purchase", "finance"],
     "warehouse":  ["admin", "warehouse", "production", "logistics"],
