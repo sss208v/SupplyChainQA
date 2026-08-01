@@ -9,13 +9,18 @@
       <div
         v-for="tool in tools"
         :key="tool.name"
-        :class="['tool-node', { 'tool-node--active': activeTool === tool.name }]"
+        :class="[
+          'tool-node',
+          { 'tool-node--active': activeTool === tool.name },
+        ]"
         @click="activeTool = tool.name"
       >
         <!-- 节点头部 -->
         <div class="node-header">
           <div class="node-icon" :style="{ background: toolColor(tool.name) }">
-            <el-icon :size="20"><component :is="toolIcon(tool.name)" /></el-icon>
+            <el-icon :size="20"
+              ><component :is="toolIcon(tool.name)"
+            /></el-icon>
           </div>
           <div class="node-title">
             <h4>{{ tool.name }}</h4>
@@ -49,12 +54,19 @@
               <el-icon><Top /></el-icon> 输入参数
             </div>
             <div class="schema-params">
-              <div v-for="param in tool.inputs" :key="param.name" class="param-item">
+              <div
+                v-for="param in tool.inputs"
+                :key="param.name"
+                class="param-item"
+              >
                 <span class="param-name">{{ param.name }}</span>
                 <span class="param-type">{{ param.type }}</span>
                 <span class="param-desc">{{ param.description }}</span>
               </div>
-              <div v-if="!tool.inputs || tool.inputs.length === 0" class="param-empty">
+              <div
+                v-if="!tool.inputs || tool.inputs.length === 0"
+                class="param-empty"
+              >
                 无参数
               </div>
             </div>
@@ -65,14 +77,15 @@
               <el-icon><Bottom /></el-icon> 输出格式
             </div>
             <div class="schema-output">
-              <code>{{ tool.output || 'JSON' }}</code>
+              <code>{{ tool.output || "JSON" }}</code>
             </div>
           </div>
         </div>
 
-        <!-- 测试按钮 -->
+        <!-- 测试按钮（写工具仅 manager+ 可见） -->
         <div class="node-actions">
           <el-button
+            v-if="canTestTool(tool)"
             type="primary"
             text
             size="small"
@@ -101,8 +114,15 @@
         <!-- 输入表单 -->
         <div class="test-input-section">
           <h5>输入参数</h5>
-          <div v-for="param in currentTool.inputs" :key="param.name" class="test-input-item">
-            <label>{{ param.name }} <span class="input-type">{{ param.type }}</span></label>
+          <div
+            v-for="param in currentTool.inputs"
+            :key="param.name"
+            class="test-input-item"
+          >
+            <label
+              >{{ param.name }}
+              <span class="input-type">{{ param.type }}</span></label
+            >
             <el-input
               v-model="testInputs[param.name]"
               :placeholder="param.description"
@@ -116,7 +136,7 @@
           type="primary"
           :loading="testLoading"
           @click="handleTest"
-          style="width: 100%; margin-top: 16px;"
+          style="width: 100%; margin-top: 16px"
         >
           <el-icon><VideoPlay /></el-icon> 执行测试
         </el-button>
@@ -125,8 +145,11 @@
         <div v-if="testResult" class="test-result-section">
           <h5>执行结果</h5>
           <div class="result-meta">
-            <el-tag size="small" :type="testResult.error ? 'danger' : 'success'">
-              {{ testResult.error ? '失败' : '成功' }}
+            <el-tag
+              size="small"
+              :type="testResult.error ? 'danger' : 'success'"
+            >
+              {{ testResult.error ? "失败" : "成功" }}
             </el-tag>
             <span v-if="testResult.iterations" class="result-iter">
               ReAct 迭代: {{ testResult.iterations }} 次
@@ -139,7 +162,11 @@
 
           <div v-if="testResult.tool_calls?.length" class="result-calls">
             <h5>工具调用链</h5>
-            <div v-for="(tc, idx) in testResult.tool_calls" :key="idx" class="call-item">
+            <div
+              v-for="(tc, idx) in testResult.tool_calls"
+              :key="idx"
+              class="call-item"
+            >
               <div class="call-header">
                 <el-tag size="small">{{ tc.tool }}</el-tag>
                 <span class="call-step">#{{ idx + 1 }}</span>
@@ -170,22 +197,40 @@
  * 2. 支持直接测试工具调用
  * 3. 展示 ReAct 迭代过程
  */
-import { ref, onMounted, markRaw } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, onMounted, markRaw } from "vue";
+import { ElMessage } from "element-plus";
 import {
-  Cloudy, DataAnalysis, Clock, Reading,
-  VideoPlay, SetUp, Refresh, Box,
-  OfficeBuilding, List, Top, Bottom,
-} from '@element-plus/icons-vue'
-import { getToolList, getToolSchemas, callTool } from '@/api/tool'
+  Cloudy,
+  DataAnalysis,
+  Clock,
+  Reading,
+  VideoPlay,
+  SetUp,
+  Refresh,
+  Box,
+  OfficeBuilding,
+  List,
+  Top,
+  Bottom,
+} from "@element-plus/icons-vue";
+import { getToolList, getToolSchemas, callTool } from "@/api/tool";
+import { useAuthStore } from "@/stores/auth";
 
-const tools = ref([])
-const activeTool = ref(null)
-const testDrawerVisible = ref(false)
-const currentTool = ref(null)
-const testInputs = ref({})
-const testResult = ref(null)
-const testLoading = ref(false)
+const authStore = useAuthStore();
+const tools = ref([]);
+const activeTool = ref(null);
+const testDrawerVisible = ref(false);
+const currentTool = ref(null);
+const testInputs = ref({});
+const testResult = ref(null);
+const testLoading = ref(false);
+
+// 写操作工具：测试入口需 manager 及以上级别（employee 仅只读工具）
+const WRITE_TOOL_NAMES = ["create_ticket"];
+function canTestTool(tool) {
+  if (!WRITE_TOOL_NAMES.includes(tool.name)) return true;
+  return authStore.can("tool:write");
+}
 
 // 工具图标（未知工具回退 SetUp 默认图标）
 const iconMap = {
@@ -200,132 +245,138 @@ const iconMap = {
   web_search: markRaw(Cloudy),
   calculator: markRaw(DataAnalysis),
   code_interpreter: markRaw(SetUp),
-}
+};
 const colorMap = {
-  query_inventory: '#2563eb',
-  query_order: '#10b981',
-  create_ticket: '#f59e0b',
-  get_datetime: '#6b7280',
-  get_knowledge: '#ef4444',
-  query_supplier: '#8b5cf6',
-  track_logistics: '#0ea5e9',
-  calculate_reorder_point: '#14b8a6',
-  web_search: '#6366f1',
-  calculator: '#f97316',
-  code_interpreter: '#64748b',
-}
+  query_inventory: "#2563eb",
+  query_order: "#10b981",
+  create_ticket: "#f59e0b",
+  get_datetime: "#6b7280",
+  get_knowledge: "#ef4444",
+  query_supplier: "#8b5cf6",
+  track_logistics: "#0ea5e9",
+  calculate_reorder_point: "#14b8a6",
+  web_search: "#6366f1",
+  calculator: "#f97316",
+  code_interpreter: "#64748b",
+};
 
 // 工具分类标签（仅展示用途；输入 Schema 不再硬编码，改由
 // GET /api/v1/tools/schema 从后端 TOOL_REGISTRY 动态拉取）
 const toolTypeMap = {
-  query_inventory: '数据查询',
-  query_order: '数据查询',
-  create_ticket: '操作执行',
-  get_datetime: '系统工具',
-  get_knowledge: '数据查询',
-  query_supplier: '数据查询',
-  track_logistics: '数据查询',
-  calculate_reorder_point: '智能计算',
-  web_search: '通用工具',
-  calculator: '通用工具',
-  code_interpreter: '通用工具',
-}
+  query_inventory: "数据查询",
+  query_order: "数据查询",
+  create_ticket: "操作执行",
+  get_datetime: "系统工具",
+  get_knowledge: "数据查询",
+  query_supplier: "数据查询",
+  track_logistics: "数据查询",
+  calculate_reorder_point: "智能计算",
+  web_search: "通用工具",
+  calculator: "通用工具",
+  code_interpreter: "通用工具",
+};
 
 function toolIcon(name) {
-  return iconMap[name] || SetUp
+  return iconMap[name] || SetUp;
 }
 
 function toolColor(name) {
-  return colorMap[name] || '#909399'
+  return colorMap[name] || "#909399";
 }
 
 function toolType(name) {
-  return toolTypeMap[name] || '自定义'
+  return toolTypeMap[name] || "自定义";
 }
 
 // 角色中文映射
 const roleLabelMap = {
-  admin: '管理员',
-  purchase: '采购部',
-  warehouse: '仓库部',
-  quality: '质量部',
-  production: '生产部',
-  finance: '财务部',
-  logistics: '物流部',
-}
+  admin: "管理员",
+  purchase: "采购部",
+  warehouse: "仓库部",
+  quality: "质量部",
+  production: "生产部",
+  finance: "财务部",
+  logistics: "物流部",
+};
 
 // 角色标签颜色
 const roleColorMap = {
-  admin: 'danger',
-  purchase: 'success',
-  warehouse: 'warning',
-  quality: 'info',
-  production: '',
-  finance: '',
-  logistics: '',
-}
+  admin: "danger",
+  purchase: "success",
+  warehouse: "warning",
+  quality: "info",
+  production: "",
+  finance: "",
+  logistics: "",
+};
 
 function roleLabel(role) {
-  return roleLabelMap[role] || role
+  return roleLabelMap[role] || role;
 }
 
 function roleColor(role) {
-  return roleColorMap[role] || 'info'
+  return roleColorMap[role] || "info";
 }
 
 async function fetchTools() {
   try {
     // 并行拉取工具列表 + 后端动态生成的输入 Schema（单一事实来源）
-    const [res, schemaRes] = await Promise.all([getToolList(), getToolSchemas()])
-    const schemas = schemaRes.schemas || {}
-    tools.value = (res.tools || []).map(t => ({
+    const [res, schemaRes] = await Promise.all([
+      getToolList(),
+      getToolSchemas(),
+    ]);
+    const schemas = schemaRes.schemas || {};
+    tools.value = (res.tools || []).map((t) => ({
       ...t,
       inputs: schemas[t.name]?.inputs || [],
-      output: 'JSON',
-    }))
+      output: "JSON",
+    }));
   } catch (err) {
-    ElMessage.error('获取工具列表失败')
+    ElMessage.error("获取工具列表失败");
   }
 }
 
 function openTestPanel(tool) {
-  currentTool.value = tool
-  testInputs.value = {}
-  testResult.value = null
-  // 预填测试数据
-  if (tool.name === 'query_inventory') testInputs.value.material_code = 'MAT-001'
-  if (tool.name === 'query_order') testInputs.value.order_id = 'PO-20250101'
-  testDrawerVisible.value = true
+  currentTool.value = tool;
+  testInputs.value = {};
+  testResult.value = null;
+  // 预填测试数据（真实库内示例值）
+  if (tool.name === "query_inventory")
+    testInputs.value.material_code = "MAT-001";
+  if (tool.name === "query_order") testInputs.value.order_id = "PO-20250601";
+  if (tool.name === "query_ticket")
+    testInputs.value.ticket_id = "TK-202506010000001";
+  if (tool.name === "query_stock_move")
+    testInputs.value.po_code = "PO-20250602";
+  testDrawerVisible.value = true;
 }
 
 async function handleTest() {
-  if (!currentTool.value) return
-  testLoading.value = true
-  testResult.value = null
+  if (!currentTool.value) return;
+  testLoading.value = true;
+  testResult.value = null;
 
   try {
     // 构造查询：将输入参数组合成自然语言
     const params = Object.entries(testInputs.value)
       .filter(([_, v]) => v)
       .map(([k, v]) => `${k}=${v}`)
-      .join(', ')
-    const query = params
-      ? `参数: ${params}`
-      : '执行工具'
+      .join(", ");
+    const query = params ? `参数: ${params}` : "执行工具";
 
     const res = await callTool({
       query,
-      tool_names: [currentTool.value.name]
-    })
-    testResult.value = res
+      tool_names: [currentTool.value.name],
+    });
+    testResult.value = res;
   } catch (err) {
-    testResult.value = { error: true, answer: err.message }
+    testResult.value = { error: true, answer: err.message };
   } finally {
-    testLoading.value = false
+    testLoading.value = false;
   }
 }
 
-onMounted(fetchTools)
+onMounted(fetchTools);
 </script>
 
 <style scoped>
@@ -648,5 +699,18 @@ onMounted(fetchTools)
   font-family: var(--font-mono);
 }
 
-@media (max-width: 767px) { .tools-page { padding: 0; } .tools-page .el-card { margin-bottom: 10px; } .tools-page .el-descriptions { font-size: 12px; } .tools-page .el-table { font-size: 12px; } }
+@media (max-width: 767px) {
+  .tools-page {
+    padding: 0;
+  }
+  .tools-page .el-card {
+    margin-bottom: 10px;
+  }
+  .tools-page .el-descriptions {
+    font-size: 12px;
+  }
+  .tools-page .el-table {
+    font-size: 12px;
+  }
+}
 </style>

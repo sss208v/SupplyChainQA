@@ -13,12 +13,13 @@ SupplyChainRAG - 工具API路由
 ============================================================
 """
 import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from typing import Optional
-from app.core.tool_engine import TOOL_REGISTRY
+
 from app.agents.tool import tool_agent
-from app.core.auth import get_current_user_full
+from app.core.auth import LEVEL_RANK, get_current_user_full
+from app.core.tool_engine import TOOL_REGISTRY
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tools", tags=["工具"])
@@ -27,37 +28,47 @@ router = APIRouter(prefix="/tools", tags=["工具"])
 # 工具权限配置
 # ==========================================
 
-# 每个角色可调用的工具列表
+# 写操作工具：修改系统状态（创建工单等），仅 manager 及以上级别可调用
+WRITE_TOOLS = {"create_ticket"}
+
+# 每个角色可调用的工具列表（部门 × 级别 二维中的“部门维度”映射）
+# 规则：
+# - 写操作工具（WRITE_TOOLS，如 create_ticket）还需 level >= manager，见 _is_tool_allowed
+# - code_interpreter 为沙箱代码执行，仅 admin 可用（风险工具最小化）
+# - 业务合理性：warehouse 可算再订货点、quality 可查供应商资质、finance 可查订单/库存
 ROLE_TOOLS = {
     "admin": {
-        "query_inventory", "query_order", "create_ticket",
+        "query_inventory", "query_order", "create_ticket", "query_ticket",
         "get_datetime", "get_knowledge", "query_supplier",
-        "track_logistics", "calculate_reorder_point",
+        "track_logistics", "calculate_reorder_point", "query_stock_move",
+        "web_search", "calculator", "code_interpreter",
     },
     "purchase": {
-        "query_inventory", "query_order", "create_ticket",
+        "query_inventory", "query_order", "create_ticket", "query_ticket",
         "get_datetime", "get_knowledge", "query_supplier",
-        "track_logistics", "calculate_reorder_point",
+        "track_logistics", "calculate_reorder_point", "query_stock_move",
+        "web_search", "calculator",
     },
     "warehouse": {
-        "query_inventory", "create_ticket",
+        "query_inventory", "create_ticket", "query_ticket",
         "get_datetime", "get_knowledge",
-        "track_logistics",
+        "track_logistics", "calculate_reorder_point", "query_stock_move",
     },
     "quality": {
-        "create_ticket", "get_datetime", "get_knowledge",
-        "track_logistics",
+        "create_ticket", "query_ticket", "get_datetime", "get_knowledge",
+        "track_logistics", "query_supplier",
     },
     "production": {
-        "create_ticket", "get_datetime", "get_knowledge",
+        "create_ticket", "query_ticket", "get_datetime", "get_knowledge",
         "track_logistics", "calculate_reorder_point",
     },
     "finance": {
+        "query_inventory", "query_order", "query_ticket",
         "get_datetime", "get_knowledge",
     },
     "logistics": {
-        "create_ticket", "get_datetime", "get_knowledge",
-        "track_logistics",
+        "create_ticket", "query_ticket", "get_datetime", "get_knowledge",
+        "track_logistics", "query_stock_move",
     },
 }
 
@@ -65,8 +76,8 @@ ROLE_TOOLS = {
 class ToolCallRequest(BaseModel):
     """工具调用请求"""
     query: str = Field(..., min_length=1, description="用户问题")
-    tool_names: Optional[list[str]] = Field(None, description="指定工具名称列表")
-    session_id: Optional[str] = Field(None, description="会话ID")
+    tool_names: list[str] | None = Field(None, description="指定工具名称列表")
+    session_id: str | None = Field(None, description="会话ID")
 
 
 class ToolInfo(BaseModel):
@@ -92,15 +103,37 @@ class ToolCallResponse(BaseModel):
 # ---- API接口 ----
 
 def _get_allowed_tools(role: str) -> set[str]:
-    """获取角色可调用的工具集合"""
+    """获取角色可调用的工具集合（部门维度）"""
     return ROLE_TOOLS.get(role, ROLE_TOOLS.get("purchase", set()))
 
 
-def _is_tool_allowed(tool_name: str, role: str) -> bool:
-    """检查工具是否对角色开放"""
+def _is_tool_allowed(tool_name: str, role: str, level: str = "manager") -> bool:
+    """检查工具是否对用户开放（部门 × 级别 二维）
+
+    规则：
+    - 部门维度：工具必须在该角色（ROLE_TOOLS）可调用集合内
+    - 级别维度：写操作工具（WRITE_TOOLS）要求 level >= manager；只读工具所有级别可用
+
+    Args:
+        tool_name: 工具名
+        role: 部门角色（purchase/warehouse/...）
+        level: 操作级别（admin/manager/employee），默认 manager 保持向后兼容
+    """
     if role not in ROLE_TOOLS:
         return False
-    return tool_name in ROLE_TOOLS[role]
+    if tool_name not in ROLE_TOOLS[role]:
+        return False
+    if tool_name in WRITE_TOOLS and LEVEL_RANK.get(level, 1) < LEVEL_RANK.get("manager", 2):
+        return False
+    return True
+
+
+def _get_visible_tools(role: str, level: str) -> set[str]:
+    """获取用户可见/可调用的工具集合（部门 + 级别叠加过滤）"""
+    return {
+        t for t in _get_allowed_tools(role)
+        if _is_tool_allowed(t, role, level)
+    }
 
 
 def _get_tool_allowed_roles(tool_name: str) -> list[str]:
@@ -114,9 +147,11 @@ def _get_tool_allowed_roles(tool_name: str) -> list[str]:
 
 @router.get("/list", response_model=ToolListResponse)
 async def list_tools(request: Request):
-    """获取当前用户可调用的工具列表（按角色权限过滤）"""
+    """获取当前用户可调用的工具列表（按角色+级别权限过滤）"""
     current_user = await get_current_user_full(request)
-    allowed_tools = _get_allowed_tools(current_user.get("role", "purchase"))
+    role = current_user.get("role", "purchase")
+    level = current_user.get("level", "employee")
+    allowed_tools = _get_visible_tools(role, level)
 
     tools = []
     for name in allowed_tools:
@@ -140,7 +175,9 @@ async def get_tool_schemas(request: Request):
     TOOL_REGISTRY，前端自动展示，无需两处同步维护。
     """
     current_user = await get_current_user_full(request)
-    allowed_tools = _get_allowed_tools(current_user.get("role", "purchase"))
+    role = current_user.get("role", "purchase")
+    level = current_user.get("level", "employee")
+    allowed_tools = _get_visible_tools(role, level)
 
     schemas = {}
     for name, tool_func in TOOL_REGISTRY.items():
@@ -181,7 +218,8 @@ async def call_tool(request: Request, body: ToolCallRequest):
     """
     current_user = await get_current_user_full(request)
     user_role = current_user.get("role", "finance") if current_user else "finance"
-    allowed_tools = _get_allowed_tools(user_role)
+    user_level = current_user.get("level", "employee")
+    allowed_tools = _get_visible_tools(user_role, user_level)
 
     # Agent 自动选择工具时，检查 Agent 可能调用的所有工具
     if not body.tool_names:
@@ -213,7 +251,11 @@ async def call_tool(request: Request, body: ToolCallRequest):
 async def get_tool_schema(tool_name: str, request: Request):
     """获取工具的参数Schema"""
     current_user = await get_current_user_full(request)
-    if not _is_tool_allowed(tool_name, current_user.get("role", "purchase")):
+    if not _is_tool_allowed(
+        tool_name,
+        current_user.get("role", "purchase"),
+        current_user.get("level", "employee"),
+    ):
         raise HTTPException(status_code=403, detail=f"无权查看工具: {tool_name}")
     if tool_name not in TOOL_REGISTRY:
         raise HTTPException(status_code=404, detail=f"工具不存在: {tool_name}")

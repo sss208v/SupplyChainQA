@@ -8,6 +8,18 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
 
+async def _call_mcp(mock_response, func):
+    """在 mock httpx.AsyncClient 环境下执行 func()。"""
+    mock_response.raise_for_status = MagicMock()
+    with patch("httpx.AsyncClient") as MockClient:
+        instance = AsyncMock()
+        instance.post.return_value = mock_response
+        instance.__aenter__ = AsyncMock(return_value=instance)
+        instance.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value = instance
+        return await func()
+
+
 class TestMCPTool:
     def test_create_tool(self):
         from app.core.mcp_client import MCPTool
@@ -74,14 +86,7 @@ class TestMCPListTools:
             }
         }
         mock_response.raise_for_status = MagicMock()
-        with patch("httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.post.return_value = mock_response
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            tools = await mcp_list_tools("http://test:8080")
+        tools = await _call_mcp(mock_response, lambda: mcp_list_tools("http://test:8080"))
         assert len(tools) == 2
         assert tools[0].name == "tool1"
 
@@ -99,14 +104,7 @@ class TestMCPCallTool:
             }
         }
         mock_response.raise_for_status = MagicMock()
-        with patch("httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.post.return_value = mock_response
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            result = await mcp_call_tool("http://test:8080", "tool1", {"arg": "val"})
+        result = await _call_mcp(mock_response, lambda: mcp_call_tool("http://test:8080", "tool1", {"arg": "val"}))
         assert result == "result data"
 
     @pytest.mark.asyncio
@@ -119,15 +117,8 @@ class TestMCPCallTool:
             "error": {"code": -32600, "message": "Invalid request"}
         }
         mock_response.raise_for_status = MagicMock()
-        with patch("httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.post.return_value = mock_response
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            with pytest.raises(RuntimeError, match="MCP tool error"):
-                await mcp_call_tool("http://test:8080", "tool1", {})
+        with pytest.raises(RuntimeError, match="MCP tool error"):
+            await _call_mcp(mock_response, lambda: mcp_call_tool("http://test:8080", "tool1", {}))
 
 
 class TestSingleton:

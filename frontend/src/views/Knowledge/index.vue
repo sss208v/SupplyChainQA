@@ -49,8 +49,8 @@
       </el-col>
     </el-row>
 
-    <!-- 上传区域 -->
-    <el-card class="upload-card">
+    <!-- 上传区域（经理及以上可见；employee 只读） -->
+    <el-card v-permission="'knowledge:upload'" class="upload-card">
       <template #header>
         <div class="card-header">
           <span
@@ -59,17 +59,18 @@
         </div>
       </template>
 
-      <!-- 权限组选择 -->
+      <!-- 权限组选择（非 admin 只显示自身部门 + public，与后端强制派生口径一致） -->
       <div class="permission-section">
         <div class="permission-label">可见部门（勾选可访问此文档的部门）：</div>
         <el-checkbox-group v-model="selectedGroups" class="permission-group">
-          <el-checkbox label="admin" border>管理员</el-checkbox>
-          <el-checkbox label="purchase" border>采购部</el-checkbox>
-          <el-checkbox label="warehouse" border>仓库部</el-checkbox>
-          <el-checkbox label="quality" border>质量部</el-checkbox>
-          <el-checkbox label="production" border>生产部</el-checkbox>
-          <el-checkbox label="finance" border>财务部</el-checkbox>
-          <el-checkbox label="logistics" border>物流部</el-checkbox>
+          <el-checkbox
+            v-for="g in visibleGroups"
+            :key="g.value"
+            :label="g.value"
+            border
+          >
+            {{ g.label }}
+          </el-checkbox>
         </el-checkbox-group>
       </div>
 
@@ -101,7 +102,7 @@
           开始上传并索引
         </el-button>
         <el-button
-          v-if="authStore.role === 'admin'"
+          v-permission="'knowledge:ingest'"
           type="success"
           :loading="ingesting"
           @click="handleIngest"
@@ -160,6 +161,7 @@
         <el-table-column label="操作" width="120">
           <template #default="{ row }">
             <el-popconfirm
+              v-permission="'knowledge:delete'"
               title="确定删除该文档？"
               @confirm="handleDelete(row.doc_id)"
             >
@@ -177,7 +179,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { useKnowledgeStore } from "@/stores/knowledge";
 import { useAuthStore } from "@/stores/auth";
@@ -186,7 +188,7 @@ const knowledgeStore = useKnowledgeStore();
 const authStore = useAuthStore();
 const uploadRef = ref(null);
 const pendingFiles = ref([]);
-const selectedGroups = ref(["admin"]);
+const selectedGroups = ref([]);
 const ingesting = ref(false);
 
 // 部门标签映射
@@ -199,6 +201,28 @@ const groupLabels = {
   finance: "财务部",
   logistics: "物流部",
 };
+
+// 全部权限组（admin 可见全部）
+const allGroups = [
+  { value: "admin", label: "管理员" },
+  { value: "purchase", label: "采购部" },
+  { value: "warehouse", label: "仓库部" },
+  { value: "quality", label: "质量部" },
+  { value: "production", label: "生产部" },
+  { value: "finance", label: "财务部" },
+  { value: "logistics", label: "物流部" },
+];
+
+// 非 admin 只显示自身部门 + public（与后端 _resolve_security_groups 强制派生口径一致）
+const visibleGroups = computed(() => {
+  if (authStore.role === "admin") return allGroups;
+  const mine = allGroups.filter((g) => g.value === authStore.role);
+  return [...mine, { value: "public", label: "公开" }];
+});
+
+// 默认选中：admin 选 admin，其他选自身部门
+selectedGroups.value =
+  authStore.role === "admin" ? ["admin"] : [authStore.role];
 
 onMounted(() => {
   knowledgeStore.fetchDocuments();

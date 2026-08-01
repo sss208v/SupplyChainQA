@@ -14,18 +14,19 @@ SupplyChainRAG - 认证API路由
 ============================================================
 """
 import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.core.database import async_session
 from app.core.auth import (
-    hash_password,
-    verify_password,
     create_token,
     delete_token,
     get_current_user_required,
+    hash_password,
+    verify_password,
 )
+from app.core.database import async_session
 from app.models.user import User, UserRole
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ class UserResponse(BaseModel):
     id: int
     username: str
     role: str
+    level: str
     department: str | None
     is_active: bool
     created_at: str | None
@@ -174,6 +176,7 @@ async def get_me(request: Request):
         id=user.id,
         username=user.username,
         role=user.role,
+        level=user.level,
         department=user.department,
         is_active=user.is_active,
         created_at=user.created_at.isoformat() if user.created_at else None,
@@ -185,7 +188,7 @@ async def list_users(request: Request):
     """
     获取用户列表（仅管理员可用）
     """
-    from app.core.auth import get_current_user_full, check_role
+    from app.core.auth import check_role, get_current_user_full
 
     current_user = await get_current_user_full(request)
     check_role(current_user, [UserRole.ADMIN.value])

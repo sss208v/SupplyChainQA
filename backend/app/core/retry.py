@@ -64,6 +64,41 @@ def _is_retriable(exception: Exception) -> bool:
     return False
 
 
+async def _log_and_backoff_async(context_name, attempt, max_attempts, base_delay, e, include_type=True, with_count=True):
+    """记录重试失败日志并异步指数退避等待。"""
+    detail = f"{type(e).__name__}: {e}" if include_type else str(e)
+    if attempt < max_attempts:
+        delay = base_delay * (2 ** (attempt - 1))
+        logger.warning(
+            f"[Retry] {context_name} 第{attempt}次失败: {detail}, "
+            f"{delay:.1f}秒后重试..."
+        )
+        await asyncio.sleep(delay)
+    else:
+        suffix = f"({max_attempts})" if with_count else ""
+        logger.error(
+            f"[Retry] {context_name} 第{attempt}次失败: {detail}, "
+            f"已达最大重试次数{suffix}"
+        )
+
+
+def _log_and_backoff_sync(context_name, attempt, max_attempts, base_delay, e, include_type=False, with_count=False):
+    """记录重试失败日志并同步指数退避等待。"""
+    detail = f"{type(e).__name__}: {e}" if include_type else str(e)
+    if attempt < max_attempts:
+        delay = base_delay * (2 ** (attempt - 1))
+        logger.warning(
+            f"[Retry] {context_name} 第{attempt}次失败: {detail}, "
+            f"{delay:.1f}秒后重试..."
+        )
+        time.sleep(delay)
+    else:
+        suffix = f"({max_attempts})" if with_count else ""
+        logger.error(
+            f"[Retry] {context_name} 第{attempt}次失败: {detail}, 已达最大重试次数{suffix}"
+        )
+
+
 async def retry_astream(
     generator_factory: Callable[[], AsyncIterator],
     max_attempts: int = 3,
@@ -109,18 +144,7 @@ async def retry_astream(
                 logger.warning(f"[Retry] {context_name} 不可重试的错误: {type(e).__name__}: {e}")
                 raise
             last_exception = e
-            if attempt < max_attempts:
-                delay = base_delay * (2 ** (attempt - 1))
-                logger.warning(
-                    f"[Retry] {context_name} 第{attempt}次失败: {type(e).__name__}: {e}, "
-                    f"{delay:.1f}秒后重试..."
-                )
-                await asyncio.sleep(delay)
-            else:
-                logger.error(
-                    f"[Retry] {context_name} 第{attempt}次失败: {type(e).__name__}: {e}, "
-                    f"已达最大重试次数({max_attempts})"
-                )
+            await _log_and_backoff_async(context_name, attempt, max_attempts, base_delay, e)
     if last_exception is not None:
         raise last_exception
     return  # max_attempts=0 时直接返回
@@ -143,17 +167,10 @@ def retry_async(max_attempts: int = 3, base_delay: float = 2.0, exceptions=(Exce
                     return await func(*args, **kwargs)
                 except exceptions as e:
                     last_exception = e
-                    if attempt < max_attempts:
-                        delay = base_delay * (2 ** (attempt - 1))
-                        logger.warning(
-                            f"[Retry] {func.__name__} 第{attempt}次失败: {e}, "
-                            f"{delay:.1f}秒后重试..."
-                        )
-                        await asyncio.sleep(delay)
-                    else:
-                        logger.error(
-                            f"[Retry] {func.__name__} 第{attempt}次失败: {e}, 已达最大重试次数"
-                        )
+                    await _log_and_backoff_async(
+                        func.__name__, attempt, max_attempts, base_delay, e,
+                        include_type=False, with_count=False,
+                    )
             raise last_exception
         return wrapper
     return decorator
@@ -170,17 +187,7 @@ def retry_sync(max_attempts: int = 3, base_delay: float = 2.0, exceptions=(Excep
                     return func(*args, **kwargs)
                 except exceptions as e:
                     last_exception = e
-                    if attempt < max_attempts:
-                        delay = base_delay * (2 ** (attempt - 1))
-                        logger.warning(
-                            f"[Retry] {func.__name__} 第{attempt}次失败: {e}, "
-                            f"{delay:.1f}秒后重试..."
-                        )
-                        time.sleep(delay)
-                    else:
-                        logger.error(
-                            f"[Retry] {func.__name__} 第{attempt}次失败: {e}, 已达最大重试次数"
-                        )
+                    _log_and_backoff_sync(func.__name__, attempt, max_attempts, base_delay, e)
             raise last_exception
         return wrapper
     return decorator
@@ -199,16 +206,5 @@ async def retry_call(
             return await func()
         except Exception as e:
             last_exception = e
-            if attempt < max_attempts:
-                delay = base_delay * (2 ** (attempt - 1))
-                logger.warning(
-                    f"[Retry] {context_name} 第{attempt}次失败: {type(e).__name__}: {e}, "
-                    f"{delay:.1f}秒后重试..."
-                )
-                await asyncio.sleep(delay)
-            else:
-                logger.error(
-                    f"[Retry] {context_name} 第{attempt}次失败: {type(e).__name__}: {e}, "
-                    f"已达最大重试次数({max_attempts})"
-                )
+            await _log_and_backoff_async(context_name, attempt, max_attempts, base_delay, e)
     raise last_exception

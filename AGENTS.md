@@ -50,6 +50,7 @@ docker-compose up -d
 - **SSE 流式**：聊天接口 `/api/v1/chat/ask` 返回 SSE（7 种事件类型），不要改成 WebSocket 或普通 JSON
 - **工单 ID 格式**：`TK-{时间戳}{7位随机数}`，后缀必须 >=7 位，否则高并发下 UNIQUE 约束会碰撞
 - **LangChain 弃用警告**：`main.py` 已抑制 `PendingDeprecationWarning`（来自 langgraph），不要移除
+- **re-export 兼容层不改实现**：`core/rag_engine.py` 和 `agents/tool.py` 只是向后兼容转发层，真实实现分别在 `core/rag/` 子包与 `agents/base_agent.py`、`core/tool_engine.py`、`core/llm_router.py`；修改逻辑必须落在真实实现文件，兼容层仅做转发、不要改动
 
 ### 前端
 

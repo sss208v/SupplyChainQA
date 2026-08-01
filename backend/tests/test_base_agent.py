@@ -20,39 +20,12 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain_core.messages import AIMessage
+from helpers import ai_final, ai_message, async_iter, make_mock_tool
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-async def _async_iter(items):
-    """将列表包装为 async iterator，用于 mock graph.astream。"""
-    for item in items:
-        yield item
-
-
-def _ai_with_tool_calls(name, args, cid="tc1"):
-    """构造一条带 tool_calls 的 AIMessage。"""
-    m = AIMessage(content="")
-    m.tool_calls = [{"name": name, "args": args, "id": cid}]
-    return m
-
-
-def _ai_final(text):
-    """构造一条无 tool_calls 的最终回答 AIMessage。"""
-    m = AIMessage(content=text)
-    m.tool_calls = []
-    return m
-
-
-def _make_mock_tool(name="test_tool"):
-    """创建一个 mock LangChain Tool。"""
-    t = MagicMock()
-    t.name = name
-    t.ainvoke = AsyncMock(return_value=f"{name} result")
-    return t
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +82,7 @@ class TestBaseReActAgentProperties:
     def test_empty_tool_names_returns_all_tools(self, mock_get_all):
         """TOOL_NAMES = [] → 调用 get_all_tools() 返回全部工具。"""
         from app.agents.base_agent import BaseReActAgent
-        mock_get_all.return_value = [_make_mock_tool("t1"), _make_mock_tool("t2")]
+        mock_get_all.return_value = [make_mock_tool("t1"), make_mock_tool("t2")]
         agent = BaseReActAgent()
         agent.TOOL_NAMES = []
         tools = agent.tools
@@ -117,8 +90,8 @@ class TestBaseReActAgentProperties:
         mock_get_all.assert_called_once()
 
     @patch("app.agents.base_agent.TOOL_REGISTRY", {
-        "query_inventory": _make_mock_tool("query_inventory"),
-        "query_order": _make_mock_tool("query_order"),
+        "query_inventory": make_mock_tool("query_inventory"),
+        "query_order": make_mock_tool("query_order"),
     })
     def test_tool_names_subset_returns_matching_tools(self):
         """TOOL_NAMES = ["query_inventory"] → 只返回匹配的工具。"""
@@ -134,7 +107,7 @@ class TestBaseReActAgentProperties:
     def test_tools_property_caches_result(self, mock_get_all):
         """tools 属性被访问两次时，底层工厂只调用一次。"""
         from app.agents.base_agent import BaseReActAgent
-        mock_get_all.return_value = [_make_mock_tool()]
+        mock_get_all.return_value = [make_mock_tool()]
         agent = BaseReActAgent()
         agent.TOOL_NAMES = []
         _ = agent.tools
@@ -217,14 +190,18 @@ class TestRunMethod:
         agent._graph = MagicMock()
         return agent
 
+    async def _run(self, query, events, tools=None, memory=None, **kw):
+        """在标准 patch 环境内执行 agent.run()。"""
+        with patch("app.agents.base_agent.get_all_tools", return_value=tools or []), \
+             patch("app.agents.base_agent.chat_memory", memory):
+            agent = self._make_agent()
+            agent._graph.astream.return_value = async_iter(events)
+            return await agent.run(query, **kw)
+
     async def test_ai_message_no_tool_calls_captures_final_answer(self):
         """AIMessage 无 tool_calls → 作为 final_answer 返回。"""
-        events = [{"messages": [_ai_final("这是最终回答")]}]
-        with patch("app.agents.base_agent.get_all_tools", return_value=[]), \
-             patch("app.agents.base_agent.chat_memory", None):
-            agent = self._make_agent()
-            agent._graph.astream.return_value = _async_iter(events)
-            result = await agent.run("测试问题")
+        events = [{"messages": [ai_final("这是最终回答")]}]
+        result = await self._run("测试问题", events)
         assert result["answer"] == "这是最终回答"
         assert result["tool_calls"] == []
         assert result["iterations"] == 0
@@ -232,14 +209,10 @@ class TestRunMethod:
     async def test_ai_message_with_tool_calls_populates_record(self):
         """AIMessage 带 tool_calls → tool_calls_record 被填充。"""
         events = [
-            {"messages": [_ai_with_tool_calls("query_inventory", {"sku": "A001"})]},
-            {"messages": [_ai_final("库存100件")]},
+            {"messages": [ai_message("query_inventory", {"sku": "A001"})]},
+            {"messages": [ai_final("库存100件")]},
         ]
-        with patch("app.agents.base_agent.get_all_tools", return_value=[_make_mock_tool("query_inventory")]), \
-             patch("app.agents.base_agent.chat_memory", None):
-            agent = self._make_agent()
-            agent._graph.astream.return_value = _async_iter(events)
-            result = await agent.run("A001库存")
+        result = await self._run("A001库存", events, tools=[make_mock_tool("query_inventory")])
         assert len(result["tool_calls"]) == 1
         assert result["tool_calls"][0]["tool"] == "query_inventory"
         assert result["tool_calls"][0]["input"] == {"sku": "A001"}
@@ -249,14 +222,10 @@ class TestRunMethod:
         """超过 MAX_ITERATIONS 后循环终止。"""
         from app.agents.base_agent import MAX_ITERATIONS
         events = [
-            {"messages": [_ai_with_tool_calls("query_inventory", {"sku": f"X{i}"}, f"tc{i}")]}
+            {"messages": [ai_message("query_inventory", {"sku": f"X{i}"}, f"tc{i}")]}
             for i in range(MAX_ITERATIONS + 3)
         ]
-        with patch("app.agents.base_agent.get_all_tools", return_value=[_make_mock_tool("query_inventory")]), \
-             patch("app.agents.base_agent.chat_memory", None):
-            agent = self._make_agent()
-            agent._graph.astream.return_value = _async_iter(events)
-            result = await agent.run("库存查询")
+        result = await self._run("库存查询", events, tools=[make_mock_tool("query_inventory")])
         assert result["iterations"] >= MAX_ITERATIONS
         assert result["answer"]  # 应该有回答（无论是最终回答还是终止提示）
 
@@ -283,12 +252,9 @@ class TestRunMethod:
         mock_memory.get_context_string = AsyncMock(return_value=None)
         mock_memory.add_message = AsyncMock()
 
-        events = [{"messages": [_ai_final("回答")]}]
-        with patch("app.agents.base_agent.get_all_tools", return_value=[]), \
-             patch("app.agents.base_agent.chat_memory", mock_memory):
-            agent = self._make_agent()
-            agent._graph.astream.return_value = _async_iter(events)
-            result = await agent.run("测试问题", session_id="sess-123", user_id="user-1")
+        events = [{"messages": [ai_final("回答")]}]
+        result = await self._run("测试问题", events, memory=mock_memory,
+                                 session_id="sess-123", user_id="user-1")
 
         assert mock_memory.add_message.call_count == 2
         # 第一次调用：user 消息
@@ -309,12 +275,8 @@ class TestRunMethod:
         mock_memory.get_context_string = AsyncMock(return_value=None)
         mock_memory.add_message = AsyncMock()
 
-        events = [{"messages": [_ai_final("直接回答")]}]
-        with patch("app.agents.base_agent.get_all_tools", return_value=[]), \
-             patch("app.agents.base_agent.chat_memory", mock_memory):
-            agent = self._make_agent()
-            agent._graph.astream.return_value = _async_iter(events)
-            result = await agent.run("测试问题", session_id="sess-456")
+        events = [{"messages": [ai_final("直接回答")]}]
+        result = await self._run("测试问题", events, memory=mock_memory, session_id="sess-456")
 
         assert result["answer"] == "直接回答"
         # get_context_string 只被调用一次（携带 user_id 隔离参数）
@@ -323,11 +285,7 @@ class TestRunMethod:
     async def test_no_final_answer_returns_fallback_message(self):
         """所有事件都没有无 tool_calls 的 AIMessage → 返回默认兜底文案。"""
         events = [{"messages": []}]
-        with patch("app.agents.base_agent.get_all_tools", return_value=[]), \
-             patch("app.agents.base_agent.chat_memory", None):
-            agent = self._make_agent()
-            agent._graph.astream.return_value = _async_iter(events)
-            result = await agent.run("无回答测试")
+        result = await self._run("无回答测试", events)
         assert result["answer"] == "未能生成回答，请重试。"
 
 

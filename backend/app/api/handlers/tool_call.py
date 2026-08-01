@@ -7,13 +7,14 @@ Agent执行、结果格式化等完整流程。
 import hashlib
 import logging
 import time
-from typing import AsyncGenerator, Optional
-from app.api.chat_helpers import sse_event, ChatRequest, _role_label
-from app.api.tool import _is_tool_allowed
+from collections.abc import AsyncGenerator
+
 from app.agents.agent_router import get_agent_for_tool
+from app.api.chat_helpers import ChatRequest, _role_label, sse_event
+from app.api.tool import WRITE_TOOLS, _is_tool_allowed
 from app.config import get_settings
-from app.core.redis_client import RedisManager
 from app.core.clarify import check_needs_clarification
+from app.core.redis_client import RedisManager
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -26,11 +27,12 @@ async def handle_tool_call(
     tool_name: str,
     session_id: str,
     user_id: str,
-    agent_type: Optional[str],
+    agent_type: str | None,
     body: ChatRequest,
-    langfuse_callbacks: Optional[list],
+    langfuse_callbacks: list | None,
     redis: RedisManager,
     user_role: str = "finance",
+    user_level: str = "manager",
     needs_clarify: bool = False,
 ) -> AsyncGenerator[str, None]:
     """处理工具调用意图
@@ -50,9 +52,9 @@ async def handle_tool_call(
         logger.info("[Clarify] 已发送澄清提问")
         return
 
-    # ---- 工具权限检查 ----
-    if not _is_tool_allowed(tool_name, user_role):
-        logger.warning(f"[Permission] 用户角色 {user_role} 无权调用工具 {tool_name}")
+    # ---- 工具权限检查（部门 × 级别 二维）----
+    if not _is_tool_allowed(tool_name, user_role, user_level):
+        logger.warning(f"[Permission] 用户角色 {user_role} 级别 {user_level} 无权调用工具 {tool_name}")
         yield sse_event("tool_blocked", tool=tool_name, reason=f"您的角色「{_role_label(user_role)}」无权执行此操作")
         yield sse_event("content", content=f"[警告] 无权执行 **{tool_name}** 操作。如需权限，请联系管理员。")
         return
@@ -61,7 +63,6 @@ async def handle_tool_call(
     yield sse_event("tool_status", status="calling", tool=tool_name)
 
     # ---- 写操作审批检查 ----
-    WRITE_TOOLS = {"create_ticket"}
     if tool_name in WRITE_TOOLS and (not body.approved or body.approved_tool != tool_name):
         logger.info(f"[Approval] 写操作需要审批: tool={tool_name}")
         yield sse_event("approval_request", tool=tool_name, query=safe_query, message=f"即将执行写操作：{tool_name}，请确认是否继续。")
@@ -143,7 +144,7 @@ async def handle_tool_call(
     logger.info(f"[TOOL_CALL处理] tool={tool_name}")
 
 
-def _get_tool_agent(agent_type: Optional[str] = None, tool_name: Optional[str] = None):
+def _get_tool_agent(agent_type: str | None = None, tool_name: str | None = None):
     """返回 Tool Agent — 按工具名路由到专域 Agent"""
     if agent_type in ("langgraph", "langchain"):
         logger.warning(f"[Chat] agent_type='{agent_type}' 已归档，回退到默认 Agent 路由")

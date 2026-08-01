@@ -15,6 +15,7 @@ from app.core.redis_client import RedisManager, ChatMemory, redis_manager, chat_
 from app.core.rag.engine import RAGEngine, rag_engine as rag_engine_impl
 from app.core.data_filter import PIIFilter
 from app.core.query_analyzer import QueryComplexityAnalyzer, query_analyzer
+from app.core.memory_service import MemoryService, get_memory_service as _get_memory_service_impl
 
 
 def get_rag_agent() -> RAGAgent:
@@ -65,6 +66,11 @@ def get_redis_manager() -> RedisManager:
 def get_chat_memory() -> Optional[ChatMemory]:
     """返回对话记忆管理器（可能为 None，当 Redis 未连接时）"""
     return chat_memory
+
+
+def get_memory_service() -> Optional[MemoryService]:
+    """返回三层记忆服务（可能为 None，当 Redis 未连接时）"""
+    return _get_memory_service_impl()
 
 
 def get_pii_filter() -> PIIFilter:

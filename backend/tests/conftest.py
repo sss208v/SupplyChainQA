@@ -1,12 +1,11 @@
 """测试配置 — API 集成测试 fixtures"""
-import sys
 import os
+import sys
 from unittest.mock import patch
 
-import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,10 +26,9 @@ collect_ignore_glob = [
 ]
 
 # 预导入所有需要 patch 的模块，确保模块级绑定已建立
-import app.core.database  # noqa: E402
-import app.api.auth       # noqa: E402
-import app.core.redis_client  # noqa: E402
-
+import app.api.auth
+import app.core.database
+import app.core.redis_client
 
 # ---- 集成测试：真实服务连接 fixture ----
 
@@ -74,6 +72,7 @@ class _FakeRedis:
     def __init__(self):
         self._store: dict[str, str] = {}
         self._lists: dict[str, list] = {}
+        self._hashes: dict[str, dict] = {}
 
     async def get(self, key):
         return self._store.get(key)
@@ -92,6 +91,7 @@ class _FakeRedis:
         for k in keys:
             self._store.pop(k, None)
             self._lists.pop(k, None)
+            self._hashes.pop(k, None)
         return len(keys)
 
     async def incr(self, key):
@@ -127,7 +127,7 @@ class _FakeRedis:
 
     async def scan(self, cursor=0, match=None, count=100):
         import fnmatch
-        keys = list(self._store) + list(self._lists)
+        keys = list(self._store) + list(self._lists) + list(self._hashes)
         if match:
             keys = [k for k in keys if fnmatch.fnmatch(k, match)]
         return 0, keys
@@ -137,6 +137,31 @@ class _FakeRedis:
 
     async def ping(self):
         return True
+
+    # ---- Hash 操作（三层记忆体系：画像/部门记忆/术语表）----
+    async def hset(self, key, field, value):
+        self._hashes.setdefault(key, {})[field] = value
+        return 1
+
+    async def hget(self, key, field):
+        return self._hashes.get(key, {}).get(field)
+
+    async def hgetall(self, key):
+        return dict(self._hashes.get(key, {}))
+
+    async def hdel(self, key, *fields):
+        h = self._hashes.get(key, {})
+        removed = 0
+        for f in fields:
+            if h.pop(f, None) is not None:
+                removed += 1
+        return removed
+
+    async def hlen(self, key):
+        return len(self._hashes.get(key, {}))
+
+    async def hexists(self, key, field):
+        return field in self._hashes.get(key, {})
 
     def pipeline(self, transaction=True):
         return _FakePipeline(self)
@@ -164,6 +189,8 @@ class _FakePipeline:
                 results.append(await self._store.lpush(*args))
             elif name == "ltrim":
                 results.append(await self._store.ltrim(*args))
+            elif name == "hset":
+                results.append(await self._store.hset(*args))
             elif name == "zcard":
                 results.append(0)
             elif name == "zrange":
@@ -230,13 +257,41 @@ async def seed_user(client):
     })
     assert resp.status_code == 200, f"register failed: {resp.status_code} {resp.text}"
     data = resp.json()
+    # 既有测试语义：seed_user 代表“部门经理”（可上传/管理本部门文档）
+    # register 默认 level=employee，这里通过 DB 提升为 manager 保持向后兼容
+    sm = app.api.auth.async_session
+    from sqlalchemy import select
+
+    from app.models.user import User
+    async with sm() as session:
+        result = await session.execute(
+            select(User).where(User.username == data["user"]["username"])
+        )
+        db_user = result.scalar_one()
+        db_user.level = "manager"
+        await session.commit()
+    data["user"]["level"] = "manager"
+    return {"token": data["token"], "user": data["user"]}
+
+
+@pytest_asyncio.fixture
+async def employee_user(client):
+    """普通员工：register 后保持默认 employee（无任何管理权限）"""
+    resp = await client.post("/api/v1/auth/register", json={
+        "username": "testemployee",
+        "password": "test123456",
+        "department": "测试部",
+    })
+    assert resp.status_code == 200, f"register failed: {resp.status_code} {resp.text}"
+    data = resp.json()
+    assert data["user"]["level"] == "employee"
     return {"token": data["token"], "user": data["user"]}
 
 
 @pytest_asyncio.fixture
 async def admin_user(client):
     from app.core.auth import hash_password
-    from app.models.user import User, UserRole
+    from app.models.user import User, UserLevel, UserRole
 
     # 用 patched 的 async_session 直接写入
     sm = app.api.auth.async_session
@@ -245,6 +300,7 @@ async def admin_user(client):
             username="testadmin",
             password_hash=hash_password("admin123456"),
             role=UserRole.ADMIN.value,
+            level=UserLevel.ADMIN.value,
             department="管理部",
         )
         session.add(user)

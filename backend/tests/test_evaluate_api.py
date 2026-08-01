@@ -10,6 +10,25 @@ import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
 
+async def _get(client, token, path):
+    return await client.get(path, headers={"Authorization": f"Bearer {token}"})
+
+
+async def _post(client, token, path, payload):
+    return await client.post(path, json=payload, headers={"Authorization": f"Bearer {token}"})
+
+
+def _mock_judge_llm(mock_factory, content='{"answer_correctness": 3}', side_effect=None):
+    """配置 LLMFactory 返回 fake judge LLM（默认返回 3 分 JSON）。"""
+    fake_llm = MagicMock()
+    if side_effect:
+        fake_llm.ainvoke = AsyncMock(side_effect=side_effect)
+    else:
+        fake_llm.ainvoke = AsyncMock(return_value=MagicMock(content=content))
+    mock_factory.get_llm.return_value = fake_llm
+    return fake_llm
+
+
 # ---------------------------------------------------------------------------
 # 1. Summary endpoint returns valid structure
 # ---------------------------------------------------------------------------
@@ -27,10 +46,7 @@ async def test_get_evaluation_summary(mock_evaluator, client, seed_user):
         "total_evaluations": 42,
     }
 
-    resp = await client.get(
-        "/api/v1/evaluate/summary",
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _get(client, seed_user["token"], "/api/v1/evaluate/summary")
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
@@ -71,15 +87,11 @@ async def test_evaluation_metrics_format(mock_evaluator, client, seed_user):
     }
     mock_evaluator.evaluate_retrieval.return_value = mock_result
 
-    resp = await client.post(
-        "/api/v1/evaluate/offline",
-        json={
-            "query": "MAT-001 库存",
-            "retrieved_chunk_ids": ["c1", "c2", "c3"],
-            "relevant_chunk_ids": ["c1", "c3"],
-        },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _post(client, seed_user["token"], "/api/v1/evaluate/offline", {
+        "query": "MAT-001 库存",
+        "retrieved_chunk_ids": ["c1", "c2", "c3"],
+        "relevant_chunk_ids": ["c1", "c3"],
+    })
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
@@ -146,11 +158,7 @@ async def test_online_evaluation_returns_quality_label(mock_evaluator, client, s
         "top_scores": [0.95, 0.91, 0.88],
     }
 
-    resp = await client.post(
-        "/api/v1/evaluate/online",
-        json={"query": "供应商准入资质", "top_k": 5},
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _post(client, seed_user["token"], "/api/v1/evaluate/online", {"query": "供应商准入资质", "top_k": 5})
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
@@ -173,22 +181,14 @@ async def test_online_evaluation_returns_quality_label(mock_evaluator, client, s
 @patch("app.api.evaluate.LLMFactory")
 async def test_judge_success(mock_factory, client, seed_user):
     """LLM 正常返回 JSON 格式的评判结果"""
-    fake_llm = MagicMock()
-    fake_llm.ainvoke = AsyncMock(
-        return_value=MagicMock(content='{"answer_correctness": 5, "answer_relevance": 4, "context_utilization": 4, "hallucination": 5, "overall_score": 4.5, "feedback": "good"}')
-    )
-    mock_factory.get_llm.return_value = fake_llm
+    _mock_judge_llm(mock_factory, content='{"answer_correctness": 5, "answer_relevance": 4, "context_utilization": 4, "hallucination": 5, "overall_score": 4.5, "feedback": "good"}')
 
-    resp = await client.post(
-        "/api/v1/evaluate/judge",
-        json={
-            "query": "MAT-001 库存多少？",
-            "retrieved_contexts": ["MAT-001 当前库存 100 件", "近 30 天入库 50"],
-            "generated_answer": "MAT-001 当前库存 100 件",
-            "reference_answer": "100",
-        },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _post(client, seed_user["token"], "/api/v1/evaluate/judge", {
+        "query": "MAT-001 库存多少？",
+        "retrieved_contexts": ["MAT-001 当前库存 100 件", "近 30 天入库 50"],
+        "generated_answer": "MAT-001 当前库存 100 件",
+        "reference_answer": "100",
+    })
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
@@ -200,19 +200,13 @@ async def test_judge_success(mock_factory, client, seed_user):
 @patch("app.api.evaluate.LLMFactory")
 async def test_judge_invalid_json_returns_raw(mock_factory, client, seed_user):
     """LLM 返回非 JSON 时，parse_llm_json 抛错 → fallback 到 raw_output"""
-    fake_llm = MagicMock()
-    fake_llm.ainvoke = AsyncMock(return_value=MagicMock(content="我无法评估这个回答"))
-    mock_factory.get_llm.return_value = fake_llm
+    _mock_judge_llm(mock_factory, content="我无法评估这个回答")
 
-    resp = await client.post(
-        "/api/v1/evaluate/judge",
-        json={
-            "query": "测试问题",
-            "retrieved_contexts": ["上下文1"],
-            "generated_answer": "答案1",
-        },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _post(client, seed_user["token"], "/api/v1/evaluate/judge", {
+        "query": "测试问题",
+        "retrieved_contexts": ["上下文1"],
+        "generated_answer": "答案1",
+    })
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
@@ -224,21 +218,13 @@ async def test_judge_invalid_json_returns_raw(mock_factory, client, seed_user):
 @patch("app.api.evaluate.LLMFactory")
 async def test_judge_llm_failure_returns_500(mock_factory, client, seed_user):
     """LLM 调用抛错 → 500 错误"""
-    fake_llm = MagicMock()
-    fake_llm.ainvoke = AsyncMock(
-        side_effect=ConnectionError("LLM 服务不可用")
-    )
-    mock_factory.get_llm.return_value = fake_llm
+    _mock_judge_llm(mock_factory, side_effect=ConnectionError("LLM 服务不可用"))
 
-    resp = await client.post(
-        "/api/v1/evaluate/judge",
-        json={
-            "query": "测试",
-            "retrieved_contexts": ["ctx"],
-            "generated_answer": "ans",
-        },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _post(client, seed_user["token"], "/api/v1/evaluate/judge", {
+        "query": "测试",
+        "retrieved_contexts": ["ctx"],
+        "generated_answer": "ans",
+    })
     assert resp.status_code == 500
     assert "评判失败" in resp.json()["detail"]
 
@@ -252,10 +238,7 @@ async def test_summary_exception_returns_500(mock_evaluator, client, seed_user):
     """rag_evaluator.get_summary() 抛错 → 500"""
     mock_evaluator.get_summary.side_effect = RuntimeError("db connection lost")
 
-    resp = await client.get(
-        "/api/v1/evaluate/summary",
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _get(client, seed_user["token"], "/api/v1/evaluate/summary")
     assert resp.status_code == 500
     assert "获取汇总失败" in resp.json()["detail"]
 
@@ -281,10 +264,7 @@ async def test_full_returns_official_ragas(client, seed_user, monkeypatch, tmp_p
     }), encoding="utf-8")
     monkeypatch.setattr(_glob, "glob", lambda pattern: [str(result_file)])
 
-    resp = await client.get(
-        "/api/v1/evaluate/full",
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _get(client, seed_user["token"], "/api/v1/evaluate/full")
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
@@ -300,10 +280,7 @@ async def test_full_no_official_result(client, seed_user, monkeypatch):
     """无官方 RAGAS 结果时返回 success=False + 引导信息（不回退 proxy）"""
     import glob as _glob
     monkeypatch.setattr(_glob, "glob", lambda pattern: [])
-    resp = await client.get(
-        "/api/v1/evaluate/full",
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _get(client, seed_user["token"], "/api/v1/evaluate/full")
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is False
@@ -316,26 +293,18 @@ async def test_full_no_official_result(client, seed_user, monkeypatch):
 @pytest.mark.asyncio
 async def test_online_topk_out_of_range(client, seed_user):
     """top_k 超过上限（1-20）→ 422"""
-    resp = await client.post(
-        "/api/v1/evaluate/online",
-        json={"query": "测试", "top_k": 100},  # 超过 20
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _post(client, seed_user["token"], "/api/v1/evaluate/online", {"query": "测试", "top_k": 100})  # 超过 20
     assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_judge_contexts_exceed_limit_rejected(client, seed_user):
     """retrieved_contexts > 20 条 → 422（Pydantic max_length 防 LLM DoS）"""
-    resp = await client.post(
-        "/api/v1/evaluate/judge",
-        json={
-            "query": "测试",
-            "retrieved_contexts": [f"ctx-{i}" for i in range(21)],  # 超过 max_length=20
-            "generated_answer": "ans",
-        },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await _post(client, seed_user["token"], "/api/v1/evaluate/judge", {
+        "query": "测试",
+        "retrieved_contexts": [f"ctx-{i}" for i in range(21)],  # 超过 max_length=20
+        "generated_answer": "ans",
+    })
     assert resp.status_code == 422
 
 
@@ -343,21 +312,13 @@ async def test_judge_contexts_exceed_limit_rejected(client, seed_user):
 async def test_judge_exactly_20_contexts_accepted(client, seed_user):
     """retrieved_contexts 正好 20 条 → 200（边界值）"""
     with patch("app.api.evaluate.LLMFactory") as mock_factory:
-        fake_llm = MagicMock()
-        fake_llm.ainvoke = AsyncMock(
-            return_value=MagicMock(content='{"answer_correctness": 3}')
-        )
-        mock_factory.get_llm.return_value = fake_llm
+        _mock_judge_llm(mock_factory)
 
-        resp = await client.post(
-            "/api/v1/evaluate/judge",
-            json={
-                "query": "测试",
-                "retrieved_contexts": [f"ctx-{i}" for i in range(20)],  # 正好 20
-                "generated_answer": "ans",
-            },
-            headers={"Authorization": f"Bearer {seed_user['token']}"},
-        )
+        resp = await _post(client, seed_user["token"], "/api/v1/evaluate/judge", {
+            "query": "测试",
+            "retrieved_contexts": [f"ctx-{i}" for i in range(20)],  # 正好 20
+            "generated_answer": "ans",
+        })
         assert resp.status_code == 200
 
 
@@ -366,20 +327,12 @@ async def test_judge_with_reference_answer(client, seed_user):
     """reference_answer 可选 —— 不传也能通过校验"""
     # 同样 patch LLM 让它不真的调用
     with patch("app.api.evaluate.LLMFactory") as mock_factory:
-        fake_llm = MagicMock()
-        fake_llm.ainvoke = AsyncMock(
-            return_value=MagicMock(content='{"answer_correctness": 3}')
-        )
-        mock_factory.get_llm.return_value = fake_llm
+        _mock_judge_llm(mock_factory)
 
-        resp = await client.post(
-            "/api/v1/evaluate/judge",
-            json={
-                "query": "测试",
-                "retrieved_contexts": ["ctx"],
-                "generated_answer": "ans",
-                # 不传 reference_answer
-            },
-            headers={"Authorization": f"Bearer {seed_user['token']}"},
-        )
+        resp = await _post(client, seed_user["token"], "/api/v1/evaluate/judge", {
+            "query": "测试",
+            "retrieved_contexts": ["ctx"],
+            "generated_answer": "ans",
+            # 不传 reference_answer
+        })
         assert resp.status_code == 200

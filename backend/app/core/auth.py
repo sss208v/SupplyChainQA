@@ -19,7 +19,6 @@ import logging
 import secrets
 import time
 import uuid
-from typing import Optional
 
 import jwt
 from fastapi import HTTPException, Request
@@ -32,6 +31,10 @@ logger = logging.getLogger(__name__)
 TOKEN_PREFIX = "scqa:token:"
 TOKEN_BLACKLIST_PREFIX = "scqa:blacklist:"
 TOKEN_TTL = 86400  # 24小时
+
+# 操作级别排序（admin > manager > employee）
+# level 与 role（部门维度）正交：level 控操作权限，role 控数据可见范围
+LEVEL_RANK = {"admin": 3, "manager": 2, "employee": 1}
 
 
 def _get_jwt_secret() -> str:
@@ -131,7 +134,7 @@ async def create_token(user_id: int, username: str) -> str:
     return token
 
 
-async def verify_token(token: str) -> Optional[dict]:
+async def verify_token(token: str) -> dict | None:
     """
     验证JWT Token
 
@@ -226,7 +229,7 @@ async def delete_token(token: str) -> None:
 security = None  # 不再需要HTTPBearer，使用手动解析
 
 
-async def _extract_token(request: Request) -> Optional[str]:
+async def _extract_token(request: Request) -> str | None:
     """从Authorization头提取Bearer token"""
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -236,7 +239,7 @@ async def _extract_token(request: Request) -> Optional[str]:
 
 async def get_current_user_optional(
     request: Request,
-) -> Optional[dict]:
+) -> dict | None:
     """
     可选认证：解析Authorization头，返回用户信息或None
 
@@ -274,9 +277,10 @@ async def get_current_user_full(request: Request) -> dict:
     """
     user = await get_current_user_required(request)
 
+    from sqlalchemy import select
+
     from app.core.database import async_session
     from app.models.user import User
-    from sqlalchemy import select
 
     async with async_session() as session:
         result = await session.execute(
@@ -294,6 +298,7 @@ async def get_current_user_full(request: Request) -> dict:
         "user_id": db_user.id,
         "username": db_user.username,
         "role": db_user.role,
+        "level": db_user.level,
         "department": db_user.department,
     }
 
@@ -334,3 +339,51 @@ def check_role(user: dict, allowed_roles: list[str]) -> None:
             status_code=403,
             detail=f"权限不足，需要角色: {', '.join(allowed_roles)}，当前角色: {user['role']}",
         )
+
+
+def check_level(user: dict, min_level: str) -> None:
+    """
+    检查用户操作级别是否达到最低要求（admin > manager > employee）
+
+    与 check_role 互补：check_role 按部门角色（数据范围）校验，
+    check_level 按操作级别（管理权限）校验，两者叠加构成
+    “部门 × 级别”二维 RBAC。
+
+    Args:
+        user: get_current_user_full 返回的用户 dict
+        min_level: 最低要求级别（admin/manager/employee）
+    """
+    # admin 角色天然拥有全部级别权限（兼容旧数据：role=admin 无 level 字段）
+    if user.get("role") == "admin":
+        return
+    current = user.get("level", "employee")
+    if LEVEL_RANK.get(current, 1) < LEVEL_RANK.get(min_level, 1):
+        raise HTTPException(
+            status_code=403,
+            detail=f"权限不足，需要级别: {min_level}，当前级别: {current}",
+        )
+
+
+def require_level(*allowed_levels: str):
+    """
+    操作级别检查装饰器（非装饰器用法用 check_level）
+
+    用法：
+        @require_level(UserLevel.MANAGER, UserLevel.ADMIN)
+        async def upload_document(...):
+            ...
+    """
+    async def level_checker(request: Request) -> dict:
+        user = await get_current_user_full(request)
+        # admin 角色天然拥有全部级别权限
+        if user.get("role") == "admin":
+            return user
+        current = user.get("level", "employee")
+        if current not in allowed_levels:
+            raise HTTPException(
+                status_code=403,
+                detail=f"权限不足，需要级别: {', '.join(allowed_levels)}，当前级别: {current}",
+            )
+        return user
+
+    return level_checker

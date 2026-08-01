@@ -96,6 +96,14 @@ class Settings(BaseSettings):
     SUMMARY_INTERVAL: int = 10
     SUMMARY_TRUNCATE_LEN: int = 40
 
+    # ---- 三层记忆体系（用户画像 / 部门记忆 / 企业术语表）----
+    MEMORY_INJECT_ENABLED: bool = True     # 三层记忆注入总开关（A/B 实验与回滚用）
+    PROFILE_MAX_ITEMS: int = 20            # 用户画像每类条目上限
+    PROFILE_TTL: int = 2592000             # 用户画像 TTL（秒，默认30天）
+    DEPT_MEMORY_MAX: int = 50              # 部门记忆条目上限
+    DEPT_MEMORY_TTL: int = 2592000         # 部门记忆 TTL（秒，默认30天）
+    GLOSSARY_MAX_TERMS: int = 200          # 企业术语表条目上限
+
     # ---- 默认角色 ----
     DEFAULT_USER_ROLE: str = "employee"
 

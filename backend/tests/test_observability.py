@@ -3,6 +3,8 @@ import pytest
 import sys, os
 from unittest.mock import patch, MagicMock
 
+from helpers import capture_record_local, fake_langfuse, fake_settings
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -212,12 +214,7 @@ class TestTraceSpan:
         """有 langfuse 时 _span 真实存在，update/set_error 调用 _span.update"""
         from app.core import observability as obs
 
-        fake_span = MagicMock()
-        fake_trace = MagicMock()
-        fake_trace.span.return_value = fake_span
-        fake_lf = MagicMock()
-        fake_lf.trace.return_value = fake_trace
-        monkeypatch.setattr(obs, "_get_langfuse", lambda: fake_lf)
+        fake_span, fake_trace, fake_lf = fake_langfuse(monkeypatch)
 
         async with obs.TraceSpan("router", "tid-10", metadata={"m": 1}, input_data={"q": "x"}) as span:
             span.update(output={"answer": "yes"}, metadata={"conf": 0.9}, level="INFO")
@@ -252,11 +249,7 @@ class TestTraceSpan:
 
         fake_span = MagicMock()
         fake_span.end.side_effect = RuntimeError("end failed")
-        fake_trace = MagicMock()
-        fake_trace.span.return_value = fake_span
-        fake_lf = MagicMock()
-        fake_lf.trace.return_value = fake_trace
-        monkeypatch.setattr(obs, "_get_langfuse", lambda: fake_lf)
+        fake_langfuse(monkeypatch, span=fake_span)
 
         with caplog.at_level("DEBUG", logger="app.core.observability"):
             async with obs.TraceSpan("test", "tid-12"):
@@ -270,11 +263,7 @@ class TestTraceSpan:
 
         fake_span = MagicMock()
         fake_span.update.side_effect = RuntimeError("update failed")
-        fake_trace = MagicMock()
-        fake_trace.span.return_value = fake_span
-        fake_lf = MagicMock()
-        fake_lf.trace.return_value = fake_trace
-        monkeypatch.setattr(obs, "_get_langfuse", lambda: fake_lf)
+        fake_langfuse(monkeypatch, span=fake_span)
 
         with caplog.at_level("DEBUG", logger="app.core.observability"):
             async with obs.TraceSpan("test", "tid-13") as span:
@@ -310,12 +299,7 @@ class TestRecordFunctions:
         """_get_langfuse 有返回值时，try 块也跑一遍（覆盖 trace+span 路径）"""
         from app.core import observability as obs
 
-        fake_span = MagicMock()
-        fake_trace = MagicMock()
-        fake_trace.span.return_value = fake_span
-        fake_lf = MagicMock()
-        fake_lf.trace.return_value = fake_trace
-        monkeypatch.setattr(obs, "_get_langfuse", lambda: fake_lf)
+        fake_span, fake_trace, fake_lf = fake_langfuse(monkeypatch)
         monkeypatch.setattr(obs, "_record_local", lambda *a, **kw: None)
 
         obs.record_router_decision("tid-r2", "Q", "rag", "rule", 0.9, 10)
@@ -328,9 +312,7 @@ class TestRecordFunctions:
         """langfuse 抛错被 logger.debug 吞掉"""
         from app.core import observability as obs
 
-        fake_lf = MagicMock()
-        fake_lf.trace.side_effect = RuntimeError("boom")
-        monkeypatch.setattr(obs, "_get_langfuse", lambda: fake_lf)
+        fake_langfuse(monkeypatch, trace_error=RuntimeError("boom"))
         monkeypatch.setattr(obs, "_record_local", lambda *a, **kw: None)
 
         with caplog.at_level("DEBUG", logger="app.core.observability"):
@@ -340,9 +322,7 @@ class TestRecordFunctions:
     def test_record_tool_call_success(self, monkeypatch):
         from app.core import observability as obs
         monkeypatch.setattr(obs, "_get_langfuse", lambda: None)
-        captured = {}
-        monkeypatch.setattr(obs, "_record_local",
-                            lambda *a, **kw: captured.update(a=a, kw=kw))
+        captured = capture_record_local(monkeypatch)
 
         obs.record_tool_call("tid-t1", "get_inventory", "MAT-001", "100 件", 50)
         # _record_local(trace_id, span_name, input_data, output_data, metadata)
@@ -356,9 +336,7 @@ class TestRecordFunctions:
     def test_record_tool_call_with_error(self, monkeypatch):
         from app.core import observability as obs
         monkeypatch.setattr(obs, "_get_langfuse", lambda: None)
-        captured = {}
-        monkeypatch.setattr(obs, "_record_local",
-                            lambda *a, **kw: captured.update(a=a, kw=kw))
+        captured = capture_record_local(monkeypatch)
 
         obs.record_tool_call("tid-t2", "search_supplier", "Q", "O", 200, error="timeout")
         assert captured["a"][4]["error"] == "timeout"
@@ -367,9 +345,7 @@ class TestRecordFunctions:
     def test_record_rag_retrieval(self, monkeypatch):
         from app.core import observability as obs
         monkeypatch.setattr(obs, "_get_langfuse", lambda: None)
-        captured = {}
-        monkeypatch.setattr(obs, "_record_local",
-                            lambda *a, **kw: captured.update(a=a, kw=kw))
+        captured = capture_record_local(monkeypatch)
 
         obs.record_rag_retrieval("tid-rg1", "供应商资质", 3, ["s1", "s2", "s3"], 80)
         # 实际参数: _record_local(tid, "RAG检索", {"query": q}, {"num_chunks": n}, {"duration_ms": d})
@@ -384,12 +360,7 @@ class TestRecordFunctions:
         """record_llm_generation 走 langfuse 路径 + 兜底 _record_local"""
         from app.core import observability as obs
 
-        fake_span = MagicMock()
-        fake_trace = MagicMock()
-        fake_trace.span.return_value = fake_span
-        fake_lf = MagicMock()
-        fake_lf.trace.return_value = fake_trace
-        monkeypatch.setattr(obs, "_get_langfuse", lambda: fake_lf)
+        fake_span, fake_trace, fake_lf = fake_langfuse(monkeypatch)
 
         # 验证 _record_local 兜底也被调用
         captured = {}
@@ -424,9 +395,7 @@ class TestRecordFunctions:
         """langfuse 抛错被 logger.debug 吞掉"""
         from app.core import observability as obs
 
-        fake_lf = MagicMock()
-        fake_lf.trace.side_effect = RuntimeError("boom")
-        monkeypatch.setattr(obs, "_get_langfuse", lambda: fake_lf)
+        fake_langfuse(monkeypatch, trace_error=RuntimeError("boom"))
 
         with caplog.at_level("DEBUG", logger="app.core.observability"):
             obs.record_llm_generation("tid-l3", "model", 1, 1, 1, 0.0)
@@ -464,13 +433,8 @@ class TestGetLangfuseLazy:
     def test_lazy_init_keys_present_but_library_missing(self, monkeypatch):
         """有 key 但 langfuse 库未安装 → except ImportError 分支"""
         from app.core import observability as obs
-        from app import config as config_mod
 
-        fake_settings = MagicMock()
-        fake_settings.LANGFUSE_PUBLIC_KEY = "pk-test"
-        fake_settings.LANGFUSE_SECRET_KEY = "sk-test"
-        fake_settings.LANGFUSE_HOST = "https://cloud.langfuse.com"
-        monkeypatch.setattr(config_mod, "get_settings", lambda: fake_settings)
+        fake_settings(monkeypatch)
         monkeypatch.setattr(obs, "_trace_provider", None)
 
         # 让 import langfuse 抛 ImportError
@@ -489,13 +453,8 @@ class TestGetLangfuseLazy:
     def test_lazy_init_keys_present_but_constructor_raises(self, monkeypatch):
         """有 key + 库在 + Langfuse() 抛错 → except Exception 分支"""
         from app.core import observability as obs
-        from app import config as config_mod
 
-        fake_settings = MagicMock()
-        fake_settings.LANGFUSE_PUBLIC_KEY = "pk-test"
-        fake_settings.LANGFUSE_SECRET_KEY = "sk-test"
-        fake_settings.LANGFUSE_HOST = "https://cloud.langfuse.com"
-        monkeypatch.setattr(config_mod, "get_settings", lambda: fake_settings)
+        fake_settings(monkeypatch)
         monkeypatch.setattr(obs, "_trace_provider", None)
 
         fake_langfuse = MagicMock()

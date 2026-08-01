@@ -120,12 +120,15 @@ class TestWebSearch:
 class TestToolRegistry:
     """工具注册表完整性"""
 
-    def test_all_11_tools_registered(self):
+    def test_all_tools_registered(self):
         from app.core.tool_engine import TOOL_REGISTRY
-        assert len(TOOL_REGISTRY) == 11
+        # 8 业务工具 + 3 通用 + 2 新增（query_ticket / query_stock_move）
+        assert len(TOOL_REGISTRY) == 13
 
     def test_new_tools_present(self):
         from app.core.tool_engine import TOOL_REGISTRY
         assert "web_search" in TOOL_REGISTRY
         assert "calculator" in TOOL_REGISTRY
         assert "code_interpreter" in TOOL_REGISTRY
+        assert "query_ticket" in TOOL_REGISTRY
+        assert "query_stock_move" in TOOL_REGISTRY

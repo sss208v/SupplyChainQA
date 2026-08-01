@@ -26,6 +26,7 @@
   "homepage": "https://github.com/JDKmark/supply-chain-qa#readme",
   "devDependencies": {
     "husky": "^9.1.7",
+    "jscpd": "^5.0.14",
     "lint-staged": "^17.2.0",
     "prettier": "^3.9.6"
   }

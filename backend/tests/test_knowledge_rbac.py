@@ -4,8 +4,9 @@
 - 非 admin 用户无法将文档挂到其他部门/admin 名下
 - admin 传入非法角色返回 400
 """
-import io
 import pytest
+
+from helpers import upload_knowledge
 
 
 def _mock_index(monkeypatch, captured: dict):
@@ -26,12 +27,7 @@ async def test_upload_escalation_to_admin_downgraded(client, seed_user, monkeypa
     captured = {}
     _mock_index(monkeypatch, captured)
 
-    resp = await client.post(
-        "/api/v1/knowledge/upload",
-        files={"file": ("a.txt", io.BytesIO(b"x"), "text/plain")},
-        data={"security_group": "admin"},
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await upload_knowledge(client, seed_user["token"], "admin")
     assert resp.status_code == 200
     assert captured["sg"] == ["purchase"]
     assert resp.json()["security_group"] == ["purchase"]
@@ -43,12 +39,7 @@ async def test_upload_escalation_to_other_dept_downgraded(client, seed_user, mon
     captured = {}
     _mock_index(monkeypatch, captured)
 
-    resp = await client.post(
-        "/api/v1/knowledge/upload",
-        files={"file": ("a.txt", io.BytesIO(b"x"), "text/plain")},
-        data={"security_group": "finance,logistics,admin"},
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await upload_knowledge(client, seed_user["token"], "finance,logistics,admin")
     assert resp.status_code == 200
     assert captured["sg"] == ["purchase"]
 
@@ -59,12 +50,7 @@ async def test_upload_public_requires_config(client, seed_user, monkeypatch):
     captured = {}
     _mock_index(monkeypatch, captured)
 
-    resp = await client.post(
-        "/api/v1/knowledge/upload",
-        files={"file": ("a.txt", io.BytesIO(b"x"), "text/plain")},
-        data={"security_group": "purchase,public"},
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await upload_knowledge(client, seed_user["token"], "purchase,public")
     assert resp.status_code == 200
     assert captured["sg"] == ["purchase"]
 
@@ -79,12 +65,7 @@ async def test_upload_public_allowed_when_enabled(client, seed_user, monkeypatch
     settings = get_settings()
     monkeypatch.setattr(settings, "ALLOW_PUBLIC_UPLOAD", True)
 
-    resp = await client.post(
-        "/api/v1/knowledge/upload",
-        files={"file": ("a.txt", io.BytesIO(b"x"), "text/plain")},
-        data={"security_group": "public"},
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
-    )
+    resp = await upload_knowledge(client, seed_user["token"], "public")
     assert resp.status_code == 200
     assert captured["sg"] == ["purchase", "public"]
 
@@ -95,12 +76,7 @@ async def test_upload_admin_invalid_role_rejected(client, admin_user, monkeypatc
     captured = {}
     _mock_index(monkeypatch, captured)
 
-    resp = await client.post(
-        "/api/v1/knowledge/upload",
-        files={"file": ("a.txt", io.BytesIO(b"x"), "text/plain")},
-        data={"security_group": "admin,hacker_group"},
-        headers={"Authorization": f"Bearer {admin_user['token']}"},
-    )
+    resp = await upload_knowledge(client, admin_user["token"], "admin,hacker_group")
     assert resp.status_code == 400
     assert "非法权限角色" in resp.json()["detail"]
 
@@ -111,11 +87,7 @@ async def test_upload_admin_empty_defaults_to_admin(client, admin_user, monkeypa
     captured = {}
     _mock_index(monkeypatch, captured)
 
-    resp = await client.post(
-        "/api/v1/knowledge/upload",
-        files={"file": ("a.txt", io.BytesIO(b"x"), "text/plain")},
-        headers={"Authorization": f"Bearer {admin_user['token']}"},
-    )
+    resp = await upload_knowledge(client, admin_user["token"])
     assert resp.status_code == 200
     assert captured["sg"] == ["admin"]
 

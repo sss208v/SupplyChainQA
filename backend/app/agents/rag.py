@@ -372,6 +372,20 @@ class RAGAgent:
         if session_id and chat_memory:
             chat_history_str = await chat_memory.get_context_string(session_id, user_id=user_id)
 
+        # 三层记忆注入：用户画像 + 企业术语表（部门段需 role，非流式评估链路缺省跳过）
+        memory_ctx = ""
+        try:
+            from app.core.memory_service import get_memory_service
+            _mem_svc = get_memory_service()
+            if _mem_svc is not None:
+                memory_ctx = await _mem_svc.build_memory_context(user_id=user_id)
+        except Exception as _e:
+            logger.warning(f"[Memory] 三层记忆注入失败（降级）: {_e}")
+        if memory_ctx:
+            chat_history_str = (
+                memory_ctx + "\n\n" + chat_history_str if chat_history_str else memory_ctx
+            )
+
         # ---- Step 6: LLM生成回答（置信度感知）----
         # 高置信度用标准prompt，低置信度用严格prompt避免冗余
         if confidence >= settings.CONFIDENCE_THRESHOLD:
@@ -410,6 +424,13 @@ class RAGAgent:
                 metadata={"confidence": confidence, "sources": sources[:3]},
                 user_id=user_id,
             )
+
+        # 异步提炼用户画像信号（后台任务，不阻塞非流式链路）
+        try:
+            from app.core.memory_service import schedule_profile_harvest
+            schedule_profile_harvest(user_id, query)
+        except Exception as _e:
+            logger.warning(f"[Memory] 画像提炼调度失败（降级）: {_e}")
 
         return {
             "answer": answer,

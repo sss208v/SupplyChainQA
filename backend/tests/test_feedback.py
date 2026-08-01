@@ -1,12 +1,7 @@
 """Feedback API 单元测试 — 之前 0 覆盖"""
 import pytest
 
-
-def _async_fake_user():
-    """生成可 await 的 mock auth 依赖"""
-    async def fake(request):
-        return {"user_id": "u1"}
-    return fake
+from helpers import patch_auth, post_feedback
 
 
 @pytest.mark.asyncio
@@ -27,18 +22,10 @@ async def test_create_feedback_no_auth(client):
 @pytest.mark.asyncio
 async def test_create_feedback_invalid_rating(client, seed_user, monkeypatch):
     """rating=5 超 Pydantic 约束（le=1）→ 422"""
-    from app.core import auth as auth_mod
-    monkeypatch.setattr(auth_mod, "get_current_user_required", _async_fake_user())
-
-    resp = await client.post(
-        "/api/v1/feedback",
-        json={
-            "session_id": "sess-001",
-            "query": "Q",
-            "answer": "A",
-            "rating": 5,  # 超出 le=1
-        },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    resp = await post_feedback(
+        client, monkeypatch,
+        {"session_id": "sess-001", "query": "Q", "answer": "A", "rating": 5},
+        token=seed_user["token"],
     )
     assert resp.status_code == 422
     # Pydantic 返回 detail 是 list of errors
@@ -48,18 +35,10 @@ async def test_create_feedback_invalid_rating(client, seed_user, monkeypatch):
 @pytest.mark.asyncio
 async def test_create_feedback_rating_zero_invalid(client, seed_user, monkeypatch):
     """rating=0 违反约束（ge=-1）→ 422"""
-    from app.core import auth as auth_mod
-    monkeypatch.setattr(auth_mod, "get_current_user_required", _async_fake_user())
-
-    resp = await client.post(
-        "/api/v1/feedback",
-        json={
-            "session_id": "sess-001",
-            "query": "Q",
-            "answer": "A",
-            "rating": 0,
-        },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    resp = await post_feedback(
+        client, monkeypatch,
+        {"session_id": "sess-001", "query": "Q", "answer": "A", "rating": 0},
+        token=seed_user["token"],
     )
     assert resp.status_code == 422
 
@@ -67,19 +46,13 @@ async def test_create_feedback_rating_zero_invalid(client, seed_user, monkeypatc
 @pytest.mark.asyncio
 async def test_create_feedback_negative_rating_accepted(client, seed_user, monkeypatch):
     """rating=-1 应被接受（写库，不抛错）"""
-    from app.core import auth as auth_mod
-    monkeypatch.setattr(auth_mod, "get_current_user_required", _async_fake_user())
-
-    resp = await client.post(
-        "/api/v1/feedback",
-        json={
-            "session_id": "sess-001",
-            "query": "Q",
-            "answer": "A",
-            "rating": -1,
-            "comment": "答案不准",
+    resp = await post_feedback(
+        client, monkeypatch,
+        {
+            "session_id": "sess-001", "query": "Q", "answer": "A",
+            "rating": -1, "comment": "答案不准",
         },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
+        token=seed_user["token"],
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -91,16 +64,9 @@ async def test_create_feedback_negative_rating_accepted(client, seed_user, monke
 @pytest.mark.asyncio
 async def test_create_feedback_missing_required_fields(client, seed_user, monkeypatch):
     """缺 session_id/query/answer → Pydantic 422"""
-    from app.core import auth as auth_mod
-    monkeypatch.setattr(auth_mod, "get_current_user_required", _async_fake_user())
-
-    resp = await client.post(
-        "/api/v1/feedback",
-        json={
-            "rating": 1,
-            # 缺 session_id, query, answer
-        },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    resp = await post_feedback(
+        client, monkeypatch, {"rating": 1},  # 缺 session_id, query, answer
+        token=seed_user["token"],
     )
     assert resp.status_code == 422
 
@@ -108,22 +74,15 @@ async def test_create_feedback_missing_required_fields(client, seed_user, monkey
 @pytest.mark.asyncio
 async def test_create_feedback_with_optional_fields(client, seed_user, monkeypatch):
     """可选字段 sources/comment/confidence/intent 都能传"""
-    from app.core import auth as auth_mod
-    monkeypatch.setattr(auth_mod, "get_current_user_required", _async_fake_user())
-
-    resp = await client.post(
-        "/api/v1/feedback",
-        json={
-            "session_id": "sess-002",
-            "query": "Q",
-            "answer": "A",
-            "rating": 1,
+    resp = await post_feedback(
+        client, monkeypatch,
+        {
+            "session_id": "sess-002", "query": "Q", "answer": "A", "rating": 1,
             "comment": "很好",
             "sources": [{"id": "src-1", "content": "ctx"}, {"id": "src-2", "content": "ctx2"}],
-            "confidence": 0.95,
-            "intent": "rag",
+            "confidence": 0.95, "intent": "rag",
         },
-        headers={"Authorization": f"Bearer {seed_user['token']}"},
+        token=seed_user["token"],
     )
     assert resp.status_code == 200
     assert resp.json()["rating"] == 1
@@ -132,8 +91,7 @@ async def test_create_feedback_with_optional_fields(client, seed_user, monkeypat
 @pytest.mark.asyncio
 async def test_feedback_stats_invalid_days_range(client, seed_user, monkeypatch):
     """days 参数超范围（0 或 >365）→ 422（Query 校验）"""
-    from app.core import auth as auth_mod
-    monkeypatch.setattr(auth_mod, "get_current_user_required", _async_fake_user())
+    patch_auth(monkeypatch)
 
     # days=0 违反 ge=1
     resp = await client.get(
@@ -153,8 +111,7 @@ async def test_feedback_stats_invalid_days_range(client, seed_user, monkeypatch)
 @pytest.mark.asyncio
 async def test_feedback_stats_empty_db_returns_zero(client, seed_user, monkeypatch):
     """空数据库时 satisfaction_rate 应为 0.0（避免除零）"""
-    from app.core import auth as auth_mod
-    monkeypatch.setattr(auth_mod, "get_current_user_required", _async_fake_user())
+    patch_auth(monkeypatch)
 
     resp = await client.get(
         "/api/v1/feedback/stats?days=30",

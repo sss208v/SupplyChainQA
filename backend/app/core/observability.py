@@ -55,11 +55,7 @@ def _get_langfuse():
         # ENABLED：返回客户端实例
         return _trace_provider
 
-    from app.config import get_settings
-    settings = get_settings()
-    pk = getattr(settings, "LANGFUSE_PUBLIC_KEY", "") or ""
-    sk = getattr(settings, "LANGFUSE_SECRET_KEY", "") or ""
-    host = getattr(settings, "LANGFUSE_HOST", "https://cloud.langfuse.com")
+    pk, sk, host = _langfuse_settings()
 
     if not pk or not sk:
         logger.info("[Langfuse] 未配置 LANGFUSE key，禁用 Trace")
@@ -83,6 +79,28 @@ def _get_langfuse():
         logger.warning("[Langfuse] 初始化失败: %s", e)
         _trace_provider = TraceProviderState.DISABLED
         return None
+
+
+def _langfuse_settings():
+    """读取 Langfuse 配置三元组 (public_key, secret_key, host)。"""
+    from app.config import get_settings
+    settings = get_settings()
+    pk = getattr(settings, "LANGFUSE_PUBLIC_KEY", "") or ""
+    sk = getattr(settings, "LANGFUSE_SECRET_KEY", "") or ""
+    host = getattr(settings, "LANGFUSE_HOST", "https://cloud.langfuse.com")
+    return pk, sk, host
+
+
+def _langfuse_trace(trace_id: str, label: str):
+    """获取 langfuse trace；不可用或异常时返回 (None, None) 且不抛出。"""
+    lf = _get_langfuse()
+    if not lf or not trace_id:
+        return None, None
+    try:
+        return lf.trace(id=trace_id, name="chat"), lf
+    except Exception as e:
+        logger.debug(f"[Langfuse] {label} failed: {e}")
+        return None, None
 
 
 def get_trace_id() -> str:
@@ -163,11 +181,7 @@ def get_langfuse_callback(trace_id: str = None):
         return None
     try:
         from langfuse.callback import CallbackHandler
-        from app.config import get_settings
-        settings = get_settings()
-        pk = getattr(settings, "LANGFUSE_PUBLIC_KEY", "") or ""
-        sk = getattr(settings, "LANGFUSE_SECRET_KEY", "") or ""
-        host = getattr(settings, "LANGFUSE_HOST", "https://cloud.langfuse.com")
+        pk, sk, host = _langfuse_settings()
         return CallbackHandler(
             public_key=pk,
             secret_key=sk,
@@ -246,11 +260,10 @@ class TraceSpan:
 def record_router_decision(trace_id: str, query: str, intent: str, method: str, confidence: float, duration_ms: int):
     """记录意图路由决策"""
     _record_local(trace_id, "意图路由", {"query": query}, {"intent": intent, "method": method, "confidence": confidence}, {"duration_ms": duration_ms})
-    lf = _get_langfuse()
-    if not lf or not trace_id:
+    trace, lf = _langfuse_trace(trace_id, "record_router")
+    if not trace:
         return
     try:
-        trace = lf.trace(id=trace_id, name="chat")
         trace.span(
             name="意图路由",
             input={"query": query},
@@ -265,11 +278,10 @@ def record_router_decision(trace_id: str, query: str, intent: str, method: str, 
 def record_tool_call(trace_id: str, tool_name: str, tool_input: str, tool_output: str, duration_ms: int, error: str = None):
     """记录工具调用"""
     _record_local(trace_id, f"工具调用: {tool_name}", {"tool": tool_name, "input": tool_input}, {"result": tool_output[:500]}, {"duration_ms": duration_ms, "error": error})
-    lf = _get_langfuse()
-    if not lf or not trace_id:
+    trace, lf = _langfuse_trace(trace_id, "record_tool")
+    if not trace:
         return
     try:
-        trace = lf.trace(id=trace_id, name="chat")
         span = trace.span(
             name=f"工具调用: {tool_name}",
             input={"tool": tool_name, "input": tool_input},
@@ -287,11 +299,10 @@ def record_tool_call(trace_id: str, tool_name: str, tool_input: str, tool_output
 def record_rag_retrieval(trace_id: str, query: str, num_chunks: int, sources: list, duration_ms: int):
     """记录 RAG 检索"""
     _record_local(trace_id, "RAG检索", {"query": query}, {"num_chunks": num_chunks}, {"duration_ms": duration_ms})
-    lf = _get_langfuse()
-    if not lf or not trace_id:
+    trace, lf = _langfuse_trace(trace_id, "record_rag")
+    if not trace:
         return
     try:
-        trace = lf.trace(id=trace_id, name="chat")
         trace.span(
             name="RAG检索",
             input={"query": query},
@@ -325,11 +336,10 @@ def record_llm_generation(trace_id: str, model: str, prompt_tokens: int, complet
     )
 
     # 2. 尝试同步到 Langfuse（如果有配置）
-    lf = _get_langfuse()
-    if not lf or not trace_id:
+    trace, lf = _langfuse_trace(trace_id, "record_llm")
+    if not trace:
         return
     try:
-        trace = lf.trace(id=trace_id, name="chat")
         trace.span(
             name=f"LLM生成: {model}",
             output={"tokens": prompt_tokens + completion_tokens, "cost_yuan": cost_yuan},

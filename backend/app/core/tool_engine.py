@@ -1,6 +1,6 @@
 """
 SupplyChainRAG - 工具注册与实现模块（核心）
-基于 ReAct 模式实现工具调用，为 Agent 层提供 8 个业务工具。
+基于 ReAct 模式实现工具调用，为 Agent 层提供 10 个业务工具。
 
 工具调用由 agents/tool.py 的 ToolAgent（手写 ReAct 循环）发起，
 通过 TOOL_REGISTRY / get_all_tools() / get_tools_by_names() 获取工具定义。
@@ -9,8 +9,9 @@ SupplyChainRAG - 工具注册与实现模块（核心）
   - product_product      物料主数据
   - purchase_order       采购订单头
   - purchase_order_line  采购订单行
-  - stock_move           库存移动（在途）
-  - maintenance_ticket   工工单
+  - stock_move           库存移动（在途，由 query_stock_move 查询）
+  - maintenance_ticket   工单（create_ticket 写入 / query_ticket 查询）
+  - res_partner          供应商主数据
 
 所有工具均为 async，支持 I/O 并发调用。
 
@@ -20,12 +21,16 @@ SupplyChainRAG - 工具注册与实现模块（核心）
 """
 import asyncio
 import json
-import os
 import logging
+import os
+from contextlib import asynccontextmanager
 from datetime import datetime
-from langchain_core.tools import tool, BaseTool
+
 import aiosqlite
+from langchain_core.tools import BaseTool, tool
+
 from app.core.data_filter import PIIFilter
+
 
 # 延迟导入 rag_engine，避免循环引用（rag_engine 依赖 Milvus/Embedding 等重量级组件）
 # 实际调用时才 import，确保工具模块可在测试环境中独立加载
@@ -46,13 +51,43 @@ async def _get_conn() -> aiosqlite.Connection:
     return conn
 
 
+@asynccontextmanager
+async def _db_scope():
+    """统一数据库连接生命周期（自动连接/关闭 + 异常日志）
+
+    供新工具使用，消除每个工具重复的连接样板代码。
+    用法：
+        async with _db_scope() as conn:
+            ...
+    """
+    conn = None
+    try:
+        conn = await _get_conn()
+        yield conn
+    except Exception as e:
+        logger.error(f"[Tool][DB] 操作失败: {type(e).__name__}: {e}", exc_info=True)
+        raise
+    finally:
+        if conn is not None:
+            await conn.close()
+
+
+def _safety_stock_for(qty: float) -> int:
+    """安全库存统一口径（query_inventory 与 calculate_reorder_point 共用）
+
+    实现：当前库存的 10%，至少 50 件。
+    """
+    return max(50, int(qty * 0.1))
+
+
 # ---- L3 工具查询结果缓存（只读工具 read-through，写工具成功后失效）----
 
 async def _l3_tool_cache(cache_key: str, loader) -> str:
     """只读工具查询结果的 L3 缓存包装（错误结果不缓存，Redis 不可用时直查）"""
     import hashlib
-    from app.core.cache_manager import cache_manager
+
     from app.config import get_settings
+    from app.core.cache_manager import cache_manager
 
     key_hash = hashlib.md5(cache_key.encode("utf-8")).hexdigest()
     return await cache_manager.l3_get_or_set(
@@ -122,7 +157,7 @@ async def _query_inventory_impl(material_code: str) -> str:
 
         qty = row["qty_available"]
         incoming = row["incoming_qty"]
-        safety_qty = max(50, int(qty * 0.1))
+        safety_qty = _safety_stock_for(qty)
 
         if qty >= safety_qty * 1.5:
             status = "充足"
@@ -299,10 +334,89 @@ async def create_ticket(title: str, description: str, priority: str) -> str:
             "created_at":  now,
         }, ensure_ascii=False)
     except Exception as e:
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
         logger.error(f"[create_ticket] 创建失败: {type(e).__name__}: {e}", exc_info=True)
         return json.dumps({"error": f"工单创建异常: {type(e).__name__} - {e}"}, ensure_ascii=False)
     finally:
         await conn.close()
+
+
+# ==========================================
+# 工具 3.5：query_ticket — 查询工单状态（异步）
+# ==========================================
+
+@tool
+async def query_ticket(ticket_id: str) -> str:
+    """
+    查询供应链工单的详细状态与处理进度。
+
+    根据工单编号（如 TK-202506011234567）查询工单标题、优先级、描述、阶段、创建时间等信息。
+    工单由 create_ticket 创建后写入本地 SQLite 数据库。
+
+    参数: ticket_id - 工单编号（TK-开头）
+
+    返回: JSON格式的工单数据
+    """
+    return await _l3_tool_cache(
+        f"query_ticket:{ticket_id}",
+        lambda: _query_ticket_impl(ticket_id),
+    )
+
+
+async def _query_ticket_impl(ticket_id: str) -> str:
+    """query_ticket 实际实现（被 L3 缓存包装）"""
+    if not ticket_id or not ticket_id.strip():
+        return json.dumps(
+            {"error": "工单编号不能为空，请提供 TK- 开头的工单编号"},
+            ensure_ascii=False,
+        )
+    try:
+        async with _db_scope() as conn:
+            cur = await conn.execute(
+                "SELECT name, priority, description, stage_id, user_id, "
+                "create_date, write_date, date_deadline "
+                "FROM maintenance_ticket WHERE name = ?",
+                (ticket_id.strip(),)
+            )
+            row = await cur.fetchone()
+
+            if not row:
+                await cur.execute(
+                    "SELECT name FROM maintenance_ticket "
+                    "ORDER BY create_date DESC LIMIT 5"
+                )
+                recent = [r["name"] for r in await cur.fetchall()]
+                return json.dumps(
+                    {"error": f"未找到工单: {ticket_id}，最近工单: {recent}"},
+                    ensure_ascii=False,
+                )
+
+            priority_map = {"0": "低", "1": "中", "2": "高", "3": "紧急"}
+            stage_map = {0: "待处理", 1: "处理中", 2: "已完成", 3: "已关闭"}
+            # create_ticket 写入时描述格式为 "{title}\n{description}"，首行即标题
+            description = row["description"] or ""
+            result = {
+                "ticket_id": row["name"],
+                "title": description.split("\n")[0] if description else "",
+                "description": description,
+                "priority": priority_map.get(str(row["priority"]), row["priority"]),
+                "status": stage_map.get(row["stage_id"], str(row["stage_id"])),
+                "stage_id": row["stage_id"],
+                "user_id": row["user_id"],
+                "created_at": row["create_date"],
+                "updated_at": row["write_date"],
+                "deadline": row["date_deadline"] or "—",
+            }
+            return json.dumps(result, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"[query_ticket] 查询失败: {type(e).__name__}: {e}", exc_info=True)
+        return json.dumps(
+            {"error": f"工单查询异常: {type(e).__name__} - {e}"},
+            ensure_ascii=False,
+        )
 
 
 # ==========================================
@@ -525,6 +639,81 @@ async def track_logistics(po_code: str) -> str:
 
 
 # ==========================================
+# 工具 7.5：query_stock_move — 在途/收货记录查询（异步）
+# ==========================================
+
+@tool
+async def query_stock_move(po_code: str) -> str:
+    """
+    查询采购订单的在途与收货记录（库存移动）。
+
+    根据采购订单号（如 PO-20250602）查询关联的库存移动记录：物料、数量、源/目标库位、状态、预计到货日期、内部参考号。
+
+    参数: po_code - 采购订单号（PO-开头）
+
+    返回: JSON格式的在途/收货记录列表
+    """
+    return await _l3_tool_cache(
+        f"query_stock_move:{po_code}",
+        lambda: _query_stock_move_impl(po_code),
+    )
+
+
+async def _query_stock_move_impl(po_code: str) -> str:
+    """query_stock_move 实际实现（被 L3 缓存包装）"""
+    if not po_code or not po_code.strip():
+        return json.dumps(
+            {"error": "订单号不能为空，请提供 PO- 开头的订单号"},
+            ensure_ascii=False,
+        )
+    try:
+        async with _db_scope() as conn:
+            cur = await conn.execute(
+                "SELECT m.origin, m.product_uom_qty, m.location_id, m.location_dest_id, "
+                "m.state, m.date_expected, m.date_done, m.reference, "
+                "p.default_code, p.name AS product_name "
+                "FROM stock_move m LEFT JOIN product_product p ON m.product_id = p.id "
+                "WHERE m.origin = ?",
+                (po_code.strip().upper(),)
+            )
+            rows = await cur.fetchall()
+            if not rows:
+                return json.dumps(
+                    {"error": f"未找到订单 {po_code} 的在途/收货记录"},
+                    ensure_ascii=False,
+                )
+
+            state_map = {
+                "draft": "草稿", "confirmed": "已确认", "assigned": "已分配",
+                "done": "已完成", "cancel": "已取消",
+            }
+            moves = []
+            for r in rows:
+                moves.append({
+                    "po_code": r["origin"],
+                    "material_code": r["default_code"],
+                    "material_name": r["product_name"],
+                    "qty": r["product_uom_qty"],
+                    "from_location": r["location_id"],
+                    "to_location": r["location_dest_id"],
+                    "state": state_map.get(r["state"], r["state"]),
+                    "expected_date": r["date_expected"],
+                    "done_date": r["date_done"] or "—",
+                    "reference": r["reference"] or "—",
+                })
+            return json.dumps(
+                {"po_code": po_code.strip().upper(), "moves": moves, "count": len(moves)},
+                ensure_ascii=False,
+            )
+    except Exception as e:
+        logger.error(f"[query_stock_move] 查询失败: {type(e).__name__}: {e}", exc_info=True)
+        return json.dumps(
+            {"error": f"在途查询异常: {type(e).__name__} - {e}"},
+            ensure_ascii=False,
+        )
+
+
+# ==========================================
 # 工具 8：calculate_reorder_point — 再订货点计算
 # ==========================================
 
@@ -581,7 +770,7 @@ async def calculate_reorder_point(material_code: str) -> str:
         seed = abs(hash(material_code)) % 1000
         daily_consumption = (seed % 10) + 5       # 日均消耗: 5-14 件
         lead_time = (seed % 4) + 3                 # 采购提前期: 3-6 天
-        safety_stock = max(30, current_qty // 4)   # 安全库存: 当前库存的 25%，至少 30
+        safety_stock = _safety_stock_for(current_qty)  # 安全库存统一口径（与 query_inventory 一致）
 
         # 3. ROP 计算：ROP = (日均消耗 × 提前期) + 安全库存
         lead_time_demand = daily_consumption * lead_time
@@ -663,8 +852,8 @@ async def web_search(query: str) -> str:
 async def calculator(expression: str) -> str:
     """计算数学表达式。支持加减乘除、幂运算、括号。例: '1200 * 0.85 + 500'"""
     import ast
-    import operator
     import math
+    import operator
 
     ALLOWED_OPS = {
         ast.Add: operator.add,
@@ -713,9 +902,9 @@ async def calculator(expression: str) -> str:
 @tool
 async def code_interpreter(code: str) -> str:
     """在安全沙箱中执行 Python 代码。只允许 math/statistics/datetime/json/re/collections 模块，禁止文件/网络/进程操作。"""
-    import io
-    import contextlib
     import ast
+    import contextlib
+    import io
 
     ALLOWED_MODULES = {"math", "statistics", "datetime", "json", "re", "collections"}
 
@@ -762,11 +951,11 @@ async def code_interpreter(code: str) -> str:
         raise ImportError(f"安全限制: 禁止导入 {name}，只允许 {ALLOWED_MODULES}")
 
     # ---- 沙箱 builtins：只暴露安全的内置函数 ----
-    import math
-    import statistics
-    import datetime as _dt
-    import re as _re_mod
     import collections as _collections
+    import datetime as _dt
+    import math
+    import re as _re_mod
+    import statistics
 
     safe_builtins = {
         "__import__": _safe_import,
@@ -809,10 +998,12 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "query_inventory":          query_inventory,
     "query_order":              query_order,
     "create_ticket":            create_ticket,
+    "query_ticket":             query_ticket,
     "get_datetime":             get_datetime,
     "get_knowledge":            get_knowledge,
     "query_supplier":           query_supplier,
     "track_logistics":          track_logistics,
+    "query_stock_move":         query_stock_move,
     "calculate_reorder_point":  calculate_reorder_point,
     "web_search":               web_search,
     "calculator":               calculator,

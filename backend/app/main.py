@@ -19,6 +19,7 @@ SupplyChainRAG - 企业级智能问答助手系统
 ============================================================
 """
 import warnings
+
 warnings.filterwarnings("ignore", category=PendingDeprecationWarning, module="langgraph")
 
 import logging
@@ -27,24 +28,26 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import auth, chat, evaluate, feedback, knowledge, memory, tool
 from app.config import get_settings
-from app.api import chat, knowledge, tool, feedback, evaluate, auth
-from app.core.milvus_client import milvus_manager
-from app.core.redis_client import init_redis, close_redis
-from app.core.database import init_db, close_db
-from app.core.neo4j_client import neo4j_client
-from app.models.user import User, UserRole
 from app.core.auth import hash_password
+from app.core.database import close_db, init_db
+from app.core.milvus_client import milvus_manager
+from app.core.neo4j_client import neo4j_client
+from app.core.redis_client import close_redis, init_redis
+from app.models.user import User, UserRole
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # 配置日志：DEBUG 模式用人类可读格式，生产环境用 JSON 格式
-from app.core.structured_logging import setup_logging  # noqa: E402
+from app.core.structured_logging import setup_logging
+
 setup_logging(debug=settings.DEBUG)
 
 # 日志层PII脱敏：所有日志输出自动过滤敏感信息（手机号、身份证、姓名等）
 from app.core.data_filter import PIILogFilter
+
 logging.getLogger().addFilter(PIILogFilter())
 
 
@@ -91,25 +94,27 @@ async def lifespan(app: FastAPI):
     # 密码优先从环境变量读取，仅作演示 fallback（与前端硬编码一致）
     import os as _os
     default_users = [
-        ("admin", _os.getenv("DEMO_ADMIN_PASSWORD", "admin123"), UserRole.ADMIN, "管理部"),
-        ("purchase", _os.getenv("DEMO_PURCHASE_PASSWORD", "purchase123"), UserRole.PURCHASE, "采购部"),
-        ("warehouse", _os.getenv("DEMO_WAREHOUSE_PASSWORD", "warehouse123"), UserRole.WAREHOUSE, "仓库部"),
-        ("quality", _os.getenv("DEMO_QUALITY_PASSWORD", "quality123"), UserRole.QUALITY, "质量部"),
-        ("production", _os.getenv("DEMO_PRODUCTION_PASSWORD", "production123"), UserRole.PRODUCTION, "生产部"),
-        ("finance", _os.getenv("DEMO_FINANCE_PASSWORD", "finance123"), UserRole.FINANCE, "财务部"),
-        ("logistics", _os.getenv("DEMO_LOGISTICS_PASSWORD", "logistics123"), UserRole.LOGISTICS, "物流部"),
+        ("admin", _os.getenv("DEMO_ADMIN_PASSWORD", "admin123"), UserRole.ADMIN, "管理部", "admin"),
+        ("purchase", _os.getenv("DEMO_PURCHASE_PASSWORD", "purchase123"), UserRole.PURCHASE, "采购部", "manager"),
+        ("warehouse", _os.getenv("DEMO_WAREHOUSE_PASSWORD", "warehouse123"), UserRole.WAREHOUSE, "仓库部", "manager"),
+        ("quality", _os.getenv("DEMO_QUALITY_PASSWORD", "quality123"), UserRole.QUALITY, "质量部", "manager"),
+        ("production", _os.getenv("DEMO_PRODUCTION_PASSWORD", "production123"), UserRole.PRODUCTION, "生产部", "manager"),
+        ("finance", _os.getenv("DEMO_FINANCE_PASSWORD", "finance123"), UserRole.FINANCE, "财务部", "manager"),
+        ("logistics", _os.getenv("DEMO_LOGISTICS_PASSWORD", "logistics123"), UserRole.LOGISTICS, "物流部", "manager"),
     ]
 
     if settings.DEMO_SEED_USERS:
         try:
             import asyncio as _asyncio
+
             from sqlalchemy import select
+
             from app.core.database import async_session
 
             async def _seed_users():
                 async with _asyncio.timeout(10):
                     async with async_session() as session:
-                        for username, password, role, dept in default_users:
+                        for username, password, role, dept, level in default_users:
                             result = await session.execute(
                                 select(User).where(User.username == username)
                             )
@@ -121,11 +126,13 @@ async def lifespan(app: FastAPI):
                                     existing.password_hash = hash_password(password)
                                     existing.role = role.value
                                     existing.department = dept
+                                existing.level = level
                             else:
                                 user = User(
                                     username=username,
                                     password_hash=hash_password(password),
                                     role=role.value,
+                                    level=level,
                                     department=dept,
                                 )
                                 session.add(user)
@@ -155,6 +162,7 @@ async def lifespan(app: FastAPI):
     # 6. 从 Milvus 重建 BM25 索引（启动时自动恢复）
     try:
         from collections import defaultdict
+
         from app.core.rag_engine import rag_engine as _rag
         c = milvus_manager.collection
         c.load()
@@ -227,8 +235,9 @@ app.add_middleware(
 )
 
 # ---- 限流中间件 ----
-from app.core.rate_limiter import RateLimitMiddleware  # noqa: E402
-from app.core.redis_client import redis_manager  # noqa: E402
+from app.core.rate_limiter import RateLimitMiddleware
+from app.core.redis_client import redis_manager
+
 app.add_middleware(RateLimitMiddleware, redis_client=redis_manager)
 
 # ---- 注册API路由 ----
@@ -238,14 +247,15 @@ app.include_router(tool.router, prefix=settings.API_PREFIX)
 app.include_router(feedback.router, prefix=settings.API_PREFIX)
 app.include_router(evaluate.router, prefix=settings.API_PREFIX)
 app.include_router(auth.router, prefix=settings.API_PREFIX)
+app.include_router(memory.router, prefix=settings.API_PREFIX)
 
 
 # ---- 健康检查（全链路） ----
 @app.get("/health")
 async def health_check():
     """服务健康检查（全链路）"""
-    from app.core.redis_client import redis_manager
     from app.core.database import engine as async_engine
+    from app.core.redis_client import redis_manager
 
     health = {
         "status": "ok",
@@ -338,11 +348,12 @@ async def enable_reranker(request: Request):
     首次调用需 20-40 秒加载 2.1GB 模型，后续调用秒回。
     需要 admin 角色权限。
     """
-    from app.core.auth import get_current_user_full, check_role
+    from app.core.auth import check_role, get_current_user_full
     current_user = await get_current_user_full(request)
     check_role(current_user, ["admin"])
-    from app.core.rag_engine import rag_engine
     import time
+
+    from app.core.rag_engine import rag_engine
 
     if rag_engine.reranker._model is not None:
         return {"status": "ok", "message": "重排序模型已在运行", "already_loaded": True}
@@ -359,7 +370,7 @@ async def enable_reranker(request: Request):
     except Exception as e:
         return {
             "status": "error",
-            "message": f"加载失败: {str(e)}",
+            "message": f"加载失败: {e!s}",
         }
 
 

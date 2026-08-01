@@ -234,6 +234,22 @@ async def handle_rag_answer(
     if session_id and memory:
         chat_history_str = await memory.get_context_string(session_id, user_id=user_id)
 
+    # 三层记忆注入：用户画像 + 部门记忆 + 企业术语表（Redis 不可用时静默降级）
+    memory_ctx = ""
+    try:
+        from app.core.memory_service import get_memory_service
+        _mem_svc = get_memory_service()
+        if _mem_svc is not None:
+            memory_ctx = await _mem_svc.build_memory_context(
+                user_id=user_id, user_role=user_role
+            )
+    except Exception as _e:
+        logger.warning(f"[Memory] 三层记忆注入失败（降级）: {_e}")
+    if memory_ctx:
+        chat_history_str = (
+            memory_ctx + "\n\n" + chat_history_str if chat_history_str else memory_ctx
+        )
+
     # 构建Prompt
     system_prompt = rag_agent.RAG_SYSTEM_PROMPT.format(
         chat_history=chat_history_str or "（无历史对话）",
@@ -370,3 +386,10 @@ async def handle_rag_answer(
             metadata={"confidence": confidence, "sources": sources[:3]},
             user_id=user_id,
         )
+
+    # 异步提炼用户画像信号（后台任务，不阻塞 SSE 链路）
+    try:
+        from app.core.memory_service import schedule_profile_harvest
+        schedule_profile_harvest(user_id, safe_query)
+    except Exception as _e:
+        logger.warning(f"[Memory] 画像提炼调度失败（降级）: {_e}")

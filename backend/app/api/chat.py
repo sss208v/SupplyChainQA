@@ -9,34 +9,44 @@ import hashlib
 import json
 import logging
 import uuid
-from fastapi import APIRouter, HTTPException, Depends
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from fastapi import Request
 from pydantic import BaseModel, Field
-from app.agents.router import IntentType
-from app.agents.rag import RAGAgent
-from app.agents.router import RouterAgent
+
 from app.agents.orchestrator import Orchestrator
+from app.agents.rag import RAGAgent
+from app.agents.router import IntentType, RouterAgent
+from app.api.chat_helpers import ChatRequest, _AskRequest, sse_done, sse_event
+from app.api.handlers import (
+    handle_ask,
+    handle_goal,
+    handle_graph_query,
+    handle_greeting,
+    handle_hybrid,
+    handle_rag_answer,
+    handle_tool_call,
+    handle_unclear,
+)
+from app.config import get_settings
+from app.core.auth import get_current_user_full, get_current_user_optional
+from app.core.data_filter import PIIFilter
+from app.core.dependencies import (
+    get_chat_memory,
+    get_graph_engine,
+    get_milvus_manager,
+    get_neo4j_client,
+    get_orchestrator_service,
+    get_query_analyzer,
+    get_rag_agent,
+    get_redis_manager,
+    get_router_agent,
+)
 from app.core.graph_engine import GraphEngine
 from app.core.milvus_client import MilvusManager
 from app.core.neo4j_client import Neo4jClient
-from app.core.redis_client import RedisManager, ChatMemory
 from app.core.query_analyzer import QueryComplexityAnalyzer
-from app.core.data_filter import PIIFilter
-from app.config import get_settings
-from app.core.auth import get_current_user_optional, get_current_user_full
-from app.core.dependencies import (
-    get_rag_agent, get_router_agent, get_orchestrator_service,
-    get_graph_engine, get_milvus_manager, get_neo4j_client,
-    get_redis_manager, get_chat_memory,
-    get_query_analyzer,
-)
-from app.api.chat_helpers import sse_event, sse_done, ChatRequest, _AskRequest
-from app.api.handlers import (
-    handle_greeting, handle_unclear, handle_rag_answer,
-    handle_tool_call, handle_goal, handle_hybrid,
-    handle_graph_query, handle_ask,
-)
+from app.core.redis_client import ChatMemory, RedisManager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["对话"])
@@ -79,8 +89,8 @@ async def switch_model(body: dict):
 async def cache_stats(request: Request):
     """返回 L1/L2/L3 各层缓存命中率指标（L4 由 nginx 承担，不在应用层统计）"""
     from app.core.auth import check_role
-    from app.models.user import UserRole
     from app.core.dependencies import get_cache_manager
+    from app.models.user import UserRole
 
     current_user = await get_current_user_full(request)
     check_role(current_user, [UserRole.ADMIN.value])
@@ -135,20 +145,23 @@ async def chat_stream(
     safe_query = _pii_filter.filter_text(body.query)
     logger.info(f"对话开始 session={session_id} query={safe_query}")
 
-    # 用户角色：REQUIRE_AUTH_CHAT=True 时强制登录（未登录 401），
-    # 关闭时（演示环境）允许匿名并回退到默认角色
+    # 用户角色与级别：REQUIRE_AUTH_CHAT=True 时强制登录（未登录 401），
+    # 关闭时（演示环境）允许匿名并回退到默认角色 + 最低级别
     _settings = get_settings()
     _user_role = _settings.DEFAULT_USER_ROLE
+    _user_level = "employee"
     _user_id = ""
     if _settings.REQUIRE_AUTH_CHAT:
         _current_user = await get_current_user_full(request)  # 未登录直接 401
         _user_role = _current_user.get("role", _settings.DEFAULT_USER_ROLE)
+        _user_level = _current_user.get("level", "employee")
         _user_id = _current_user.get("username", "") or _current_user.get("sub", "")
     else:
         try:
             _current_user = await get_current_user_full(request)
             if _current_user:
                 _user_role = _current_user.get("role", _settings.DEFAULT_USER_ROLE)
+                _user_level = _current_user.get("level", "employee")
                 _user_id = _current_user.get("username", "") or _current_user.get("sub", "")
         except Exception as e:
             logger.warning(f"[Permission] 匿名会话（REQUIRE_AUTH_CHAT=false），使用默认角色: {e}")
@@ -165,7 +178,12 @@ async def chat_stream(
 
         try:
             # ---- Trace ID + Langfuse 可观测性 ----
-            from app.core.observability import get_trace_id, get_langfuse_url, is_enabled, get_langfuse_callback
+            from app.core.observability import (
+                get_langfuse_callback,
+                get_langfuse_url,
+                get_trace_id,
+                is_enabled,
+            )
             trace_id = get_trace_id()
             langfuse_handler = get_langfuse_callback(trace_id=trace_id)
             langfuse_callbacks = [langfuse_handler] if langfuse_handler else None
@@ -232,7 +250,7 @@ async def chat_stream(
                 async for event in handle_tool_call(
                     safe_query, tool_name, session_id, _user_id,
                     body.agent_type, body, langfuse_callbacks,
-                    redis, _user_role, _needs_clarify,
+                    redis, _user_role, _user_level, _needs_clarify,
                 ):
                     yield event
 
@@ -297,6 +315,7 @@ _ALLOWED_SQL_ROLES = frozenset({
 async def sql_query(request: Request, body: SQLQueryRequest):
     """Text-to-SQL：自然语言转 SQL 查询（只允许 SELECT，自动 LIMIT 100）"""
     from fastapi import HTTPException
+
     from app.core.text_to_sql import get_text_to_sql
 
     auth_header = request.headers.get("Authorization", "")

@@ -234,6 +234,16 @@ class BaseReActAgent:
         if session_id and chat_memory:
             try:
                 history = await chat_memory.get_context_string(session_id, user_id=user_id or "")
+                # 三层记忆注入：用户画像 + 企业术语表（工具链路无 role，部门段缺省跳过）
+                try:
+                    from app.core.memory_service import get_memory_service
+                    _mem_svc = get_memory_service()
+                    if _mem_svc is not None:
+                        memory_ctx = await _mem_svc.build_memory_context(user_id=user_id or "")
+                        if memory_ctx:
+                            history = f"{memory_ctx}\n\n{history}" if history else memory_ctx
+                except Exception as _e:
+                    logger.debug(f"[Agent] 三层记忆注入失败（降级）: {_e}")
                 if history:
                     messages = [HumanMessage(content=f"对话历史：\n{history}\n\n当前问题：{query}")]
             except Exception as e:
@@ -300,5 +310,12 @@ class BaseReActAgent:
                 await chat_memory.add_message(session_id, "assistant", final_answer, user_id=user_id)
             except Exception as e:
                 logger.debug(f"[Agent] 对话记忆保存失败: {e}")
+
+        # 异步提炼用户画像信号（后台任务，不阻塞 Agent 链路）
+        try:
+            from app.core.memory_service import schedule_profile_harvest
+            schedule_profile_harvest(user_id or "", query)
+        except Exception as _e:
+            logger.debug(f"[Agent] 画像提炼调度失败（降级）: {_e}")
 
         return result

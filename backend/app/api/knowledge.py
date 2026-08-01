@@ -14,22 +14,33 @@ SupplyChainRAG - 知识库API路由
    例如Chunk Size=512, Overlap=64，意味着每个切片的前64字与上一个切片的后64字重复。
 ============================================================
 """
-import os
-import uuid
-import re
 import asyncio
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Request, BackgroundTasks
+import os
+import re
+import uuid
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from pydantic import BaseModel
+
+from app.config import get_settings
+from app.core.auth import (
+    check_level,
+    check_role,
+    get_current_user_full,
+)
+from app.core.data_filter import PIIFilter
 from app.core.milvus_client import milvus_manager
 from app.core.rag_engine import rag_engine
-from app.core.data_filter import PIIFilter
-from app.config import get_settings
-from app.models.user import UserRole
-from app.core.auth import (
-    get_current_user_full,
-    check_role,
-)
+from app.models.user import UserLevel, UserRole
 
 # PII脱敏过滤器实例（模块级单例，避免重复创建）
 _pii_filter = PIIFilter()
@@ -110,9 +121,10 @@ async def upload_document(
     支持格式：PDF、TXT、Markdown、DOCX
     security_group: 文档可见的角色列表（由当前用户角色派生，防越权）
     """
-    # RBAC：所有部门角色都可以上传，但权限组由自身角色派生
+    # RBAC：部门经理及以上可上传（employee 只读），权限组由自身角色派生
     current_user = await get_current_user_full(request)
     user_role = current_user.get("role", "")
+    check_level(current_user, UserLevel.MANAGER.value)
 
     # 解析 security_group（服务端权威裁决，不信任前端）
     groups = _resolve_security_groups(security_group, user_role)
@@ -264,10 +276,21 @@ async def get_knowledge_stats():
 
 @router.delete("/{doc_id}")
 async def delete_document(doc_id: str, request: Request = None):
-    """从知识库删除文档"""
-    # RBAC：只有admin可以删除
+    """从知识库删除文档（manager 及以上，且仅限本部门文档）"""
+    # RBAC：manager+ 可删除；非 admin 需校验文档归属本部门（防跨部门越权删除）
     current_user = await get_current_user_full(request)
-    check_role(current_user, [UserRole.ADMIN.value])
+    user_role = current_user.get("role", "")
+    check_level(current_user, UserLevel.MANAGER.value)
+
+    if user_role != UserRole.ADMIN.value:
+        docs = milvus_manager.list_documents(role=user_role)
+        target = next((d for d in docs if d.get("doc_id") == doc_id), None)
+        sg = (target or {}).get("security_group") or []
+        if user_role not in sg:
+            raise HTTPException(
+                status_code=403,
+                detail="无权删除该文档：仅限删除本部门文档，请联系管理员",
+            )
 
     try:
         milvus_manager.delete_by_doc_id(doc_id)
@@ -359,8 +382,9 @@ def _read_pdf(file_path: str) -> str:
     _java_ok = _check_java()
     if _java_ok:
         try:
-            import opendataloader_pdf
             import tempfile
+
+            import opendataloader_pdf
             with tempfile.TemporaryDirectory() as tmp_dir:
                 # 使用 convert() 替代已废弃的 run()
                 opendataloader_pdf.convert(
@@ -750,8 +774,8 @@ async def _run_ingest_job() -> None:
     sys.path.insert(0, scripts_dir)
 
     try:
-        from scripts.ingest_pdfs import ingest_all, PDF_DIR
         from scripts.download_real_pdfs import download_all
+        from scripts.ingest_pdfs import PDF_DIR, ingest_all
 
         await _set_ingest_status({"status": "downloading", "message": "正在下载报告..."})
         await asyncio.to_thread(download_all)
