@@ -79,6 +79,9 @@ class Orchestrator:
             HumanMessage(content=goal),
         ]
 
+        # content 在 try 外初始化：若 ainvoke 阶段抛异常，外层 except 分支
+        # 引用 content 时不会因未定义而抛 NameError/UnboundLocalError
+        content = ""
         try:
             response = await llm.ainvoke(messages)
             content = response.content.strip()

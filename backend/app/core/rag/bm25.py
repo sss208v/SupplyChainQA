@@ -15,6 +15,21 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+# 停用词表：中文高频虚词/助词 + 英文高频功能词。
+# jieba 分词结果中这类 token 对 IDF 无区分度，过滤后减少 BM25 语料噪声
+_STOP_WORDS = frozenset({
+    # 中文高频虚词/助词
+    "的", "了", "是", "在", "有", "和", "与", "及", "或", "之",
+    "等", "就", "都", "而", "被", "把", "让", "对", "从", "向",
+    "为", "于", "以", "其", "这", "那", "个", "中", "上", "下",
+    "也", "很", "并", "还", "但", "如果", "因为", "所以", "以及",
+    # 英文高频功能词
+    "the", "a", "an", "is", "are", "was", "were", "be", "to",
+    "of", "and", "or", "in", "on", "at", "for", "with", "by",
+    "as", "it", "this", "that", "you", "we", "they",
+})
+
+
 class BM25Engine:
     """
     BM25关键词检索引擎
@@ -175,4 +190,7 @@ class BM25Engine:
         numbers = re.findall(r"\d+", text)
 
         tokens = en_words + cn_chars + numbers
-        return tokens
+        # 过滤停用词（中文虚词直接比较；英文按小写比较，兼顾 The/IS 等大小写变体；
+        # 数字 token 不受影响，保留 MAT-001 等编码数字）
+        return [t for t in tokens if not (t.isalpha() and t.lower() in _STOP_WORDS)]
+

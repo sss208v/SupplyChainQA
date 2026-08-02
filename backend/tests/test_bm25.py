@@ -1,4 +1,6 @@
 """BM25 引擎单元测试 — 之前 0 覆盖"""
+import sys
+import types
 import pytest
 
 
@@ -95,3 +97,65 @@ class TestBM25Engine:
         engine = BM25Engine()
         with pytest.raises(ZeroDivisionError):
             engine.index_documents("doc-empty", [])
+
+
+class TestBM25StopwordFilter:
+    """停用词过滤测试（审查 Issue #6：jieba 分词后无停用词过滤）"""
+
+    def _with_fake_jieba(self, tokens):
+        """注入 fake jieba 模块，模拟 jieba.cut 的分词结果（可控、确定）"""
+        fake = types.ModuleType("jieba")
+        fake.cut = lambda text: list(tokens)
+        saved = sys.modules.get("jieba")
+        sys.modules["jieba"] = fake
+        return saved
+
+    def test_tokenize_filters_cn_stopwords(self):
+        """中文停用词（的/是/了等）应从 token 中过滤，业务词保留"""
+        from app.core.rag.bm25 import BM25Engine
+        saved = self._with_fake_jieba(["供应商", "的", "库存", "是", "多少"])
+        try:
+            tokens = BM25Engine._tokenize("供应商的库存是多少")
+        finally:
+            if saved is not None:
+                sys.modules["jieba"] = saved
+            else:
+                sys.modules.pop("jieba", None)
+        assert "的" not in tokens
+        assert "是" not in tokens
+        assert "供应商" in tokens
+        assert "库存" in tokens
+
+    def test_tokenize_filters_en_stopwords(self):
+        """英文停用词（the/is/a 等）应过滤，实义词保留"""
+        from app.core.rag.bm25 import BM25Engine
+        saved = self._with_fake_jieba([])  # 纯英文场景，jieba 不产出中文 token
+        try:
+            tokens = BM25Engine._tokenize("The supplier is checking inventory")
+        finally:
+            if saved is not None:
+                sys.modules["jieba"] = saved
+            else:
+                sys.modules.pop("jieba", None)
+        assert "the" not in tokens
+        assert "is" not in tokens
+        assert "supplier" in tokens
+        assert "inventory" in tokens
+
+    def test_tokenize_stopword_only_text_returns_empty(self):
+        """纯停用词文本过滤后应返回空列表（空输入语义保持兼容）"""
+        from app.core.rag.bm25 import BM25Engine
+        saved = self._with_fake_jieba(["的", "是", "了"])
+        try:
+            tokens = BM25Engine._tokenize("的是了")
+        finally:
+            if saved is not None:
+                sys.modules["jieba"] = saved
+            else:
+                sys.modules.pop("jieba", None)
+        assert tokens == []
+
+    def test_tokenize_empty_still_empty(self):
+        """空字符串经停用词过滤后仍返回空列表（与现有 test_tokenize_empty 兼容）"""
+        from app.core.rag.bm25 import BM25Engine
+        assert BM25Engine._tokenize("") == []
